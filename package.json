@@ -1,0 +1,45 @@
+{
+  "name": "reel-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion グルメリール制作の GUI／CLI（素材カタログ化・構成プラン・検証・レンダー）",
+  "type": "module",
+  "bin": {
+    "reel": "bin/reel"
+  },
+  "scripts": {
+    "reel": "tsx cli/reel.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "server": "tsx server/index.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node scripts/launch.mjs",
+    "start:dev": "node scripts/launch.mjs --dev"
+  },
+  "dependencies": {
+    "@remotion/player": "4.0.522",
+    "chokidar": "^4.0.3",
+    "express": "^4.21.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.522",
+    "tsx": "^4.19.2",
+    "zod": "^3.25.0"
+  },
+  "overrides": {
+    "qs": "6.16.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.11"
+  }
+}

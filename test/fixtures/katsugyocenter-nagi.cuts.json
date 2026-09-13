@@ -1,0 +1,31 @@
+{
+  "fps": 60,
+  "theme": "human",
+  "meta": {
+    "shop": "活魚センター（大昌総業株式会社）",
+    "format": "F7発見型",
+    "winningAngle": "生野区田島にある、正体を隠したまま見せられる工業的な水槽施設が、実は自分で選んで買える鮮魚市場",
+    "selectedHook": "生野区、この沼9割知らない（IMG_2462水槽施設+作業員）— ユーザー承認済み",
+    "reasonToSave": "北巽駅徒歩17分・駐車場あり・営業9-16時（日曜定休）・伊勢海老/サザエ等の実売価格",
+    "buzzScore": "新規性5・数字4・映像証明5・地域性4・保存価値4 = 22/25",
+    "order": "非時系列。店名が映る13/14は最後の2カットのみに温存（両方使用・2473→2474の順、ユーザー承認済み）"
+  },
+  "cuts": [
+    { "src": "uploads/03_tank-facility-worker.mp4", "inSec": 0.2, "outSec": 2.1, "main": { "text": "生野区、この沼9割知らない" } },
+    { "src": "uploads/08_giant-tank-wall.mp4", "inSec": 0.2, "outSec": 1.9, "main": { "text": "まさかの巨大水槽" } },
+    { "src": "uploads/07_tank-facility-empty.mp4", "inSec": 0.2, "outSec": 1.6, "main": { "text": "ここ、ただの魚屋じゃない" } },
+    { "src": "uploads/01_ise-ebi-tank-price.mp4", "inSec": 0.2, "outSec": 1.6, "main": { "text": "伊勢海老が泳いでる" } },
+    { "src": "uploads/05_sazae-tongs.mp4", "inSec": 0.2, "outSec": 1.5, "main": { "text": "サザエは量り売り" } },
+    { "src": "uploads/04_kaki-baskets.mp4", "inSec": 0.2, "outSec": 1.6, "main": { "text": "牡蠣もずらり" } },
+    { "src": "uploads/02_koza-fish-tank.mp4", "inSec": 0.2, "outSec": 1.5, "main": { "text": "小魚まで1尾ずつ" } },
+    { "src": "uploads/08b_giant-tank-wall-seg2.mp4", "inSec": 1.9, "outSec": 3.3, "main": { "text": "実は選んで買える" } },
+    { "src": "uploads/09_seiniku-tenin.mp4", "inSec": 0.2, "outSec": 1.6, "main": { "text": "精肉コーナーもある" } },
+    { "src": "uploads/10_kudamono-corner.mp4", "inSec": 0.2, "outSec": 1.5, "main": { "text": "青果まで新鮮" } },
+    { "src": "uploads/11_entrance-door.mp4", "inSec": 0.2, "outSec": 1.6, "main": { "text": "北巽駅から徒歩17分" } },
+    { "src": "uploads/11b_entrance-door-seg2.mp4", "inSec": 1.6, "outSec": 3.0, "main": { "text": "駐車場もあって安心" } },
+    { "src": "uploads/12_interior-wide-customers.mp4", "inSec": 0.2, "outSec": 1.7, "main": { "text": "営業は9時から16時" } },
+    { "src": "uploads/07b_tank-facility-empty-seg2.mp4", "inSec": 1.6, "outSec": 2.65, "main": { "text": "日曜だけお休み" } },
+    { "src": "uploads/13_exterior-mural-tai.mp4", "inSec": 0.2, "outSec": 1.8, "main": { "text": "その名も・・・" } },
+    { "src": "uploads/14_exterior-mural-tako-truck.mp4", "inSec": 0.2, "outSec": 2.6, "main": { "text": "これは布教したい", "orientation": "horizontal" } }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "fps": 60,
+  "theme": "stylish",
+  "meta": {
+    "winningAngle": "祇園白川にある、タップにカップを当てると10秒でスペシャルティコーヒーが出てくる近未来カフェ",
+    "reasonToSave": "価格帯・支払い方法(キャッシュレスのみ)・座席数・営業時間",
+    "selectedHook": "祇園、9割が知らない",
+    "buzzScore": "F7発見型・自己評価は本文参照"
+  },
+  "cuts": [
+    { "src": "uploads/cut01.mp4", "inSec": 0.0, "outSec": 1.2, "main": { "text": "祇園、9割が知らない" } },
+    { "src": "uploads/cut02.mp4", "inSec": 0.0, "outSec": 1.0, "main": { "text": "秒で出てくるコーヒー" } },
+    { "src": "uploads/cut03.mp4", "inSec": 0.0, "outSec": 2.268, "main": { "text": "豆の産地まで画面に出る" } },
+    { "src": "uploads/cut04.mp4", "inSec": 0.0, "outSec": 1.95, "main": { "text": "メニューはタッチで選ぶ" } },
+    { "src": "uploads/cut05.mp4", "inSec": 0.0, "outSec": 1.5, "main": { "text": "スタンダードが540円から" } },
+    { "src": "uploads/cut06.mp4", "inSec": 0.0, "outSec": 1.5, "main": { "text": "抹茶やモカも選べる" } },
+    { "src": "uploads/cut07.mp4", "inSec": 0.0, "outSec": 0.985, "main": { "text": "現金は使えない" } },
+    { "src": "uploads/cut08.mp4", "inSec": 0.0, "outSec": 1.1, "main": { "text": "頼んだのはこの2杯" } },
+    { "src": "uploads/cut09.mp4", "inSec": 0.0, "outSec": 1.067, "main": { "text": "抹茶オーツラテが本命" } },
+    { "src": "uploads/cut10.mp4", "inSec": 0.0, "outSec": 1.95, "main": { "text": "淹れたてが目の前に" } },
+    { "src": "uploads/cut11.mp4", "inSec": 0.0, "outSec": 2.0, "main": { "text": "混ぜると層が消えていく" } },
+    { "src": "uploads/cut12.mp4", "inSec": 0.0, "outSec": 2.268, "main": { "text": "この動き、見てて飽きない" } },
+    { "src": "uploads/cut13.mp4", "inSec": 0.0, "outSec": 2.037, "main": { "text": "席は14席だけ" } },
+    { "src": "uploads/cut14.mp4", "inSec": 0.0, "outSec": 1.0, "main": { "text": "その名も" } },
+    { "src": "uploads/cut15.mp4", "inSec": 0.0, "outSec": 1.535, "main": { "text": "2050coffee", "orientation": "horizontal" } },
+    { "src": "uploads/cut16.mp4", "inSec": 0.0, "outSec": 2.0, "main": { "text": "近未来カフェが祇園に", "orientation": "horizontal" } },
+    { "src": "uploads/cut17.mp4", "inSec": 0.0, "outSec": 2.0, "main": { "text": "ぜひ行ってみて" } }
+  ]
+}

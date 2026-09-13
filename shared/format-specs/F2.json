@@ -1,0 +1,52 @@
+{
+  "id": "F2",
+  "name": "ランキング型（TOP3）",
+  "maxSec": 45,
+  "targetSec": [38, 45],
+  "nominalSec": 42,
+  "theme": "bold",
+  "reveal": "none",
+  "badge": "rank",
+  "repeat": {
+    "segmentId": "units",
+    "unitLabel": "順位",
+    "count": [3, 3],
+    "order": "desc",
+    "head": {"cutSec": [1.0, 1.5]},
+    "items": {"cutSec": [1.5, 2.5], "cuts": [2, 3], "lastUnitCuts": [3, 5], "rolePattern": ["info", "sizzle"]}
+  },
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.5],
+      "cuts": [1, 1],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "units",
+      "label": "順位ブロック（第3位→第1位）",
+      "timeSec": [2, 38],
+      "cutSec": [1.5, 2.5],
+      "cuts": [9, 14],
+      "rolePattern": ["info", "sizzle"],
+      "telopGroups": [6, 9],
+      "rules": {"preferKinds": ["serving", "sizzle", "eating", "signage", "exterior"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "CTA",
+      "timeSec": [38, 42],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 1],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [12, 18], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

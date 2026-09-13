@@ -1,0 +1,171 @@
+{
+  "fps": 60,
+  "theme": "stylish",
+  "meta": {
+    "shop": "シーシャカフェ＆バーmusch 梅田曽根崎店",
+    "format": "F1定番レビュー型（デートシーン寄り）",
+    "winningAngle": "東梅田・Whity出口すぐの2階に、ワイングラスのヨーグルトとベッドソファー席・2人でゆったりできる席がある朝5時までの夜カフェ",
+    "reasonToSave": "東梅田駅徒歩4分／朝5時まで営業／ベッドソファー席・2人でゆったりできる席／実食3品",
+    "selectedHook": "東梅田、9割が知らない",
+    "buzzScore": "新規性4・数字3・映像証明5・地域性5・保存価値4 = 21/25",
+    "order": "ユーザー指定 001→019 固定。長尺クリップのみ3秒ルール内にトリム"
+  },
+  "cuts": [
+    {
+      "src": "uploads/01_cheesecake-glass-open.mov",
+      "inSec": 0.15,
+      "outSec": 1.65,
+      "main": {
+        "text": "東梅田、9割が知らない"
+      }
+    },
+    {
+      "src": "uploads/02_grape-yogurt-lift.mov",
+      "inSec": 0.3,
+      "outSec": 2.1,
+      "main": {
+        "text": "東梅田、9割が知らない"
+      }
+    },
+    {
+      "src": "uploads/03_all-three-items.mov",
+      "inSec": 0.4,
+      "outSec": 2.4,
+      "main": {
+        "text": "どれも映えすぎる"
+      }
+    },
+    {
+      "src": "uploads/04_lounge-wide-pan.mov",
+      "inSec": 0.8,
+      "outSec": 3,
+      "main": {
+        "text": "東梅田駅から徒歩4分",
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "src": "uploads/05_whity-exit-sign.mov",
+      "inSec": 0.05,
+      "outSec": 1.05,
+      "main": {
+        "text": "東梅田駅から徒歩4分",
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "src": "uploads/06_lounge-bluesofa-shisha.mov",
+      "inSec": 0.4,
+      "outSec": 2.7,
+      "main": {
+        "text": "正体は夜カフェ"
+      }
+    },
+    {
+      "src": "uploads/07_window-sofa.mov",
+      "inSec": 0.4,
+      "outSec": 2.2,
+      "main": {
+        "text": "朝5時まで営業"
+      }
+    },
+    {
+      "src": "uploads/08_granola-bowl-hand.mov",
+      "inSec": 0,
+      "outSec": 1.75,
+      "main": {
+        "text": "グラノーラざくざく"
+      }
+    },
+    {
+      "src": "uploads/09_cheesecake-plate.mov",
+      "inSec": 0.1,
+      "outSec": 1.8,
+      "main": {
+        "text": "バスクチーズとろっとろ"
+      }
+    },
+    {
+      "src": "uploads/10_cheesecake-fork.mov",
+      "inSec": 0,
+      "outSec": 0.95,
+      "main": {
+        "text": "バスクチーズとろっとろ"
+      }
+    },
+    {
+      "src": "uploads/11_bed-dive-neon.mov",
+      "inSec": 0.5,
+      "outSec": 3.3,
+      "main": {
+        "text": "まさかのベッドソファー席・・・"
+      }
+    },
+    {
+      "src": "uploads/12_bed-sit-lookaround.mov",
+      "inSec": 0.4,
+      "outSec": 2.4,
+      "main": {
+        "text": "ゆっくりくつろげる"
+      }
+    },
+    {
+      "src": "uploads/13_dome-seat-exterior.mov",
+      "inSec": 0.1,
+      "outSec": 1.5,
+      "main": {
+        "text": "2人でゆったりできる席"
+      }
+    },
+    {
+      "src": "uploads/14_dome-seat-inside.mov",
+      "inSec": 0.3,
+      "outSec": 2.1,
+      "main": {
+        "text": "2人でゆったりできる席"
+      }
+    },
+    {
+      "src": "uploads/15_two-glass-lift-cheesecake.mov",
+      "inSec": 0.1,
+      "outSec": 1.7,
+      "main": {
+        "text": "生ぶどうヨーグルトが爽やか"
+      }
+    },
+    {
+      "src": "uploads/16_single-glass-window.mov",
+      "inSec": 0.15,
+      "outSec": 1.65,
+      "main": {
+        "text": "生ぶどうヨーグルトが爽やか"
+      }
+    },
+    {
+      "src": "uploads/17_two-glass-closeup.mov",
+      "inSec": 0.05,
+      "outSec": 1.45,
+      "main": {
+        "text": "生ぶどうヨーグルトが爽やか"
+      }
+    },
+    {
+      "src": "uploads/18_dome-with-glass.mov",
+      "inSec": 0.2,
+      "outSec": 2.4,
+      "main": {
+        "text": "デートで使えすぎる",
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "src": "uploads/19_neon-eggchair-close.mov",
+      "inSec": 0,
+      "outSec": 2,
+      "main": {
+        "text": "詳細はキャプションへ",
+        "orientation": "horizontal"
+      }
+    }
+  ]
+}

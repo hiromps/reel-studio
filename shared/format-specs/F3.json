@@ -1,0 +1,65 @@
+{
+  "id": "F3",
+  "name": "検証・企画型",
+  "maxSec": 35,
+  "targetSec": [30, 35],
+  "nominalSec": 35,
+  "theme": "pop",
+  "reveal": "none",
+  "badge": "none",
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック（企画宣言＋縛りの数字）",
+      "timeSec": [0, 3],
+      "cutSec": [1.0, 1.5],
+      "cuts": [1, 2],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [1, 2],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "2_rules",
+      "label": "ルール提示",
+      "timeSec": [3, 8],
+      "cutSec": [1.5, 2.5],
+      "cuts": [1, 2],
+      "rolePattern": ["info"],
+      "telopGroups": [1, 2],
+      "rules": {"preferSignage": true, "preferKinds": ["menu", "interior", "person", "signage", "exterior"]}
+    },
+    {
+      "id": "3_exec",
+      "label": "実行パート（注文→実食、残金カウンター）",
+      "timeSec": [8, 25],
+      "cutSec": [1.5, 2.5],
+      "cuts": [6, 8],
+      "rolePattern": ["sizzle", "info"],
+      "telopGroups": [4, 6],
+      "rules": {"allowPrice": true, "allowSpeech": true, "preferKinds": ["serving", "eating", "sizzle", "menu"]}
+    },
+    {
+      "id": "4_result",
+      "label": "結果発表",
+      "timeSec": [25, 30],
+      "cutSec": [1.5, 2.5],
+      "cuts": [1, 2],
+      "rolePattern": ["info"],
+      "telopGroups": [1, 2],
+      "rules": {"allowPrice": true, "preferKinds": ["eating", "serving", "person", "interior"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "CTA（追体験）",
+      "timeSec": [30, 35],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 1],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"preferSignage": true, "closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [12, 17], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

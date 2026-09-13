@@ -1,0 +1,52 @@
+{
+  "id": "F6",
+  "name": "まとめ・保存型（2〜4店舗）",
+  "maxSec": 50,
+  "targetSec": [40, 50],
+  "nominalSec": 45,
+  "theme": "bold",
+  "reveal": "none",
+  "badge": "shop",
+  "repeat": {
+    "segmentId": "units",
+    "unitLabel": "店",
+    "count": [2, 4],
+    "order": "asGiven",
+    "head": {"cutSec": [1.0, 1.5]},
+    "items": {"cutSec": [1.5, 2.5], "cuts": [1, 2], "rolePattern": ["info", "sizzle"]}
+  },
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.5],
+      "cuts": [1, 1],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "units",
+      "label": "店舗ブロック（1店3カット以内）",
+      "timeSec": [2, 40],
+      "cutSec": [1.5, 2.5],
+      "cuts": [6, 12],
+      "rolePattern": ["info", "sizzle"],
+      "telopGroups": [6, 9],
+      "rules": {"preferKinds": ["serving", "sizzle", "eating", "signage", "exterior"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "CTA",
+      "timeSec": [40, 45],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 1],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [9, 14], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

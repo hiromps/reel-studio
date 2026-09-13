@@ -1,0 +1,76 @@
+{
+  "id": "F0",
+  "name": "oc.eat一点突破型（異常値フォーマット）",
+  "maxSec": 27,
+  "targetSec": [20, 27],
+  "nominalSec": 27,
+  "theme": "pop",
+  "reveal": "afterProof",
+  "badge": "area",
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.5],
+      "cuts": [1, 2],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [1, 2],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "2_proof",
+      "label": "②証明",
+      "timeSec": [2, 5],
+      "cutSec": [1.0, 2.0],
+      "cuts": [1, 2],
+      "rolePattern": ["proof"],
+      "telopGroups": [1, 1],
+      "rules": {"noSignage": true, "preferKinds": ["sizzle", "serving", "cooking", "eating"]}
+    },
+    {
+      "id": "2_reveal",
+      "label": "②店名リビール",
+      "timeSec": [5, 6.5],
+      "cutSec": [1.0, 1.5],
+      "cuts": [1, 1],
+      "rolePattern": ["reveal"],
+      "telopGroups": [1, 1],
+      "rules": {"requireSignage": true}
+    },
+    {
+      "id": "3_reason",
+      "label": "③保存する理由",
+      "timeSec": [6.5, 15],
+      "cutSec": [1.5, 2.5],
+      "cuts": [2, 3],
+      "rolePattern": ["info", "sizzle"],
+      "telopGroups": [2, 3],
+      "rules": {"preferKinds": ["interior", "exterior", "menu", "detail", "serving"]}
+    },
+    {
+      "id": "4_sizzle",
+      "label": "④感情の再燃（シズル連打）",
+      "timeSec": [15, 22],
+      "cutSec": [1.0, 1.5],
+      "cuts": [3, 5],
+      "rolePattern": ["sizzle"],
+      "telopGroups": [2, 3],
+      "telopSpanCuts": [1, 2],
+      "rules": {"preferKinds": ["sizzle", "eating", "cooking"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "④締め・CTA",
+      "timeSec": [22, 27],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 2],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"preferSignage": true, "closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [10, 16], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

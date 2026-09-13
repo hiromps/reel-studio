@@ -1,0 +1,76 @@
+{
+  "id": "F5",
+  "name": "シーン提案型",
+  "maxSec": 35,
+  "targetSec": [27, 32],
+  "nominalSec": 30,
+  "theme": "stylish",
+  "reveal": "afterProof",
+  "badge": "none",
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック（シーン宣言）",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.5],
+      "cuts": [1, 2],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [1, 2],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "2_scene",
+      "label": "②シーン適性の根拠",
+      "timeSec": [2, 6],
+      "cutSec": [1.0, 2.0],
+      "cuts": [2, 3],
+      "rolePattern": ["proof"],
+      "telopGroups": [1, 2],
+      "rules": {"noSignage": true, "preferKinds": ["interior", "exterior", "detail", "person"]}
+    },
+    {
+      "id": "2_reveal",
+      "label": "②店名リビール",
+      "timeSec": [6, 7.5],
+      "cutSec": [1.0, 1.5],
+      "cuts": [1, 1],
+      "rolePattern": ["reveal"],
+      "telopGroups": [1, 1],
+      "rules": {"requireSignage": true}
+    },
+    {
+      "id": "3_food",
+      "label": "③料理描写（シーンに絡めて）",
+      "timeSec": [7.5, 20],
+      "cutSec": [1.5, 2.5],
+      "cuts": [4, 6],
+      "rolePattern": ["sizzle", "info"],
+      "telopGroups": [3, 5],
+      "rules": {"preferKinds": ["serving", "eating", "sizzle", "cooking"]}
+    },
+    {
+      "id": "4_sizzle",
+      "label": "④シズル＋太鼓判",
+      "timeSec": [20, 25],
+      "cutSec": [1.0, 1.5],
+      "cuts": [3, 4],
+      "rolePattern": ["sizzle"],
+      "telopGroups": [2, 3],
+      "telopSpanCuts": [1, 2],
+      "rules": {"preferKinds": ["sizzle", "eating", "interior"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "CTA",
+      "timeSec": [25, 30],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 1],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"preferSignage": true, "closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [13, 17], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

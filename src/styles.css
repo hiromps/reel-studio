@@ -1,0 +1,1559 @@
+:root {
+  color-scheme: dark;
+  --bg: #121417;
+  --panel: #1b1f24;
+  --panel2: #232830;
+  --line: #2e343d;
+  --fg: #e8eaed;
+  --muted: #9aa3ad;
+  --accent: #ffd966;
+  --accent2: #6bb0ff;
+  --ok: #4cc38a;
+  --warn: #f0a941;
+  --err: #ff6b6b;
+  font-family: 'Segoe UI', 'Yu Gothic UI', system-ui, sans-serif;
+  font-size: 13px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+input,
+select,
+textarea {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+input[type='number'] {
+  width: 84px;
+}
+textarea {
+  width: 100%;
+  min-height: 60px;
+}
+button {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--accent2);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.primary {
+  background: #2b4a7a;
+  border-color: #3b6bb3;
+}
+button.small {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+button.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+button.danger {
+  border-color: var(--err);
+  color: var(--err);
+}
+label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+label > input,
+label > select,
+label > textarea {
+  color: var(--fg);
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand {
+  font-weight: 700;
+  color: var(--accent);
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+}
+.tab.active {
+  background: var(--panel2);
+  border-color: var(--line);
+}
+.status {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pill {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: var(--panel2);
+}
+.pill.warn {
+  color: var(--warn);
+}
+.pill.run {
+  color: var(--accent2);
+}
+/* サーバーが古いコードで動いているときの警告（見落とすと原因不明のエラーになる） */
+.pill.err {
+  color: #fff;
+  background: var(--err);
+  font-weight: 700;
+}
+.main {
+  flex: 1;
+  padding: 12px;
+}
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--accent);
+}
+.card h3 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.table tr.active {
+  background: #1f2a3a;
+}
+.toasts {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 50;
+}
+.toast {
+  background: var(--panel2);
+  border-left: 4px solid var(--accent2);
+  padding: 8px 12px;
+  border-radius: 4px;
+  max-width: 420px;
+}
+.toast.ok {
+  border-left-color: var(--ok);
+}
+.toast.error {
+  border-left-color: var(--err);
+}
+
+/* Materials: 素材フォルダの選択 */
+.grow {
+  flex: 1;
+  min-width: 260px;
+}
+.dim {
+  color: var(--muted);
+}
+.folder-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.folder-pick .folder-name {
+  font-size: 15px;
+  color: var(--accent);
+  /* フォルダ名は必ず全部見せる */
+  word-break: break-all;
+}
+.folder-pick .folder-parent {
+  color: var(--muted);
+  /* 長いときは末尾を省略。フォルダ名は folder-name 側に出しているのでここは頭が見えれば足りる */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Materials */
+.materials {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 12px;
+}
+.clip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.clip-card {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px;
+  cursor: pointer;
+}
+.clip-card.selected {
+  border-color: var(--accent);
+}
+.clip-card.ng {
+  opacity: 0.45;
+}
+.clip-card img {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #000;
+}
+.clip-card .meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+.clip-card .desc {
+  font-size: 12px;
+  margin-top: 2px;
+  height: 32px;
+  overflow: hidden;
+}
+.badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #333a44;
+}
+.badge.hook {
+  background: #6b5b00;
+  color: var(--accent);
+}
+.badge.ng {
+  background: #5a1f1f;
+  color: var(--err);
+}
+.badge.sign {
+  background: #1f4a3a;
+  color: var(--ok);
+}
+.badge.untagged {
+  background: #4a2f1f;
+  color: var(--warn);
+}
+.detail video {
+  width: 100%;
+  max-height: 360px;
+  background: #000;
+  border-radius: 4px;
+}
+.strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+.strip img {
+  height: 64px;
+  cursor: pointer;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.form .full {
+  grid-column: 1 / -1;
+}
+.ranges .range {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0;
+}
+
+/* Timeline */
+.timeline {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.preview-col {
+  position: sticky;
+  top: 52px;
+}
+.preview-loading,
+.preview-err {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 12px;
+  text-align: center;
+}
+.cut-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative; /* ドラッグ中の挿入キャレットの基準 */
+}
+.cut-row {
+  display: grid;
+  grid-template-columns: 16px 34px 70px 1fr;
+  gap: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px;
+  border-left: 5px solid var(--line);
+}
+.cut-row.current {
+  outline: 1px solid var(--accent2);
+}
+.cut-row.selected {
+  border-color: var(--accent);
+}
+.cut-row.dragging {
+  opacity: 0.35;
+}
+.cut-row .handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  border-radius: 3px;
+  cursor: grab;
+  touch-action: none; /* 触っただけでスクロールしないように */
+  user-select: none;
+}
+.cut-row .handle:hover {
+  background: var(--line);
+  color: var(--fg);
+}
+.cut-row .no {
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cut-row .thumb {
+  cursor: pointer;
+}
+.cut-row .thumb img,
+.cut-row .thumb .thumb-none {
+  width: 70px;
+  height: 70px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: #000;
+}
+.cut-row .fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: flex-end;
+}
+.cut-row input.telop {
+  width: 280px;
+}
+.cut-row input.telop.placeholder {
+  background: #4a3f12;
+  color: var(--accent);
+}
+.counter {
+  font-size: 11px;
+  color: var(--muted);
+}
+.counter.over {
+  color: var(--err);
+}
+.btns {
+  display: inline-flex;
+  gap: 2px;
+}
+.summary {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.summary b {
+  color: var(--fg);
+}
+.issues {
+  max-height: 260px;
+  overflow: auto;
+  font-size: 12px;
+}
+.issue {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+  border-bottom: 1px dotted var(--line);
+}
+.issue .code {
+  font-family: Consolas, monospace;
+  color: var(--muted);
+  min-width: 190px;
+}
+.issue.E .code {
+  color: var(--err);
+}
+.issue.W .code {
+  color: var(--warn);
+}
+.subs-editor .sub {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0;
+}
+
+/* ── 絵コンテ（カットの順番をドラッグで決める） ───────────────────────── */
+.storyboard {
+  grid-column: 1 / -1; /* プレビュー列とカット列の上に横いっぱいで置く */
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px 10px;
+}
+.sb-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sb-title {
+  font-weight: 700;
+  color: var(--accent);
+}
+.sb-toggle {
+  padding: 2px 7px;
+  line-height: 1;
+}
+.sb-howto {
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+.sb-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+}
+.sb-body {
+  position: relative; /* 挿入キャレットの基準 */
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px;
+  max-height: 46vh;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.sb-body {
+  --sb-w: 104px;
+}
+.sb-body.size-s {
+  --sb-w: 78px;
+}
+.sb-body.size-l {
+  --sb-w: 136px;
+}
+.sb-card {
+  position: relative;
+  width: var(--sb-w);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.sb-card:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 1px;
+}
+.sb-card.current {
+  outline: 2px solid var(--accent2);
+}
+.sb-card.selected {
+  border-color: var(--accent);
+}
+/* まとめて動くカット（テロップ単位）をホバー時に見せる */
+.sb-card.in-block {
+  background: #2c3340;
+  border-color: var(--muted);
+}
+.sb-card.dragging {
+  opacity: 0.3;
+}
+.sb-gbar {
+  height: 3px;
+  border-radius: 2px;
+}
+.sb-thumb {
+  position: relative;
+  height: calc(var(--sb-w) * 1.3);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+.sb-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+/* フレームが取れなかったカット（素材が見つからない等） */
+.thumb-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  color: var(--muted);
+  font-size: 10px;
+}
+.sb-no {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 1px 6px;
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.72);
+  border-bottom-right-radius: 6px;
+}
+.sb-dur {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 4px;
+  font-size: 10px;
+  color: #d6dae0;
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: 3px;
+}
+.sb-flags {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  display: flex;
+  gap: 2px;
+}
+.sb-flag {
+  font-size: 10px;
+  line-height: 14px;
+  min-width: 14px;
+  text-align: center;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.sb-flag.err {
+  background: var(--err);
+  color: #1b1f24;
+  font-weight: 700;
+}
+.sb-flag.warn {
+  background: var(--warn);
+  color: #1b1f24;
+  font-weight: 700;
+}
+.sb-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  color: var(--muted);
+  min-height: 12px;
+}
+.sb-gid {
+  font-family: Consolas, monospace;
+}
+.sb-telop {
+  font-size: 11px;
+  line-height: 1.25;
+  height: 3.75em; /* テロップは 13 文字前後なので 3 行あれば大体入る */
+  overflow: hidden;
+}
+.sb-telop.empty {
+  color: #6a727c;
+}
+
+/* ── ドラッグ中の見せ方（絵コンテ・カット行で共用） ───────────────────── */
+.dnd-caret {
+  position: absolute;
+  z-index: 5;
+  background: var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 0 7px var(--accent);
+  pointer-events: none;
+}
+.dnd-ghost {
+  position: fixed;
+  z-index: 200;
+  transform: translate(-50%, -50%) rotate(-3deg);
+  width: 104px;
+  padding: 3px;
+  background: var(--panel2);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+}
+.dnd-ghost.text-only {
+  width: auto;
+  transform: translate(14px, 14px);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+.dnd-ghost img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
+}
+.dnd-ghost-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--accent);
+  text-align: center;
+  white-space: nowrap;
+}
+body.dnd-active,
+body.dnd-active * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+/* Render */
+.jobs {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 12px;
+}
+.job {
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  background: var(--panel2);
+}
+.job.selected {
+  border-color: var(--accent2);
+}
+.job .st {
+  font-size: 11px;
+  color: var(--muted);
+}
+.job.done .st {
+  color: var(--ok);
+}
+.job.failed .st {
+  color: var(--err);
+}
+.job.running .st {
+  color: var(--accent2);
+}
+.progress {
+  height: 6px;
+  background: #333a44;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.progress > div {
+  height: 100%;
+  background: var(--accent2);
+}
+.log {
+  background: #0d0f12;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.result video {
+  width: 270px;
+  background: #000;
+  border-radius: 4px;
+}
+.result img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+pre.md {
+  background: #0d0f12;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 11px;
+  overflow: auto;
+  max-height: 420px;
+}
+.chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 12px;
+}
+.chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── タブ番号・「? 使い方」 ─────────────────────────────────────────── */
+.tab-no {
+  display: inline-block;
+  min-width: 15px;
+  margin-right: 5px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+.tab.active .tab-no {
+  background: var(--accent);
+  color: #1b1f24;
+  font-weight: 700;
+}
+.help-btn {
+  border-color: var(--line);
+  color: var(--accent);
+}
+
+/* ── 次にやること バー ──────────────────────────────────────────────── */
+.nextbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  background: #1c2533;
+  border-bottom: 1px solid var(--line);
+  border-left: 4px solid var(--accent2);
+  font-size: 12px;
+  /* sticky にすると preview-col の追従位置とぶつかるので、普通に流す */
+}
+.nextbar.ready {
+  border-left-color: var(--ok);
+  background: #16261f;
+}
+.nextbar-tag {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--accent2);
+  color: #10141a;
+  font-weight: 700;
+}
+.nextbar.ready .nextbar-tag {
+  background: var(--ok);
+}
+.nextbar-text {
+  flex: 1;
+  min-width: 0;
+}
+.nextbar-x {
+  border-color: transparent;
+  color: var(--muted);
+}
+
+/* ── 空状態の案内 ───────────────────────────────────────────────────── */
+.empty-state {
+  max-width: 720px;
+}
+.empty-state h2 {
+  color: var(--fg);
+}
+.empty-steps {
+  margin: 8px 0 12px;
+  padding-left: 20px;
+  line-height: 1.9;
+}
+.empty-steps li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ── ガイドツアー ───────────────────────────────────────────────────── */
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+.tour-block {
+  position: absolute;
+  inset: 0;
+}
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  pointer-events: none;
+}
+/* 穴の外側だけを box-shadow で暗くする（穴の中は素通し） */
+.tour-hole {
+  position: fixed;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.62),
+    0 0 0 2px var(--accent) inset;
+  pointer-events: none;
+  transition:
+    left 0.15s,
+    top 0.15s,
+    width 0.15s,
+    height 0.15s;
+}
+.tour-card {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+  padding: 12px 14px;
+}
+.tour-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.tour-head b {
+  font-size: 14px;
+  color: var(--accent);
+}
+.tour-step {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: Consolas, monospace;
+}
+.tour-x {
+  margin-left: auto;
+  border-color: transparent;
+  color: var(--muted);
+}
+.tour-body {
+  font-size: 13px;
+  line-height: 1.65;
+  max-height: 44vh;
+  overflow: auto;
+}
+.tour-body p {
+  margin: 0 0 8px;
+}
+.tour-body code {
+  background: var(--panel2);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.tour-flow {
+  background: var(--panel2);
+  border-radius: 5px;
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.9;
+}
+.tour-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ── ヘルプ（モーダル） ─────────────────────────────────────────────── */
+.modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+}
+.modal {
+  width: min(820px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head b {
+  color: var(--accent);
+  font-size: 14px;
+}
+.modal-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px 0;
+}
+.modal-body {
+  padding: 10px 14px 16px;
+  overflow: auto;
+  line-height: 1.7;
+}
+.modal-body h3 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.help-flow {
+  margin: 6px 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+.help-flow li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px dotted var(--line);
+}
+.help-flow button {
+  flex: 0 0 110px;
+}
+.help-terms {
+  margin: 0;
+}
+.help-terms dt {
+  color: var(--accent);
+  font-weight: 700;
+  margin-top: 8px;
+}
+.help-terms dd {
+  margin: 0 0 2px;
+}
+
+/* ── カットのトリミング（頭と尻を掴んで尺を決める） ── */
+.trim {
+  width: 100%;
+}
+.trimbar {
+  position: relative;
+  height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #000;
+  overflow: hidden;
+  touch-action: none; /* 触ってスクロールさせない */
+  user-select: none;
+}
+.trimbar.disabled {
+  opacity: 0.5;
+}
+.trim-film {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.trim-film img {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%; /* 縦位置：9:16 素材を横帯に切るので、被写体が入りやすい高さに寄せる */
+  pointer-events: none;
+  border-right: 1px solid rgba(0, 0, 0, 0.35);
+}
+/* 使えそうな区間（catalog の usableRanges）を薄い帯で重ねる */
+.trim-usable {
+  position: absolute;
+  bottom: 0;
+  height: 3px;
+  background: var(--muted);
+  pointer-events: none;
+}
+.trim-usable.best {
+  background: var(--ok, #4cc38a);
+}
+.trim-usable.avoid {
+  background: var(--err);
+}
+/* 採用しない部分を暗く落とす */
+.trim-out-of-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.68);
+  pointer-events: none;
+}
+.trim-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  cursor: grab;
+}
+.trimbar.dragging .trim-window {
+  cursor: grabbing;
+}
+.trim-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  margin-left: -7px;
+  cursor: ew-resize;
+  background: var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.trim-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 16px;
+  margin: -8px 0 0 -1px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 1px;
+}
+.trim-handle:hover,
+.trim-handle.on,
+.trim-handle:focus-visible {
+  background: var(--accent2, #6bb0ff);
+  outline: none;
+}
+.trim-handle:focus-visible {
+  box-shadow: 0 0 0 2px var(--fg);
+}
+.trim-meta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.trim-meta b {
+  color: var(--fg);
+  font-size: 12px;
+}
+
+/* ── AI 作業中の表示 ── */
+.card.ai-running {
+  border-color: var(--accent2);
+}
+/* 総数が分からないとき（起動中など）は流れる帯で「動いている」ことを示す */
+.progress.indeterminate {
+  position: relative;
+}
+.progress.indeterminate > div {
+  position: absolute;
+  left: 0;
+  width: 35%;
+  animation: reel-indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes reel-indeterminate {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress.indeterminate > div {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+/* ── ナレーション編集（Render） ── */
+.narr-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 6px;
+}
+.narr-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 4px;
+  border-left: 3px solid var(--ok);
+  background: var(--panel2);
+  border-radius: 3px;
+}
+.narr-row.needs-tts {
+  border-left-color: var(--warn);
+}
+.narr-row .narr-id {
+  width: 110px;
+  font-size: 11px;
+}
+.narr-row .narr-text {
+  flex: 1;
+  min-width: 200px;
+}
+
+.caption-box {
+  width: 100%;
+  min-height: 260px;
+  margin-top: 6px;
+  padding: 8px;
+  font-family: "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
+/* リンクをボタンに見せる（案件を別タブで開く） */
+a.btn-like {
+  display: inline-block;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+a.btn-like:hover {
+  border-color: var(--accent2);
+}
+
+/* 効果音ライブラリの役割チェックボックス */
+.sfx-role {
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* トライアルの 1 パターン（冒頭カットぶんの行をまとめる） */
+.hook-variant {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent2);
+  border-radius: 4px;
+  padding: 6px;
+  margin-top: 6px;
+  background: var(--panel2);
+}
+
+/* ── Materials のタイムライン（横一列・時間比例。素材カードを落として並べ、両端で尺を決める） ── */
+.ctl-card {
+  position: sticky; /* 素材グリッドを下にスクロールしても落とし先が見えているように */
+  top: 42px; /* topbar の高さ */
+  z-index: 6;
+}
+.ctl-card.closed {
+  position: static;
+}
+.ctl-body {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  align-items: flex-start;
+}
+.ctl-preview {
+  flex: 0 0 auto;
+}
+.ctl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ctl-foot {
+  margin-top: 6px;
+  align-items: center;
+}
+.ctl-scroll {
+  position: relative; /* 挿入キャレットの基準 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  user-select: none;
+}
+.ctl-scroll.ext-over {
+  border-color: var(--accent);
+}
+.ctl-inner {
+  position: relative;
+  height: 100px;
+  min-width: 100%;
+}
+.ctl-ruler {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 18px;
+  border-bottom: 1px solid var(--line);
+  cursor: col-resize;
+  touch-action: none;
+}
+.ctl-tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 6px;
+  background: var(--line);
+  pointer-events: none;
+}
+.ctl-tick.major {
+  height: 10px;
+  background: var(--muted);
+}
+.ctl-tick-label {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ctl-track {
+  position: absolute;
+  left: 0;
+  top: 18px;
+  width: 100%;
+  height: 82px;
+  cursor: col-resize;
+}
+.ctl-empty {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+.ctl-empty.over {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 217, 102, 0.08);
+}
+.ctl-clip {
+  position: absolute;
+  top: 6px;
+  height: 70px;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+.ctl-clip:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 1px;
+}
+.ctl-clip.current {
+  outline: 1px solid var(--accent2);
+}
+.ctl-clip.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.ctl-clip.dragging {
+  opacity: 0.35;
+}
+.ctl-clip.trim-active {
+  border-color: var(--accent2);
+}
+.ctl-scroll.trimming .ctl-clip {
+  cursor: ew-resize;
+}
+.ctl-film {
+  position: absolute;
+  inset: 0;
+}
+.ctl-film img {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+  pointer-events: none;
+  border-right: 1px solid rgba(0, 0, 0, 0.35);
+}
+.ctl-film img.ctl-film-fallback {
+  left: 0;
+  width: 100%;
+}
+.ctl-film .thumb-none {
+  font-size: 9px;
+}
+.ctl-no {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0 5px;
+  font-weight: 700;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.72);
+  border-bottom-right-radius: 5px;
+  pointer-events: none;
+}
+.ctl-flags {
+  position: absolute;
+  right: 12px;
+  top: 2px;
+  display: flex;
+  gap: 2px;
+  pointer-events: none;
+}
+.ctl-desc {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 14px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #e8eaed;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.ctl-dur {
+  position: absolute;
+  right: 12px;
+  bottom: 2px;
+  padding: 0 4px;
+  font-size: 10px;
+  color: #d6dae0;
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.ctl-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  background: rgba(255, 217, 102, 0.25);
+  z-index: 2;
+}
+.ctl-handle.in {
+  left: 0;
+  border-radius: 3px 0 0 3px;
+}
+.ctl-handle.out {
+  right: 0;
+  border-radius: 0 3px 3px 0;
+}
+.ctl-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  margin: -7px 0 0 -1px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 1px;
+}
+.ctl-clip:hover .ctl-handle,
+.ctl-clip.selected .ctl-handle {
+  background: var(--accent);
+}
+.ctl-handle.on {
+  background: var(--accent2, #6bb0ff);
+}
+.ctl-playhead {
+  position: absolute;
+  top: -18px; /* 目盛りの上まで伸ばす */
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--err);
+  z-index: 4;
+  pointer-events: none;
+}
+.ctl-playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--err);
+}
+.dnd-caret.ext {
+  background: var(--accent2);
+  box-shadow: 0 0 7px var(--accent2);
+}
+.ctl-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px 12px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.ctl-detail-name {
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-self: center;
+}
+/* 素材カードはタイムラインへ運べる */
+.clip-card {
+  touch-action: none;
+  user-select: none;
+}
+.clip-card.dragging {
+  opacity: 0.4;
+}
+.clip-card .badges {
+  align-items: center;
+}
+.clip-card .clip-add {
+  padding: 0 6px;
+  line-height: 16px;
+}
+.badge.used {
+  background: #1f3a5a;
+  color: var(--accent2);
+}

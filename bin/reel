@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Reel Studio CLI（Git Bash / POSIX 用）。tsx 経由で cli/reel.ts を実行する
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+exec node "$DIR/node_modules/tsx/dist/cli.mjs" "$DIR/cli/reel.ts" "$@"

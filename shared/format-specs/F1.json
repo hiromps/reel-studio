@@ -1,0 +1,76 @@
+{
+  "id": "F1",
+  "name": "定番レビュー型（まひろ基本形）",
+  "maxSec": 35,
+  "targetSec": [27, 32],
+  "nominalSec": 30,
+  "theme": "pop",
+  "reveal": "afterProof",
+  "badge": "none",
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.5],
+      "cuts": [1, 2],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [1, 2],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "2_proof",
+      "label": "②証明",
+      "timeSec": [2, 5],
+      "cutSec": [1.0, 2.0],
+      "cuts": [2, 3],
+      "rolePattern": ["proof"],
+      "telopGroups": [1, 2],
+      "rules": {"noSignage": true, "allowSpeech": true, "preferKinds": ["sizzle", "serving", "cooking", "eating"]}
+    },
+    {
+      "id": "2_reveal",
+      "label": "②店名リビール",
+      "timeSec": [5, 6.5],
+      "cutSec": [1.0, 1.5],
+      "cuts": [1, 1],
+      "rolePattern": ["reveal"],
+      "telopGroups": [1, 1],
+      "rules": {"requireSignage": true}
+    },
+    {
+      "id": "3_reason",
+      "label": "③保存する理由",
+      "timeSec": [6.5, 15],
+      "cutSec": [1.5, 2.5],
+      "cuts": [4, 6],
+      "rolePattern": ["info", "sizzle"],
+      "telopGroups": [3, 5],
+      "rules": {"preferKinds": ["interior", "exterior", "menu", "detail", "serving"]}
+    },
+    {
+      "id": "4_sizzle",
+      "label": "④感情の再燃（シズル連打）",
+      "timeSec": [15, 25],
+      "cutSec": [1.0, 1.5],
+      "cuts": [4, 6],
+      "rolePattern": ["sizzle"],
+      "telopGroups": [3, 4],
+      "telopSpanCuts": [1, 2],
+      "rules": {"preferKinds": ["sizzle", "eating", "cooking"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "④締め・CTA",
+      "timeSec": [25, 30],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 2],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"preferSignage": true, "closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [14, 18], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

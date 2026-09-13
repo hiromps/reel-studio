@@ -1,0 +1,75 @@
+{
+  "id": "F4",
+  "name": "新店・速報型",
+  "maxSec": 35,
+  "targetSec": [27, 32],
+  "nominalSec": 30,
+  "theme": "pop",
+  "reveal": "afterProof",
+  "badge": "none",
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック（新店オープン＋日付）",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.5],
+      "cuts": [1, 2],
+      "rolePattern": ["hook"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [1, 2],
+      "rules": {"useUserHook": true, "noSignage": true}
+    },
+    {
+      "id": "2_impression",
+      "label": "②店の第一印象",
+      "timeSec": [2, 4.5],
+      "cutSec": [1.0, 2.0],
+      "cuts": [1, 2],
+      "rolePattern": ["proof"],
+      "telopGroups": [1, 1],
+      "rules": {"noSignage": true, "preferKinds": ["exterior", "interior", "serving"]}
+    },
+    {
+      "id": "2_reveal",
+      "label": "②店名リビール",
+      "timeSec": [4.5, 6],
+      "cutSec": [1.0, 1.5],
+      "cuts": [1, 1],
+      "rolePattern": ["reveal"],
+      "telopGroups": [1, 1],
+      "rules": {"requireSignage": true}
+    },
+    {
+      "id": "3_menu",
+      "label": "③看板メニュー2品",
+      "timeSec": [6, 20],
+      "cutSec": [1.5, 2.5],
+      "cuts": [5, 7],
+      "rolePattern": ["sizzle", "info"],
+      "telopGroups": [3, 5],
+      "rules": {"preferKinds": ["serving", "eating", "sizzle", "cooking", "menu"]}
+    },
+    {
+      "id": "4_crowd",
+      "label": "混雑・行列のリアル情報",
+      "timeSec": [20, 25],
+      "cutSec": [1.5, 2.5],
+      "cuts": [2, 3],
+      "rolePattern": ["info"],
+      "telopGroups": [1, 2],
+      "rules": {"preferKinds": ["exterior", "interior", "person"]}
+    },
+    {
+      "id": "5_cta",
+      "label": "CTA",
+      "timeSec": [25, 30],
+      "cutSec": [2.0, 2.5],
+      "cuts": [1, 1],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "rules": {"preferSignage": true, "closerLastCut": true}
+    }
+  ],
+  "tempo": {"totalCuts": [13, 17], "maxCutSec": 3.0, "playbackRateRange": [1.25, 1.5]},
+  "telop": {"maxChars": 13, "secPerChar": 0.25, "floorSec": 1.2, "groupSecTarget": [1.8, 2.0], "maxEllipsis": 3}
+}

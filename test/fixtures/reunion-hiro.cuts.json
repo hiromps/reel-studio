@@ -1,0 +1,26 @@
+{
+  "fps": 60,
+  "theme": "human",
+  "cuts": [
+    { "src": "uploads/hook-tea-pour-strainer.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "東大阪、9割が知らない英国空間" } },
+    { "src": "uploads/tea-poured-cup-wide.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "まさかの本格ティー" } },
+    { "src": "uploads/display-royal-teapots.mov", "inSec": 0.0, "outSec": 1.2, "main": { "text": "戴冠記念のポットまで" } },
+    { "src": "uploads/teapot-oliver-twist-closeup.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "文学モチーフの一客も" } },
+    { "src": "uploads/naikan-eikoku-zakka-wide.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "ここ、日本のはずやのに" } },
+    { "src": "uploads/wedgwood-cup-strainer-ready.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "カップはウェッジウッド" } },
+    { "src": "uploads/table-wide-both-dishes.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "皿はイタリア製で統一" } },
+    { "src": "uploads/eggbenedict-plate-closeup.mov", "inSec": 0.0, "outSec": 1.2, "main": { "text": "看板はエッグベネディクト" } },
+    { "src": "uploads/egg-yolk-cut-oozing.mov", "inSec": 3.6, "outSec": 5.0, "main": { "text": "黄身がとろっとろ" } },
+    { "src": "uploads/egg-yolk-macro-break.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "黄身がとろっとろ" } },
+    { "src": "uploads/bangersmash-plate-closeup.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "ソーセージも本格派" } },
+    { "src": "uploads/scone-jam-hold.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "スコーンにジャムまで" } },
+    { "src": "uploads/tea-tins-shelf-4k.mov", "inSec": 0.0, "outSec": 1.4, "main": { "text": "紅茶缶がずらり" } },
+    { "src": "uploads/naimawari-vip-room-plate.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "個室は貴賓室って呼ぶらしい" } },
+    { "src": "uploads/antique-clock-blackheath.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "完全予約制、3300円やって" } },
+    { "src": "uploads/wedgwood-cup-milk-pour.mov", "inSec": 0.0, "outSec": 1.3, "main": { "text": "今回は頼めずじまい" } },
+    { "src": "uploads/naikan-customer-enter.mov", "inSec": 0.0, "outSec": 1.4, "main": { "text": "その名は・・・" } },
+    { "src": "uploads/SIGNBOARD-reveal.mov", "inSec": 0.0, "outSec": 0.9 },
+    { "src": "uploads/SIGNBOARD-reveal.mov", "inSec": 0.9, "outSec": 2.3, "main": { "text": "10-17時、水木定休", "orientation": "horizontal" } },
+    { "src": "uploads/table-wide-hand-plate.mov", "inSec": 0.0, "outSec": 1.5, "main": { "text": "次はアフタヌーンティーで行く" } }
+  ]
+}
