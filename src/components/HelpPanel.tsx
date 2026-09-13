@@ -1,29 +1,34 @@
-// 「? 使い方」パネル。全体の流れ・絵コンテの読み方・ショートカット・用語をまとめて置く。
+// 「? 使い方」パネル。全体の流れ・タイムラインの読み方・ショートカット・用語をまとめて置く。
 // 初めての人が「この画面は何をするところか」を後から確認できる場所。
 import React, {useEffect, useState} from 'react';
 import type {TourTab} from './Tour';
 
 const FLOW: {tab: TourTab; label: string; what: string}[] = [
-  {tab: 'projects', label: '① Projects', what: '案件（動画 1 本）を作る・開く'},
-  {tab: 'materials', label: '② Materials', what: '素材フォルダを読み込み、1 本ずつタグを付ける。並びを自分で決めるならタイムラインに落として尺を決める'},
-  {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて、カット構成を自動生成する（Materials で並べた場合は省略できる）'},
-  {tab: 'timeline', label: '④ Timeline', what: 'カットの順番・長さ・テロップを整えて検証する'},
-  {tab: 'render', label: '⑤ Render', what: 'ドラフトで確認して本番レンダー、必要ならナレーション合成'},
+  {tab: 'projects', label: '① Projects', what: '案件（動画 1 本）を作る・開く。同じ素材で別バージョンも作れる'},
+  {tab: 'materials', label: '② Materials', what: '素材フォルダを読み込み、1 本ずつタグを付ける（AI に任せられる）'},
+  {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を自動生成する。台本があるなら貼って「台本から組み立てる」'},
+  {tab: 'timeline', label: '④ Timeline', what: '映像・テロップ・ナレーション・効果音を 1 つのタイムラインで整えて検証する'},
+  {tab: 'render', label: '⑤ Render', what: '「仕上げ」で原稿 → 音声 → レンダー → 合成 → 納品まで一気に。声の設定・効果音・キャプション・トライアルもここ'},
 ];
 
 const KEYS: {k: string; what: string; where: string}[] = [
-  {k: 'Ctrl + S', what: '編集中のファイルを保存', where: 'Timeline／Materials'},
-  {k: 'Ctrl + Z', what: 'カットの並び・追加・複製・削除を戻す', where: 'Timeline／Materials'},
-  {k: 'ドラッグ', what: '素材カードをタイムラインに落として追加（青い縦線の位置に入る）', where: 'Materials の素材カード'},
-  {k: 'ドラッグ', what: 'ブロックの両端で尺（IN/OUT）、中を掴んで並べ替え、Alt+ドラッグで中身をずらす', where: 'Materials のタイムライン'},
-  {k: 'Delete / S', what: '選択中のカットを外す／再生ヘッドの位置で分割', where: 'Materials のタイムライン'},
-  {k: 'Ctrl + ホイール', what: '拡大・縮小（ポインタの下の時刻を動かさない）', where: 'Materials のタイムライン'},
-  {k: 'ドラッグ', what: 'カットの順番を入れ替える', where: '絵コンテ／カット行の ⠿'},
-  {k: 'ドラッグ', what: '尺を決める（両端で IN/OUT、中を掴むと窓ごと移動）', where: 'カット行のフィルム帯'},
-  {k: '← →（つまみ選択中）', what: '1 フレームずつ／Shift で 10 フレーム', where: 'カット行のフィルム帯'},
-  {k: 'Alt + ← →', what: '選択中のカードを 1 つ前後へ動かす', where: '絵コンテ'},
-  {k: '← →', what: '選択するカードを移動', where: '絵コンテ'},
-  {k: 'Esc', what: 'ドラッグを取り消す／ツアーを閉じる', where: '全体'},
+  {k: 'Ctrl + S', what: '編集中のファイルを保存', where: 'Timeline／Materials／Brief'},
+  {k: 'Ctrl + Z / Ctrl + Y', what: '取り消し／やり直し（並び・尺・テロップ・ナレーション・効果音の変更）', where: 'Timeline'},
+  {k: 'Space', what: '再生／一時停止', where: 'Timeline'},
+  {k: '← →（Shift で 10）', what: '1 コマ戻る／進む', where: 'Timeline（入力欄の外）'},
+  {k: 'Home / End', what: '先頭／末尾へ', where: 'Timeline'},
+  {k: 'Delete', what: '選んでいるもの（カット・ナレーション・効果音）を消す', where: 'Timeline'},
+  {k: 'S', what: '再生ヘッドの位置でカットを分割', where: 'Timeline'},
+  {k: 'Ctrl + D', what: '選んでいるカットを複製', where: 'Timeline'},
+  {k: 'Alt + ← →', what: 'カードにフォーカスしたカットを 1 つ前後へ', where: 'Timeline の V 段／絵コンテ'},
+  {k: 'Esc', what: '選択を外す／ドラッグを取り消す／ツアーを閉じる', where: '全体'},
+  {k: 'ドラッグ', what: '素材カードを V 段に落として追加（青い縦線の位置に入る）', where: 'Timeline の素材ビン'},
+  {k: 'ドラッグ', what: 'ブロックの両端で尺（IN/OUT）、中を掴んで並べ替え、Alt+ドラッグで中身をずらす', where: 'V 段'},
+  {k: 'ドラッグ', what: '横に動かして配置秒を変える。カット境界に吸着（Alt で無効）', where: 'N 段・S 段'},
+  {k: 'クリック', what: 'そのブロックを選んでその場面へ', where: '全部の段'},
+  {k: 'Ctrl + ホイール', what: '拡大・縮小（ポインタの下の時刻を動かさない）', where: 'タイムライン'},
+  {k: '← →（つまみ選択中）', what: '1 フレームずつ／Shift で 10 フレーム', where: 'インスペクタのフィルム帯'},
+  {k: 'Ctrl + 1〜5', what: 'タブを切り替える', where: '全体'},
   {k: '?', what: 'このパネルを開く', where: '全体'},
 ];
 
@@ -31,12 +36,15 @@ const TERMS: {t: string; d: string}[] = [
   {t: 'カット', d: '1 つの素材から切り出した 1 区間。これを並べたものが動画になる'},
   {t: 'フック', d: '冒頭の掴み。ここで見るのをやめられるかが決まるので一番大事な 1〜2 カット'},
   {t: 'リビール', d: '店名や正体を明かす場面。発見型（F7）では終盤まで隠す'},
-  {t: 'テロップグループ', d: '同じ文言が続くカットのまとまり。絵コンテの色帯と gNN。1 カット 1 文言だと速すぎて読めないため、複数カットにまたがらせる'},
+  {t: 'テロップグループ', d: '同じ文言が続くカットのまとまり。T 段の 1 ブロック。1 カット 1 文言だと速すぎて読めないため、複数カットにまたがらせる'},
   {t: 'slot / role', d: '各カットの役割（フック・証拠・シズル・情報・CTA…）。構成の型から自動で割り当てられる'},
   {t: 'プロキシ', d: '4K や HEVC の重い素材から作る軽い H.264 版。プレビューとレンダーを安定させる'},
   {t: 'alias', d: '同じ素材を離れた位置で 2 回使うときの別名コピー。Remotion が不安定になるのを避けるため'},
   {t: 'E / W', d: 'E＝エラー（直さないと書き出せない）、W＝警告（直した方がよい）'},
   {t: 'ドラフト', d: '0.25 倍の粗いレンダー。全体の流れを速く確認するためのもの'},
+  {t: 'mix（合成）', d: 'レンダーした映像に声と効果音を混ぜる工程。レンダーだけでは素材の音しか入っていない'},
+  {t: '仕上げ', d: 'Render の一気通貫。案件の状態から残っている工程だけを順に走らせて outputs/ に納品する'},
+  {t: '要再生成', d: 'ナレーションの文言・ボイス・速度を変えたので wav を作り直す必要がある印。そのまま mix すると古い声が混ざる'},
 ];
 
 type Props = {
@@ -49,7 +57,7 @@ type Props = {
 };
 
 export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, nextBarHidden, onNextBar}) => {
-  const [sec, setSec] = useState<'flow' | 'storyboard' | 'keys' | 'terms'>('flow');
+  const [sec, setSec] = useState<'flow' | 'timeline' | 'keys' | 'terms'>('flow');
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +89,7 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
           {(
             [
               ['flow', '全体の流れ'],
-              ['storyboard', '絵コンテの見方'],
+              ['timeline', 'タイムラインの見方'],
               ['keys', 'ショートカット'],
               ['terms', '用語'],
             ] as const
@@ -106,14 +114,17 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
                   </li>
                 ))}
               </ol>
+              <h3>台本から作る場合</h3>
+              <p className="hint">
+                Brief の「台本から組み立てる」に台本を貼る → cuts と narration ができる → Timeline で確認・微調整 → Render の「仕上げ」を押す。この 3 手で完成動画が outputs/ に出ます。
+              </p>
               <h3>Claude に任せられるところ</h3>
               <ul className="tour-list">
                 <li>素材のタグ付け（Materials の「AI にタグ付けしてもらう」。裏で Claude が起動してサムネイルを 1 枚ずつ見ます）</li>
-                <li>カットの並び順（Timeline の「AI に並べ替えてもらう」。型に沿った順に組み直します）</li>
-                <li>テロップの文言（Timeline の「AI にテロップを書いてもらう」。カット頭の画を見て {'{{gNN:intent}}'} を埋めます。書いたものは下書き扱いなので必ず読み直してください）</li>
-                <li>細かい直し（Timeline の「AI に直してもらう」。直したいことを書いて送ると、テロップ・ナレーションのセリフ・カットの区間や並びを直します）</li>
-                <li className="hint">いずれも API 課金が発生します。モデルは横のプルダウンで選べます（opus が既定）</li>
-                <li>ナレーション原稿と音声の生成・合成</li>
+                <li>台本からの組み立て（Brief。素材のタグと台本を突き合わせて cuts と narration を作ります）</li>
+                <li>テロップの文言・ナレーション原稿・並べ替え・自由な直し（Timeline の「AI ▾」）</li>
+                <li>キャプションと店舗情報の裏取り（Render）</li>
+                <li className="hint">いずれも API 課金が発生します。モデルは横のプルダウンで選べます（opus が既定）。AI の文言は下書き扱いなので必ず読み直してください</li>
               </ul>
               <h3>表示の設定</h3>
               <label className="sb-inline">
@@ -123,36 +134,35 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
             </>
           )}
 
-          {sec === 'storyboard' && (
+          {sec === 'timeline' && (
             <>
-              <p>Timeline の一番上にある、カットをサムネで並べた帯です。ここで動画の流れを作ります。</p>
-              <h3>操作</h3>
+              <p>Timeline 画面の下にある 4 段のトラックです。1 つの時間軸に映像・テロップ・ナレーション・効果音が乗っています。</p>
+              <h3>段の意味</h3>
               <ul className="tour-list">
                 <li>
-                  <b>サムネをドラッグ</b>：順番を入れ替える（黄色い縦線が落ちる位置）
+                  <b>V（映像）</b>：カットの列。幅＝実時間。両端で尺、中を掴んで並べ替え、Alt+ドラッグで中身をずらす。右上の <code>!</code>＝エラー、<code>?</code>＝警告
                 </li>
                 <li>
-                  <b>クリック</b>：その場面へジャンプ（下のカット行もそこまでスクロール）
+                  <b>T（テロップ）</b>：同じ文言が続く範囲（テロップグループ）。色は絵コンテと同じ。黄色＝未記入、破線＝テロップ無し（クリックでそのカットを選んで書ける）
                 </li>
                 <li>
-                  <b>Alt + ← →</b>：1 つずつ動かす／<b>Esc</b>：ドラッグ取り消し
+                  <b>N（ナレーション）</b>：narration.json のブロック。幅＝実測の秒数（破線は見積もり）。黄色＝要再生成、赤枠＝前と重なる、縞＝動画尺をはみ出す。横にドラッグで配置秒。左の ＋ で再生ヘッドの位置に追加
                 </li>
                 <li>
-                  <b>↶ 元に戻す・Ctrl+Z</b>：並び・追加・複製・削除を 30 手まで戻す
+                  <b>S（効果音）</b>：narration.json の sfx。赤＝音源が無い。横にドラッグで配置秒
                 </li>
               </ul>
-              <h3>カードの見方</h3>
+              <h3>右のインスペクタ</h3>
               <ul className="tour-list">
-                <li>左上の数字＝何番目のカット／右下＝そのカットの長さ（秒）</li>
-                <li>上の色帯と gNN ＝ 同じテロップが続く範囲。「テロップ単位で動かす」が ON なら、この範囲がまとめて動きます</li>
-                <li>
-                  <code>!</code>＝エラー、<code>?</code>＝警告、🔒＝再生成しても動かさない固定、<code>1.5x</code>＝倍速
-                </li>
-                <li>左下の小さい文字＝そのカットの役割（フック・証拠・リビールなど）</li>
+                <li>カット：素材・フィルム帯（IN/OUT）・倍速・テロップ文・向き・バッジ・複製／分割／削除／固定</li>
+                <li>テロップグループ：文言（グループ内の全カットに入る）・向き・バッジ。1 カットだけ変えたいときは V 段でそのカットを選ぶ</li>
+                <li>ナレーション：本文・id・配置秒・聴く・この 1 本だけ生成・削除</li>
+                <li>効果音：音源・役割・配置秒・尺・音量・fade</li>
+                <li>何も選んでいない：テーマ・バッジの濃さ・ショートカット</li>
+                <li>その下の「検証」：カット／構成／ナレーション／効果音の指摘。行をクリックでその場面へ</li>
               </ul>
-              <p className="hint">
-                サムネは素材からその場で切り出した実際のフレームです。カタログに載っていない素材でも表示されます。
-              </p>
+              <h3>絵コンテ</h3>
+              <p className="hint">ツールバーの「絵コンテ」でサムネ一覧を出せます。テロップ単位でまとめて動かすときはこちらが速い（ドラッグで並べ替え、Alt+←→ で 1 つずつ）。</p>
             </>
           )}
 
@@ -166,8 +176,8 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
                 </tr>
               </thead>
               <tbody>
-                {KEYS.map((k) => (
-                  <tr key={k.k}>
+                {KEYS.map((k, i) => (
+                  <tr key={i}>
                     <td>
                       <code>{k.k}</code>
                     </td>

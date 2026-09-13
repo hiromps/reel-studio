@@ -4,6 +4,7 @@ import {api} from '../api';
 import {useStudio} from '../state/store';
 import {ScriptCard} from '../components/ScriptCard';
 import {EmptyState} from '../components/EmptyState';
+import {useAiModel} from '../hooks/useAiModel';
 import {BriefSchema, type Brief, type FormatId, type SavePriority} from '@shared/schema';
 import {FORMAT_SPECS, FORMAT_IDS} from '@shared/format-specs';
 import {PERSONAS} from '@shared/personas';
@@ -26,22 +27,8 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
   const s = useStudio();
   const brief = s.files.brief.data;
   const catalog = s.files.catalog.data;
-  // 裏で走らせる Claude のモデル（Timeline / Render と同じ設定を共有する）
-  const [aiModel, setAiModel] = useState(() => {
-    try {
-      return localStorage.getItem('reel-studio.aiModel') ?? 'opus';
-    } catch {
-      return 'opus';
-    }
-  });
-  const changeAiModel = (v: string) => {
-    setAiModel(v);
-    try {
-      localStorage.setItem('reel-studio.aiModel', v);
-    } catch {
-      /* 記憶できなくても動作には影響しない */
-    }
-  };
+  // 裏で走らせる Claude のモデル（他画面と同じ設定を共有する）
+  const [aiModel, changeAiModel] = useAiModel();
 
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [busy, setBusy] = useState(false);

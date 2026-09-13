@@ -1,13 +1,15 @@
-// 効果音の配置（narration.json の sfx）。自動配置・手動の追加／削除・試聴・役割の割り当て。
+// 効果音の設計（Render）：自動配置・ライブラリの役割・ダッキング・全体音量。
+// 1 個ずつの配置（秒・音源・音量）は Timeline 画面の S 段とインスペクタで直す。
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
-import type {Narration, Sfx} from '@shared/schema';
+import type {Narration} from '@shared/schema';
 import {SFX_DEFAULTS, SFX_ROLES, SFX_ROLE_LABEL, checkSfx, type SfxLibrary, type SfxRole} from '@shared/sfx';
+import {IssueList} from './IssueList';
 
 const emptyLib: SfxLibrary = {version: 1, sounds: []};
 
-export const SfxCard: React.FC = () => {
+export const SfxCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) => {
   const s = useStudio();
   const narration = s.files.narration.data;
   const [lib, setLib] = useState<SfxLibrary>(emptyLib);
@@ -41,34 +43,7 @@ export const SfxCard: React.FC = () => {
   const sfx = narration?.sfx ?? [];
   const videoSec = narration?.videoSec;
   const issues = useMemo(() => checkSfx(sfx, {videoSec, lib, narration: narration?.segments}), [sfx, videoSec, lib, narration]);
-
   const setNarr = (next: Narration) => s.setFile('narration', next);
-  const patch = (i: number, p: Partial<Sfx>) => narration && setNarr({...narration, sfx: sfx.map((x, k) => (k === i ? {...x, ...p} : x))});
-  const remove = (i: number) => narration && setNarr({...narration, sfx: sfx.filter((_, k) => k !== i)});
-  const add = () => {
-    if (!narration) return;
-    const sound = lib.sounds[0];
-    if (!sound) return s.toast('効果音がライブラリにありません（sfx/ に音源を置いて「ライブラリを読み直す」）', 'error');
-    const used = new Set(sfx.map((x) => x.id));
-    let n = sfx.length + 1;
-    while (used.has(`sfx${n}`)) n++;
-    const at = sfx.length ? Math.round((Math.max(...sfx.map((x) => x.at)) + SFX_DEFAULTS.minGapSec) * 1000) / 1000 : 0;
-    setNarr({
-      ...narration,
-      sfx: [
-        ...sfx,
-        {
-          id: `sfx${n}`,
-          at,
-          file: sound.file,
-          trimSec: sound.defaultTrimSec ?? Math.min(sound.durSec ?? SFX_DEFAULTS.trimSec, SFX_DEFAULTS.trimSec),
-          fadeOutSec: sound.defaultFadeOutSec ?? SFX_DEFAULTS.fadeOutSec,
-          gainDb: sound.defaultGainDb ?? SFX_DEFAULTS.gainDb,
-          label: sound.label,
-        },
-      ],
-    });
-  };
 
   const play = (file: string, trimSec?: number) => {
     audio.current?.pause();
@@ -108,68 +83,27 @@ export const SfxCard: React.FC = () => {
         <button onClick={() => s.addJob('sfx-scan')} disabled={busy || unsupported}>
           ライブラリを読み直す
         </button>
+        <button className="small" onClick={() => onTab('timeline')} title="1 個ずつの位置・音源・音量は Timeline の S 段で">
+          配置を Timeline で直す →
+        </button>
         <span className="hint">
           ライブラリ {lib.sounds.length} 音{noRole.length ? `（役割未設定 ${noRole.length}）` : ''}
         </span>
         {unsupported && <span className="pill warn">サーバーが古いプロセスです。再起動してください</span>}
       </div>
-
       {sfx.length > 0 && (
-        <div className="narr-rows">
+        <div className="chips" style={{marginTop: 6}}>
           {[...sfx]
-            .map((x, i) => ({x, i}))
-            .sort((a, b) => a.x.at - b.x.at)
-            .map(({x, i}) => (
-              <div key={x.id + i} className="narr-row">
-                <input className="narr-id" value={x.id} onChange={(e) => patch(i, {id: e.target.value})} title="効果音の id" />
-                <span className="btns">
-                  <input type="number" step={0.05} min={0} value={x.at} onChange={(e) => patch(i, {at: Number(e.target.value)})} style={{width: 74}} title="配置秒" />
-                  <button className="small" onClick={() => patch(i, {at: Math.max(0, Math.round((x.at - 0.1) * 1000) / 1000)})}>
-                    -0.1
-                  </button>
-                  <button className="small" onClick={() => patch(i, {at: Math.round((x.at + 0.1) * 1000) / 1000})}>
-                    +0.1
-                  </button>
-                </span>
-                <select value={x.file} onChange={(e) => patch(i, {file: e.target.value, label: lib.sounds.find((y) => y.file === e.target.value)?.label})} style={{flex: 1, minWidth: 160}}>
-                  {!lib.sounds.some((y) => y.file === x.file) && <option value={x.file}>{x.file}（ライブラリに無い）</option>}
-                  {lib.sounds.map((y) => (
-                    <option key={y.file} value={y.file}>
-                      {y.label}
-                    </option>
-                  ))}
-                </select>
-                <select value={x.role ?? ''} onChange={(e) => patch(i, {role: e.target.value || undefined})} title="役割（統一感の管理用）">
-                  <option value="">（役割なし）</option>
-                  {SFX_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {SFX_ROLE_LABEL[r]}
-                    </option>
-                  ))}
-                </select>
-                <label title="頭から使う長さ（秒）。長い素材を丸ごと鳴らさない">
-                  尺
-                  <input type="number" step={0.1} min={0.1} value={x.trimSec ?? ''} onChange={(e) => patch(i, {trimSec: e.target.value ? Number(e.target.value) : undefined})} style={{width: 62}} />
-                </label>
-                <label title="音量（dB）">
-                  音量
-                  <input type="number" step={1} value={x.gainDb ?? 0} onChange={(e) => patch(i, {gainDb: Number(e.target.value)})} style={{width: 62}} />
-                </label>
-                <button className="small" onClick={() => play(x.file, x.trimSec)} title="この音を試聴">
-                  ▶
-                </button>
-                <button className="small danger" onClick={() => remove(i)}>
-                  削除
-                </button>
-              </div>
+            .sort((a, b) => a.at - b.at)
+            .map((x) => (
+              <span key={x.id} className="chip" title={`${x.label ?? x.file} / ${x.gainDb ?? 0} dB`} onClick={() => onTab('timeline')}>
+                {x.at.toFixed(1)}s {x.role ?? x.id}
+              </span>
             ))}
         </div>
       )}
 
       <div className="row" style={{marginTop: 6}}>
-        <button className="small" onClick={add} disabled={!lib.sounds.length}>
-          + 効果音を追加
-        </button>
         <label title="効果音がナレーションに被ったとき、声ではなく効果音側を自動で沈ませる（放送のダッキング）">
           <span>声に被ったら効果音を下げる</span>
           <input type="checkbox" checked={narration.sfxDuck !== false} onChange={(e) => setNarr({...narration, sfxDuck: e.target.checked})} />
@@ -191,18 +125,7 @@ export const SfxCard: React.FC = () => {
       </div>
       <span className="hint">変更したら「ナレーション合成（mix）」をやり直すと反映されます（音声の再生成は不要）</span>
 
-      {issues.length > 0 && (
-        <div className="issues" style={{marginTop: 6}}>
-          {issues.map((x, k) => (
-            <div key={k} className={`issue ${x.severity}`}>
-              <span className="code">
-                {x.severity} {x.code}
-              </span>
-              <span>{x.message}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <IssueList rows={issues.map((x) => ({severity: x.severity, code: x.code, message: x.message}))} />
 
       <details style={{marginTop: 8}} open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
         <summary className="hint">ライブラリ（どの音をどの役割に使うか）— 自動配置はここの役割を見ます</summary>
@@ -216,11 +139,7 @@ export const SfxCard: React.FC = () => {
               {SFX_ROLES.map((r) => (
                 <label key={r} title={SFX_ROLE_LABEL[r]} className="sfx-role">
                   <span>{SFX_ROLE_LABEL[r]}</span>
-                  <input
-                    type="checkbox"
-                    checked={y.roles.includes(r)}
-                    onChange={(e) => void setRoles(y.file, e.target.checked ? [...y.roles, r] : y.roles.filter((z) => z !== r))}
-                  />
+                  <input type="checkbox" checked={y.roles.includes(r)} onChange={(e) => void setRoles(y.file, e.target.checked ? [...y.roles, r] : y.roles.filter((z) => z !== r))} />
                 </label>
               ))}
               <button className="small" onClick={() => play(y.file, y.defaultTrimSec)}>

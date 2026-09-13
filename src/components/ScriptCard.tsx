@@ -3,6 +3,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import type {ScriptSection} from '@shared/script';
+import {AiModelSelect} from '../hooks/useAiModel';
 
 type ScriptRes = {etag: string | null; data: string | null; sections: ScriptSection[]; totalSec: number | null};
 
@@ -87,14 +88,7 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
         <button onClick={() => s.addJob('ai-script', {model: aiModel, write: false})} disabled={busy || unsupported || dirty || !text.trim() || !catalog} title="書き込まずに割り当てだけ見る">
           割り当てを見るだけ
         </button>
-        <label title="裏で走らせる Claude のモデル">
-          モデル
-          <select value={aiModel} onChange={(e) => onModel(e.target.value)}>
-            <option value="opus">opus（精度重視）</option>
-            <option value="sonnet">sonnet（速い・安い）</option>
-            <option value="haiku">haiku（最安）</option>
-          </select>
-        </label>
+        <AiModelSelect value={aiModel} onChange={onModel} />
         {untagged > 0 && <span className="pill warn">タグの無い素材が {untagged} 本（先にタグ付けすると当たりが良くなります）</span>}
         {unsupported && <span className="pill warn">サーバーが古いプロセスです。再起動してください</span>}
       </div>
@@ -148,7 +142,7 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
         <p className="hint">
           合う素材が無い区間は<b>無理に埋めず「素材が無い」として報告</b>します（撮り足しの指示になります）。
           書き出す前に、区間ごとの尺・素材の重複・テロップの文字数を検算し、<b>E が出たら何も書きません</b>。
-          そのあとは Timeline で微調整 →「音声を生成」→「ナレーション合成（mix）」で仕上げます。
+          そのあとは Timeline で微調整 → Render の「仕上げ」（音声 → レンダー → 合成 → 納品）で完成です。
         </p>
         <p className="hint">
           「プラン生成」（型に流し込む方式）とは<b>どちらか一方</b>を使います。台本があるならこちら、

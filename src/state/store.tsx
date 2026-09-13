@@ -35,7 +35,8 @@ type Store = {
   /** このタブの案件の素材 URL の先頭（`/p/<slug>/<mode>`）。案件が無ければ null */
   mediaBase: string | null;
   loadFile: <K extends ContractName>(name: K) => Promise<void>;
-  setFile: <K extends ContractName>(name: K, data: ContractMap[K]) => void;
+  /** 編集中の値を入れる。dirty は既定 true（取り消しで保存時の状態に戻したときだけ false を渡す） */
+  setFile: <K extends ContractName>(name: K, data: ContractMap[K], opt?: {dirty?: boolean}) => void;
   saveFile: <K extends ContractName>(name: K, force?: boolean) => Promise<boolean>;
   loadCaption: () => Promise<void>;
   saveCaption: (text: string) => Promise<boolean>;
@@ -163,8 +164,8 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
     [loadFile, loadCaption],
   );
 
-  const setFile = useCallback(<K extends ContractName>(name: K, data: ContractMap[K]) => {
-    setFiles((f) => ({...f, [name]: {...f[name], data, dirty: true}}));
+  const setFile = useCallback(<K extends ContractName>(name: K, data: ContractMap[K], opt: {dirty?: boolean} = {}) => {
+    setFiles((f) => ({...f, [name]: {...f[name], data, dirty: opt.dirty ?? true}}));
   }, []);
 
   const saveFile = useCallback(

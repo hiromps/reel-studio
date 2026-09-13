@@ -3,68 +3,65 @@ import {useStudio} from './state/store';
 import {ProjectsPage} from './pages/Projects';
 import {MaterialsPage} from './pages/Materials';
 import {BriefPage} from './pages/Brief';
-import {TimelinePage} from './pages/Timeline';
+import {EditorPage} from './editor/EditorPage';
 import {RenderPage} from './pages/Render';
 import {Tour, type TourTab} from './components/Tour';
 import {HelpPanel} from './components/HelpPanel';
 import {nextStepOf} from './components/nextStep';
+import {useStringPref} from './hooks/usePref';
+import {AI_JOB_LABEL} from './components/AiJobStatus';
 
-const TABS = [
-  ['projects', 'Projects'],
-  ['materials', 'Materials'],
-  ['brief', 'Brief'],
-  ['timeline', 'Timeline'],
-  ['render', 'Render'],
-] as const;
+const TABS: {id: TourTab; label: string; sub: string}[] = [
+  {id: 'projects', label: 'Projects', sub: '案件'},
+  {id: 'materials', label: 'Materials', sub: '素材'},
+  {id: 'brief', label: 'Brief', sub: '企画'},
+  {id: 'timeline', label: 'Timeline', sub: '編集'},
+  {id: 'render', label: 'Render', sub: '書き出し'},
+];
 type Tab = TourTab;
-
-const pref = (key: string, fallback: string): string => {
-  try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
-};
-const setPref = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* localStorage が使えなくても動作には影響しない */
-  }
-};
+const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v);
 
 export const App: React.FC = () => {
   const s = useStudio();
-  const [tab, setTab] = useState<Tab>(() => (pref('reel-studio.tab', 'projects') as Tab) || 'projects');
+  const [tabPref, setTabPref] = useStringPref('reel-studio.tab', 'projects');
+  const tab: Tab = isTab(tabPref) ? tabPref : 'projects';
   const [help, setHelp] = useState(false);
   const [tour, setTour] = useState(false);
-  const [nextBarHidden, setNextBarHidden] = useState(() => pref('reel-studio.nextbar', '1') === '0');
+  const [tourDone, setTourDone] = useStringPref('reel-studio.tourDone', '');
+  const [nextBarPref, setNextBarPref] = useStringPref('reel-studio.nextbar', '1');
+  const nextBarHidden = nextBarPref === '0';
 
-  const go = (t: Tab) => {
-    setTab(t);
-    setPref('reel-studio.tab', t);
-  };
+  const go = (t: Tab) => setTabPref(t);
 
   // 初回起動時だけガイドツアーを自動で出す
   useEffect(() => {
-    if (pref('reel-studio.tourDone', '') !== '1') setTour(true);
+    if (tourDone !== '1') setTour(true);
+    // 初回だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const closeTour = () => {
     setTour(false);
-    setPref('reel-studio.tourDone', '1');
+    setTourDone('1');
   };
 
-  // ? でヘルプ（入力中は邪魔しない）
+  // ? でヘルプ（入力中は邪魔しない）／数字キーでタブ移動（Ctrl+1〜5）
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
-      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
-      e.preventDefault();
-      setHelp((v) => !v);
+      const editing = !!t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !editing) {
+        e.preventDefault();
+        setHelp((v) => !v);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^[1-5]$/.test(e.key)) {
+        e.preventDefault();
+        go(TABS[Number(e.key) - 1].id);
+      }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const next = useMemo(
@@ -78,7 +75,7 @@ export const App: React.FC = () => {
         caption: s.caption.text,
         dirty: {catalog: s.files.catalog.dirty, brief: s.files.brief.dirty, cuts: s.files.cuts.dirty},
       }),
-    [s.active, s.files],
+    [s.active, s.files, s.caption.text],
   );
 
   // タブを複数開いたときに見分けが付くよう、タイトルに案件名を出す
@@ -86,7 +83,7 @@ export const App: React.FC = () => {
     document.title = s.active ? `${s.active} — Reel Studio` : 'Reel Studio';
   }, [s.active]);
 
-  const running = s.jobs.find((j) => j.status === 'running');
+  const running = s.jobs.find((j) => j.status === 'running' && j.slug === s.active) ?? s.jobs.find((j) => j.status === 'running');
   const dirty = (Object.keys(s.files) as (keyof typeof s.files)[]).filter((k) => s.files[k].dirty);
 
   return (
@@ -94,10 +91,11 @@ export const App: React.FC = () => {
       <header className="topbar">
         <div className="brand">Reel Studio</div>
         <nav className="tabs" data-tour="tabs">
-          {TABS.map(([id, label], n) => (
-            <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => go(id)}>
+          {TABS.map(({id, label, sub}, n) => (
+            <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => go(id)} title={`${sub}（Ctrl+${n + 1}）`}>
               <span className="tab-no">{n + 1}</span>
               {label}
+              <span className="tab-sub">{sub}</span>
             </button>
           ))}
         </nav>
@@ -120,8 +118,8 @@ export const App: React.FC = () => {
           )}
           {dirty.length > 0 && <span className="pill warn">未保存: {dirty.join(', ')}</span>}
           {running && (
-            <span className="pill run">
-              {running.type} {running.progress ? `${running.progress.done}/${running.progress.total}` : '…'}
+            <span className="pill run" title={`${running.slug} / ${running.type}`}>
+              {AI_JOB_LABEL[running.type] ?? running.type} {running.progress && running.progress.total > 0 ? `${running.progress.done}/${running.progress.total}` : '…'}
             </span>
           )}
         </div>
@@ -134,26 +132,19 @@ export const App: React.FC = () => {
           <button className="small" onClick={() => go(next.tab)} disabled={tab === next.tab}>
             {tab === next.tab ? 'この画面です' : next.cta}
           </button>
-          <button
-            className="small nextbar-x"
-            title="非表示にする（「? 使い方」から戻せます）"
-            onClick={() => {
-              setNextBarHidden(true);
-              setPref('reel-studio.nextbar', '0');
-            }}
-          >
+          <button className="small nextbar-x" title="非表示にする（「? 使い方」から戻せます）" onClick={() => setNextBarPref('0')}>
             ×
           </button>
         </div>
       )}
 
-      <main className="main">
+      <main className={`main${tab === 'timeline' ? ' main-editor' : ''}`}>
         {/* key に案件を入れて、案件を切り替えたら各画面の状態（選択カット・Undo 履歴・遅延中のプレビュー等）を捨てる。
             残していると、前の案件のカットを新しい案件の URL で読みにいってしまう */}
         {tab === 'projects' && <ProjectsPage />}
         {tab === 'materials' && <MaterialsPage key={s.active ?? ''} onTab={go} />}
         {tab === 'brief' && <BriefPage key={s.active ?? ''} onGoTimeline={() => go('timeline')} onTab={go} />}
-        {tab === 'timeline' && <TimelinePage key={s.active ?? ''} onTab={go} />}
+        {tab === 'timeline' && <EditorPage key={s.active ?? ''} onTab={go} />}
         {tab === 'render' && <RenderPage key={s.active ?? ''} onTab={go} />}
       </main>
 
@@ -174,10 +165,7 @@ export const App: React.FC = () => {
           setTour(true);
         }}
         nextBarHidden={nextBarHidden}
-        onNextBar={(show) => {
-          setNextBarHidden(!show);
-          setPref('reel-studio.nextbar', show ? '1' : '0');
-        }}
+        onNextBar={(show) => setNextBarPref(show ? '1' : '0')}
       />
       <Tour open={tour} tab={tab} onTab={go} onClose={closeTour} />
     </div>

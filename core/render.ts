@@ -99,7 +99,7 @@ export const validateProject = (projectDir: string, opt: {strictProxy?: boolean;
  * これが出ているとレンダーそのものが成功しない E。**allowErrors でも通さない。**
  * 「見た目の good/bad」ではなく「物理的に無理」なものだけを入れる。
  */
-const FATAL_CODES = new Set(['SRC_MISSING', 'OUT_BEYOND_DURATION', 'FPS_MISMATCH']);
+export const FATAL_CODES = new Set(['SRC_MISSING', 'OUT_BEYOND_DURATION', 'FPS_MISMATCH']);
 
 export type Preflight = {
   cuts: ReelData;

@@ -23,9 +23,9 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Reel Studio へようこそ',
     body: (
       <>
-        <p>素材の動画を渡すと、テロップ付きの縦型ショート動画（9:16）に仕上げるツールです。</p>
+        <p>素材の動画を渡すと、テロップとナレーション付きの縦型ショート動画（9:16）に仕上げるツールです。</p>
         <p className="tour-flow">
-          <b>Projects</b> 案件を作る → <b>Materials</b> 素材を読み込む → <b>Brief</b> 何を伝えるか決める → <b>Timeline</b> カット順とテロップ → <b>Render</b> 書き出し
+          <b>Projects</b> 案件を作る → <b>Materials</b> 素材を読み込む → <b>Brief</b> 何を伝えるか決める（台本でも可） → <b>Timeline</b> 並び・テロップ・ナレーションを編集 → <b>Render</b>「仕上げ」で完成
         </p>
         <p className="hint">左上の数字が進み具合です。いつでも Esc で閉じられます（← → キーでも進めます）。</p>
       </>
@@ -35,7 +35,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'tabs',
     target: 'tabs',
     title: 'タブは作業の順番',
-    body: <p>左から右へ進むだけで 1 本できます。途中で前に戻っても大丈夫です。迷ったら左から順に見てください。</p>,
+    body: <p>左から右へ進むだけで 1 本できます。Ctrl+1〜5 でも切り替えられます。途中で前に戻っても大丈夫です。</p>,
   },
   {
     id: 'nextbar',
@@ -62,9 +62,9 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>
-          <b>slug</b> は案件のフォルダ名（例 <code>reunion-hiro</code>）。<b>persona</b> は誰の声・文体で作るか（hiro / 凪 / さゆり / ぼんじり）です。
+          <b>slug</b> は案件のフォルダ名（例 <code>reunion-hiro</code>）。<b>persona</b> は誰の声・文体で作るか（hiro / 凪 / ぼんじり）です。
         </p>
-        <p className="hint">作成すると work/&lt;slug&gt;-reel/ にテンプレ一式がコピーされます。</p>
+        <p className="hint">作成すると work/&lt;slug&gt;-reel/ にテンプレ一式がコピーされます。同じ素材で別バージョンを作るなら「同じ素材から作る」。</p>
       </>
     ),
   },
@@ -87,25 +87,11 @@ export const TOUR_STEPS: TourStep[] = [
     title: '③ 素材にタグを付ける',
     body: (
       <>
-        <p>1 本ずつ「これは何が映っているか」（外観 / 看板 / 実食 / シズル …）を記録します。この情報で構成が自動で組まれます。</p>
+        <p>1 本ずつ「これは何が映っているか」（外観 / 看板 / 実食 / シズル …）を記録します。この情報で構成が自動で組まれ、台本からの組み立てにも使われます。</p>
         <p>
-          クリックして右側で編集できますが、<b>Claude に頼むのが速い</b>です。「未タグ」の表示の横に頼み方が出ます。
+          クリックして右側で編集できますが、<b>Claude に頼むのが速い</b>です。「AI にタグ付けしてもらう」を押すだけ。
         </p>
         <p className="hint">★フック＝つかみに使いたい画。NG＝使わない画。ここは自分で決めてください。</p>
-      </>
-    ),
-  },
-  {
-    id: 'materials-timeline',
-    tab: 'materials',
-    target: 'materials-timeline',
-    title: '③′ 自分で並べるならタイムラインへ',
-    body: (
-      <>
-        <p>
-          並び順が頭の中で決まっているなら、素材カードを<b>ここへドラッグ</b>して並べ、<b>ブロックの両端</b>を引いて尺を決めます。中を掴むと順番を入れ替えられます。
-        </p>
-        <p className="hint">これで cuts.json ができるので、Brief の自動生成は飛ばして Timeline でテロップを付けられます。型どおりの役割を付けたければ「この並びを brief の固定順にする」。</p>
       </>
     ),
   },
@@ -122,10 +108,24 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
+    id: 'script',
+    tab: 'brief',
+    target: 'script',
+    title: '④′ 台本があるなら貼るだけ',
+    body: (
+      <>
+        <p>
+          人が書いた台本（【0〜3秒】フック／映像：／テロップ：／ナレーション：）を貼って「台本から組み立てる」を押すと、素材のタグと突き合わせて <b>カット構成とナレーション原稿</b> まで一度に作ります。
+        </p>
+        <p className="hint">型に収まらない長尺もこちらで作れます。「プラン生成」（型に流し込む）とはどちらか一方を使います。</p>
+      </>
+    ),
+  },
+  {
     id: 'brief-plan',
     tab: 'brief',
     target: 'brief-plan',
-    title: '⑤ カット構成を自動で組む',
+    title: '⑤ 台本が無ければ型で組む',
     body: (
       <>
         <p>「プラン生成」で構成案を確認 →「cuts.json に書き込む」で確定します。どのカットを何秒使うかが決まります。</p>
@@ -134,50 +134,58 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    id: 'storyboard',
+    id: 'editor-layout',
     tab: 'timeline',
-    target: 'storyboard',
-    title: '⑥ 絵コンテでカットの順番を決める',
+    target: 'timeline',
+    title: '⑥ タイムラインで全部を整える',
     body: (
       <>
         <p>
-          <b>サムネをドラッグすると順番が入れ替わります。</b>黄色い縦線が落ちる位置です。クリックするとその場面にジャンプします。
+          4 段のタイムラインです。<b>V</b> 映像（両端で尺、中を掴んで並べ替え）／<b>T</b> テロップ（同じ文言が続く範囲）／<b>N</b> ナレーション（横にドラッグで配置秒）／<b>S</b> 効果音。
         </p>
-        <p className="hint">間違えても「↶ 元に戻す」か Ctrl+Z で戻せます。</p>
+        <p className="hint">目盛りをクリックで再生ヘッド。Ctrl+ホイールで拡大。Space で再生、← → で 1 コマ。</p>
       </>
     ),
   },
   {
-    id: 'sb-card',
+    id: 'bin',
     tab: 'timeline',
-    target: 'sb-card-0',
-    title: 'カードの読み方',
+    target: 'bin',
+    title: '素材ビン',
     body: (
       <>
-        <ul className="tour-list">
-          <li>
-            左上の数字 ＝ <b>何番目のカット</b>／右下 ＝ そのカットの<b>長さ</b>
-          </li>
-          <li>
-            上の色帯と <code>gNN</code> ＝ <b>同じテロップが続く範囲</b>。既定ではこの単位でまとめて動きます
-          </li>
-          <li>
-            <code>!</code> ＝ エラー、<code>?</code> ＝ 警告。下の検証欄に理由が出ます
-          </li>
-          <li>下段の文字 ＝ そのカットに出るテロップ</li>
-        </ul>
+        <p>
+          左は素材の一覧です。カードを <b>V 段へドラッグ</b>（またはダブルクリック／＋）で追加できます。未使用の本数が出るので、使い残しが分かります。
+        </p>
+        <p className="hint">タグや使える区間の編集は Materials 画面で。</p>
       </>
     ),
   },
   {
-    id: 'cut-rows',
+    id: 'inspector',
     tab: 'timeline',
-    target: 'cut-rows',
-    title: '⑦ テロップと長さを詰める',
+    target: 'inspector',
+    title: 'インスペクタ',
     body: (
       <>
-        <p>各カットの素材・IN/OUT（使う区間）・テロップ文をここで直します。⠿ を掴めばこちらでも並べ替えられます。</p>
-        <p className="hint">テロップは 13 文字が目安。超えると赤くなります。左のプレビューは編集しながら即座に反映されます。</p>
+        <p>
+          タイムラインで選んだものの編集欄です。カットなら素材・IN/OUT・テロップ文・バッジ、テロップ段のブロックならグループ全体の文言、ナレーションなら本文と配置秒と試聴。
+        </p>
+        <p className="hint">何も選んでいないときは動画全体（テーマ・バッジの濃さ）とショートカット一覧が出ます。</p>
+      </>
+    ),
+  },
+  {
+    id: 'ai-menu',
+    tab: 'timeline',
+    target: 'ai-menu',
+    title: 'AI に任せる',
+    body: (
+      <>
+        <p>
+          「AI ▾」から、テロップの文言・ナレーション原稿・並べ替え・自由な直し（「3 カット目を短く」など）を裏で Claude に代行させられます。
+        </p>
+        <p className="hint">API 課金が発生します。AI の文言は下書き扱いなので必ず読み直してください。</p>
       </>
     ),
   },
@@ -185,11 +193,11 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'validation',
     tab: 'timeline',
     target: 'validation',
-    title: '⑧ 検証（E をゼロにする）',
+    title: '⑦ 検証（E をゼロにする）',
     body: (
       <>
         <p>
-          <b>E（エラー）</b>が残っていると書き出せません。<b>W（警告）</b>は直した方がよい指摘です。行をクリックするとその場面へ飛び、「適用」で自動修正できるものもあります。
+          <b>E（エラー）</b>が残っていると書き出せません。<b>W（警告）</b>は直した方がよい指摘です。行をクリックするとその場面へ飛び、「適用」で自動修正できるものもあります。ナレーションの重なりや効果音の団子もここに出ます。
         </p>
       </>
     ),
@@ -201,21 +209,21 @@ export const TOUR_STEPS: TourStep[] = [
     title: '保存を忘れずに',
     body: (
       <p>
-        編集は <b>Ctrl+S</b> で保存します。保存するまでファイルには書かれません（レンダーもできません）。
+        編集は <b>Ctrl+S</b> で保存します（cuts.json と narration.json）。保存するまでファイルには書かれません（AI にも渡りません）。
       </p>
     ),
   },
   {
-    id: 'render',
+    id: 'build',
     tab: 'render',
-    target: 'render-run',
-    title: '⑨ 書き出す',
+    target: 'build',
+    title: '⑧ 「仕上げ」で完成まで一気に',
     body: (
       <>
         <p>
-          まず<b>ドラフト</b>（粗い・速い）で全体を確認 → 問題なければ<b>本番レンダー</b>。進み具合と結果は下に出ます。
+          案件の状態を見て、残っている工程（原稿 → 音声 → レンダー → 合成 → 納品）だけをチェック済みにしてあります。<b>「仕上げを実行」</b>で順に走り、outputs/ に「店名_人格_ナレーション付き.mp4」が出ます。
         </p>
-        <p className="hint">ナレーションを付ける場合は、本番レンダーのあとに「ナレーション合成（mix）」を実行します。</p>
+        <p className="hint">途中で失敗したらそこで止まります。直してからもう一度押せば、済んだ工程は飛ばします。</p>
       </>
     ),
   },

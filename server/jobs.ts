@@ -10,9 +10,8 @@ import {makeProxy, makePreviewProxy, needsProxy} from '../core/proxy';
 import {makeThumbnails, makeQcTile} from '../core/thumbnails';
 import {ffprobe} from '../core/ffprobe';
 import {renderProject, renderStill} from '../core/render';
-import {npmInstall, resolveProjectDir, syncEngine, readCuts, writeCuts, readNarration} from '../core/project';
+import {npmInstall, resolveProjectDir, syncEngine, readCuts, writeCuts} from '../core/project';
 import {applyAliases} from '../core/alias';
-import {exec} from '../core/exec';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
@@ -20,6 +19,9 @@ import {autoPlaceSfx, scanLibrary} from '../core/sfx';
 import {deliver} from '../core/deliver';
 import {runTrial} from '../core/trial';
 import {aiScript} from '../core/script';
+import {mixNarration} from '../core/mix';
+import {runBuild} from '../core/build';
+import type {BuildStepId} from '../shared/build';
 import type {SfxRole} from '../shared/sfx';
 import {formatOrderCheck} from '../shared/order';
 import {studioConfig} from '../studio.config';
@@ -414,26 +416,23 @@ class JobQueue extends EventEmitter {
         return {applied: done.length};
       }
       case 'mix': {
-        // scripts/mix-narration.js <narration.json> <wavDir> <in.mp4> <out.mp4>（hiro スキル同梱）
-        const n = readNarration(dir);
-        if (!n) throw new Error('narration.json が無い（先に「AI にナレーションを書いてもらう」）');
-        // ffmpeg の生エラーを出さないよう、足りないものはここで日本語にして止める
-        const inputRel = (p.input as string | undefined) ?? 'out/final.mp4';
-        if (!fs.existsSync(path.join(dir, inputRel))) throw new Error(`${inputRel} が無いので合成できません。先に「本番レンダー」を実行してください`);
-        const noWav = n.segments.filter((seg) => !fs.existsSync(path.join(dir, 'narration', `${seg.id}.wav`))).map((seg) => seg.id);
-        if (noWav.length) throw new Error(`ナレーション音声が無いブロックがあります: ${noWav.join(', ')} → 「音声を生成」を実行してください`);
-        const script = path.join(studioConfig.repoRoot, '.claude', 'skills', 'hiro-daihon', 'scripts', 'mix-narration.js');
-        const input = path.join(dir, inputRel);
-        const output = path.join(dir, (p.output as string | undefined) ?? 'out/final_narration.mp4');
-        // 効果音の置き場はスクリプト側の既定（repoRoot/sfx）と同じだが、明示して渡す
-        const r = await exec(process.execPath, [script, path.join(dir, 'narration.json'), path.join(dir, 'narration'), input, output], {
-          cwd: dir,
-          env: {...process.env, REEL_SFX_DIR: studioConfig.sfxDir},
+        // scripts/mix-narration.js（hiro スキル同梱）。足りないものは core/mix.ts が日本語で止める
+        return mixNarration(dir, {input: p.input as string | undefined, output: p.output as string | undefined, onLine, signal});
+      }
+      // 仕上げ：選んだ工程（原稿 → 音声 → レンダー → mix → 納品）を順に走らせる
+      case 'build': {
+        const steps = (Array.isArray(p.steps) ? (p.steps as string[]) : []) as BuildStepId[];
+        const r = await runBuild(dir, {
+          steps,
+          model: typeof p.model === 'string' ? p.model : undefined,
+          allowErrors: !!p.allowErrors,
+          label: typeof p.label === 'string' ? p.label : undefined,
+          gl: typeof p.gl === 'string' ? p.gl : undefined,
           onLine,
+          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
           signal,
         });
-        if (r.code !== 0) throw new Error(`mix に失敗 (exit ${r.code})`);
-        return {outRel: path.relative(dir, output).replace(/\\/g, '/')};
+        return {ran: r.ran, skipped: r.skipped, delivered: r.delivered, costUsd: r.costUsd, outRel: r.outRel};
       }
       default:
         throw new Error(`未知のジョブ: ${job.type}`);

@@ -26,6 +26,7 @@
 //   reel draft|render --project P [--out f] [--gl x] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries n] [--force] [--force-errors] [--no-sync] [--strict-proxy] [--props f]
 //   reel still --project P (--cut N | --frame F) [--out f]
 //   reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--gl x] [--force]     （フックだけ差し替えた複数版）
+//   reel build --project P [--plan] [--steps caption,narration,tts,render,mix,deliver] [--model m] [--force-errors] [--label 修正版]  （仕上げ：残っている工程を順に走らせる）
 //   reel deliver --project P [--label 修正版] [--allow-silent] [--overwrite]      （完成品だけ outputs/ へ）
 //   reel install --project P
 import fs from 'node:fs';
@@ -45,6 +46,8 @@ import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
 import {autoPlaceSfx, readLibrary, scanLibrary, writeLibrary} from '../core/sfx';
 import {deliver, narrationReady} from '../core/deliver';
+import {buildPlan, runBuild} from '../core/build';
+import {buildSelectionIssues, defaultBuildSelection, orderBuildSteps, type BuildStepId} from '../shared/build';
 import {runTrial, readHooks} from '../core/trial';
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxRole} from '../shared/sfx';
 import {cloneProject, createProject, engineDiff, listProjects, npmInstall, readBrief, readCuts, resolveProjectDir, syncEngine, writeCuts} from '../core/project';
@@ -464,6 +467,35 @@ async function main() {
         onLine: (l) => err(l),
       });
       for (const it of r.items) out(`${it.id}	${it.durationSec.toFixed(2)}s	${it.deliveredAs ?? it.outRel}`);
+      return;
+    }
+
+    // 仕上げ：案件の状態から残っている工程を決めて順に走らせる（GUI の Render「仕上げ」と同じ）
+    case 'build': {
+      const dir = projectFromFlags(flags);
+      const {facts, steps} = buildPlan(dir);
+      const stepsArg = str(flags, 'steps');
+      const selected = stepsArg ? orderBuildSteps(stepsArg.split(',').map((x) => x.trim()).filter(Boolean) as BuildStepId[]) : defaultBuildSelection(steps);
+      for (const st of steps) err(`  ${st.status === 'done' ? '済' : st.status === 'todo' ? (selected.includes(st.id) ? '▶' : '－') : '×'} ${st.label}  ${st.detail}`);
+      if (facts.placeholders) err(`  ! テロップが ${facts.placeholders} 件未記入`);
+      const issues = buildSelectionIssues(steps, selected);
+      for (const i of issues) err(`  ! ${i}`);
+      if (bool(flags, 'plan') || !selected.length) {
+        if (!selected.length) err('走らせる工程はありません');
+        return;
+      }
+      if (issues.length && !bool(flags, 'force')) throw new Error('選び方に問題があります（--force で無視できます）');
+      err(`実行: ${selected.join(' → ')}`);
+      const r = await runBuild(dir, {
+        steps: selected,
+        model: str(flags, 'model'),
+        allowErrors: bool(flags, 'force-errors'),
+        label: str(flags, 'label'),
+        gl: str(flags, 'gl'),
+        onLine: (l) => err(l),
+      });
+      out(`ran\t${r.ran.join(',')}`);
+      for (const d of r.delivered ?? []) out(`delivered\t${d}`);
       return;
     }
 

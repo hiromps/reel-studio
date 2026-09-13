@@ -8,6 +8,8 @@ export type PreviewHandle = {
   seekTo: (frame: number) => void;
   pause: () => void;
   play: () => void;
+  toggle: () => void;
+  isPlaying: () => boolean;
   getCurrentFrame: () => number;
 };
 
@@ -20,7 +22,10 @@ type Props = {
   mediaBase: string | null;
   width?: number;
   loop?: boolean;
+  /** Player 自身の操作バー（音量・全画面）。編集画面は自前のトランスポートを使うので消せる */
+  controls?: boolean;
   onFrame?: (frame: number) => void;
+  onPlayState?: (playing: boolean) => void;
 };
 
 type Engine = {GourmetReel: React.ComponentType<ReelData>};
@@ -35,7 +40,7 @@ const setStaticBase = (base: string | null) => {
   (window as Window & {remotion_staticBase?: string}).remotion_staticBase = base ?? '';
 };
 
-export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width = 360, loop = false, onFrame}, ref) => {
+export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width = 360, loop = false, controls = true, onFrame, onPlayState}, ref) => {
   setStaticBase(mediaBase);
   const [Comp, setComp] = useState<React.ComponentType<ReelData> | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -62,16 +67,33 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
     seekTo: (f) => player.current?.seekTo(f),
     pause: () => player.current?.pause(),
     play: () => player.current?.play(),
+    toggle: () => {
+      const p = player.current;
+      if (!p) return;
+      if (p.isPlaying()) p.pause();
+      else p.play();
+    },
+    isPlaying: () => player.current?.isPlaying() ?? false,
     getCurrentFrame: () => player.current?.getCurrentFrame() ?? 0,
   }));
 
   useEffect(() => {
     const p = player.current;
-    if (!p || !onFrame) return;
-    const h = (e: {detail: {frame: number}}) => onFrame(e.detail.frame);
-    p.addEventListener('frameupdate', h);
-    return () => p.removeEventListener('frameupdate', h);
-  }, [onFrame, Comp]);
+    if (!p) return;
+    const onF = (e: {detail: {frame: number}}) => onFrame?.(e.detail.frame);
+    const onPlay = () => onPlayState?.(true);
+    const onPause = () => onPlayState?.(false);
+    p.addEventListener('frameupdate', onF);
+    p.addEventListener('play', onPlay);
+    p.addEventListener('pause', onPause);
+    p.addEventListener('ended', onPause);
+    return () => {
+      p.removeEventListener('frameupdate', onF);
+      p.removeEventListener('play', onPlay);
+      p.removeEventListener('pause', onPause);
+      p.removeEventListener('ended', onPause);
+    };
+  }, [onFrame, onPlayState, Comp]);
 
   const duration = useMemo(() => Math.max(1, calcTotalFrames(cuts)), [cuts]);
   useEffect(() => {
@@ -79,9 +101,10 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
     if (p && p.getCurrentFrame() >= duration) p.seekTo(Math.max(0, duration - 1));
   }, [duration]);
 
+  const h = Math.round((width * 16) / 9);
   if (err) return <div className="preview-err">エンジンの読込に失敗: {err}</div>;
-  if (!mediaBase) return <div className="preview-loading" style={{width, height: (width * 16) / 9}}>案件が開かれていません</div>;
-  if (!Comp) return <div className="preview-loading" style={{width, height: (width * 16) / 9}}>エンジンとフォントを読込中…</div>;
+  if (!mediaBase) return <div className="preview-loading" style={{width, height: h}}>案件が開かれていません</div>;
+  if (!Comp) return <div className="preview-loading" style={{width, height: h}}>エンジンとフォントを読込中…</div>;
   return (
     <Player
       ref={player}
@@ -91,8 +114,8 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
       fps={cuts.fps}
       compositionWidth={1080}
       compositionHeight={1920}
-      style={{width, height: (width * 16) / 9, background: '#000'}}
-      controls
+      style={{width, height: h, background: '#000'}}
+      controls={controls}
       loop={loop}
       clickToPlay={false}
       showVolumeControls
