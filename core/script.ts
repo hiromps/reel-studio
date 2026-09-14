@@ -12,6 +12,7 @@ import path from 'node:path';
 import {readCuts, readBrief, writeCuts, writeNarration, backupsDir} from './project';
 import {loadCatalog} from './catalog';
 import {runAgent} from './agent';
+import {activitySummary, createAgentTracker, progressView} from '../shared/agent-progress';
 import {studioConfig} from '../studio.config';
 import {ReelDataSchema, type Cut, type ReelData} from '../shared/schema/cuts';
 import {NarrationSchema} from '../shared/schema/narration';
@@ -153,7 +154,9 @@ export async function aiScript(
     .filter(Boolean)
     .join('\n');
 
-  opt.onProgress?.(0, 3, '台本を読んでいます');
+  // 画は見せないので数えられる作業が無い。heartbeat で経過秒・ツール回数・出力文字数を出す
+  const tracker = createAgentTracker();
+  let lastHb = 0;
   const run = await runAgent<ScriptPlan>({
     cwd: projectDir,
     prompt,
@@ -161,10 +164,22 @@ export async function aiScript(
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,
-    onEvent: (e) => e.kind === 'tool' && opt.onProgress?.(1, 3, '素材を確認しています'),
+    onEvent: (e) => {
+      const step = tracker.onEvent(e);
+      const st = tracker.stats;
+      if (step === 'init') log(`  claude が起動しました${st.model ? `（${st.model}）` : ''}`);
+      else if (step === 'tool') log(`  ▸ ${st.lastTool}${st.lastTarget ? ` ${st.lastTarget}` : ''}`);
+      else if (step === 'writing') log(`  組み立てを書き出しています（${activitySummary(st)}）`);
+      else if (step === 'heartbeat' && st.elapsedSec - lastHb >= 30) {
+        lastHb = st.elapsedSec;
+        log(`  … 動いています（${activitySummary(st)}）`);
+      }
+      const v = progressView(st, {thinking: '台本と素材を突き合わせています', writing: '組み立てを書き出しています'});
+      opt.onProgress?.(v.done, v.total, v.phase);
+    },
     signal: opt.signal,
   });
-  opt.onProgress?.(2, 3, '検算しています');
+  opt.onProgress?.(0, 0, '検算しています');
 
   const plan = ScriptPlanSchema.parse(run.data);
   const durations = new Map(catalog.clips.map((c) => [c.id, c.probe.durationSec]));

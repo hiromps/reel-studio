@@ -1101,6 +1101,55 @@ pre.md {
 .card.ai-running {
   border-color: var(--accent2);
 }
+.card.ai-running.stalled {
+  border-color: var(--warn);
+}
+/* 動いている印（5 秒ごとの heartbeat が来ている間は脈打つ） */
+.live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 0 rgba(76, 195, 138, 0.6);
+  animation: live-pulse 1.6s ease-out infinite;
+  flex: 0 0 auto;
+}
+.live-dot.queued {
+  background: var(--muted);
+  animation: none;
+}
+.live-dot.stalled {
+  background: var(--warn);
+  animation: none;
+}
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(76, 195, 138, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgba(76, 195, 138, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+.warn-text {
+  color: var(--warn);
+}
+.ai-log {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #0d0f12;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ai-log > div:last-child {
+  color: var(--fg);
+}
 /* 総数が分からないとき（起動中など）は流れる帯で「動いている」ことを示す */
 .progress.indeterminate {
   position: relative;

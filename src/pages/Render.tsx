@@ -9,7 +9,7 @@ import {TrialCard} from '../components/TrialCard';
 import {BuildCard} from '../components/BuildCard';
 import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {IssueList} from '../components/IssueList';
-import {AI_JOB_LABEL} from '../components/AiJobStatus';
+import {AI_JOB_LABEL, AiJobStatus} from '../components/AiJobStatus';
 import type {Job} from '../api';
 import type {Narration, NarrationSegment} from '@shared/schema';
 import {PERSONAS} from '@shared/personas';
@@ -119,6 +119,8 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline') => void}>
 
   const jobs = useMemo(() => s.jobs.filter((j) => !s.active || j.slug === s.active), [s.jobs, s.active]);
   const job = jobs.find((j) => j.id === sel) ?? jobs[0];
+  // この案件で走っている AI / 音声生成のジョブ（仕上げは BuildCard が自分で出す）
+  const liveJob = jobs.find((j) => (j.status === 'running' || j.status === 'queued') && (j.type.startsWith('ai-') || j.type === 'tts'));
   const log = job ? (s.logs[job.id] ?? job.logTail ?? []) : [];
 
   useEffect(() => {
@@ -233,6 +235,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline') => void}>
   return (
     <div className="page">
       <BuildCard onTab={onTab} />
+      {liveJob && <AiJobStatus job={liveJob} onCancel={(id) => void s.cancelJob(id)} lines={4} />}
 
       <section className="card" data-tour="render-run">
         <h2>レンダー（手動）</h2>

@@ -180,7 +180,15 @@ class JobQueue extends EventEmitter {
       }
       case 'ai-order': {
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
-        const r = await aiOrder(dir, {write: p.write !== false, copy: p.copy !== false, force: !!p.force, model: typeof p.model === 'string' ? p.model : undefined, onLine, signal});
+        const r = await aiOrder(dir, {
+          write: p.write !== false,
+          copy: p.copy !== false,
+          force: !!p.force,
+          model: typeof p.model === 'string' ? p.model : undefined,
+          onLine,
+          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          signal,
+        });
         onLine(formatOrderCheck(r.check));
         if (!r.applied) throw new Error(`並びに E があるので書いていません:\n${r.check.findings.filter((f) => f.severity === 'E').map((f) => `  ${f.code} ${f.message}`).join('\n')}`);
         return {applied: true, written: r.written, cuts: r.plan?.cuts.cuts.length ?? 0, costUsd: r.costUsd, notes: r.notes, losesFinalTelops: r.losesFinalTelops};

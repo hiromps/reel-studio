@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {exec, isWindows, type ExecOptions} from './exec';
+import type {AgentEvent} from '../shared/agent-progress';
 
 export class AgentError extends Error {
   detail: string;
@@ -53,8 +54,8 @@ export type AgentRun<T> = {
   sessionId?: string;
 };
 
-/** エージェントが作業中に出すもの（進捗表示に使う） */
-export type AgentEvent = {kind: 'tool'; name: string; input: Record<string, unknown>} | {kind: 'text'; text: string};
+/** エージェントが作業中に出すもの（進捗表示に使う）。型は shared/agent-progress.ts が正 */
+export type {AgentEvent} from '../shared/agent-progress';
 
 export type AgentOptions = {
   /** 作業ディレクトリ。ここからの相対パスで Read させる */
@@ -70,8 +71,10 @@ export type AgentOptions = {
   allowedTools?: string[];
   timeoutMs?: number;
   onLine?: (line: string) => void;
-  /** 作業の途中経過（どのファイルを見たか等）。進捗表示に使う */
+  /** 作業の途中経過（起動・思考・ツール呼び出し・出力・書き出し・定期の heartbeat）。進捗表示に使う */
   onEvent?: (e: AgentEvent) => void;
+  /** heartbeat の間隔（既定 5 秒）。画を見ずに考えている間も「動いている」と分かるようにするため */
+  heartbeatMs?: number;
   signal?: AbortSignal;
 };
 
@@ -113,8 +116,9 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
   for (const d of opt.addDirs ?? []) args.push('--add-dir', d);
 
   // stdout は 1 行 1 JSON。type=result が最終結果で、それ以外は途中経過
+  //   system/init … モデルが動き出した ／ assistant … 思考・本文・ツール呼び出し ／ user … ツールの結果
   let parsed: CliResult | null = null;
-  type StreamLine = {type?: string; message?: {content?: {type?: string; name?: string; input?: Record<string, unknown>; text?: string}[]}};
+  type StreamLine = {type?: string; subtype?: string; model?: string; message?: {content?: {type?: string; name?: string; input?: Record<string, unknown>; text?: string}[]}};
   const takeLine = (line: string) => {
     let d: StreamLine & CliResult;
     try {
@@ -126,12 +130,25 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
       parsed = d;
       return;
     }
-    if (d.type !== 'assistant' || !opt.onEvent) return;
+    if (!opt.onEvent) return;
+    if (d.type === 'system') {
+      if (d.subtype === 'init' || !d.subtype) opt.onEvent({kind: 'init', model: d.model});
+      return;
+    }
+    if (d.type === 'user') {
+      if ((d.message?.content ?? []).some((b) => b.type === 'tool_result')) opt.onEvent({kind: 'tool_result'});
+      return;
+    }
+    if (d.type !== 'assistant') return;
     for (const b of d.message?.content ?? []) {
       if (b.type === 'tool_use' && b.name) opt.onEvent({kind: 'tool', name: b.name, input: b.input ?? {}});
       else if (b.type === 'text' && b.text?.trim()) opt.onEvent({kind: 'text', text: b.text.trim()});
+      else if (b.type === 'thinking') opt.onEvent({kind: 'thinking'});
     }
   };
+  // 何も出力が無い間（考えている間）も進捗の表示が止まって見えないよう、一定間隔で経過秒を流す
+  const startedAt = Date.now();
+  const heartbeat = opt.onEvent ? setInterval(() => opt.onEvent?.({kind: 'heartbeat', elapsedSec: (Date.now() - startedAt) / 1000}), opt.heartbeatMs ?? 5000) : undefined;
 
   const execOpt: ExecOptions = {
     cwd: opt.cwd,
@@ -139,7 +156,12 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
     signal: opt.signal,
     onLine: (line, stream) => (stream === 'stdout' ? takeLine(line) : opt.onLine?.(line)),
   };
-  const r = await exec(bin, args, execOpt);
+  let r: Awaited<ReturnType<typeof exec>>;
+  try {
+    r = await exec(bin, args, execOpt);
+  } finally {
+    if (heartbeat) clearInterval(heartbeat);
+  }
   if (r.signal || (r.code !== 0 && !r.stdout.trim())) {
     throw new AgentError(`claude の起動に失敗（終了コード ${r.code}${r.signal ? ` / ${r.signal}` : ''}）`, r.stderr.trim().split(/\r?\n/).slice(-5).join('\n'));
   }

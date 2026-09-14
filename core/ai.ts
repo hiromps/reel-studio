@@ -19,6 +19,7 @@ import {ensureCutFrame} from './cut-frames';
 import {readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaption, writeCuts, writeNarration} from './project';
 import {validateProject} from './render';
 import {runAgent, type AgentEvent, type AgentRun} from './agent';
+import {activitySummary, createAgentTracker, fmtElapsed, progressView, type ProgressLabels} from '../shared/agent-progress';
 
 const enumOf = (v: readonly string[]) => ({type: 'string', enum: [...v]});
 
@@ -83,25 +84,39 @@ export type AiTagResult = {
 
 const sheetPath = (c: Clip) => path.posix.join(studioConfig.studioDirName, c.thumbs.sheet);
 
-const baseName = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? '';
+/** ログを 30 秒に 1 行だけ「動いています」で埋める間隔 */
+const HEARTBEAT_LOG_SEC = 30;
 
 /**
- * エージェントが「どのファイルを見たか」を数えて進捗にする。
- * want に入っているファイル名だけを数えるので、cuts.json 等の Read は混ざらない。
+ * エージェントの稼働状況（起動・画の確認・ツール・書き出し・heartbeat）を進捗とログにする。
+ * watch に入っているファイル名だけを「確認済み」と数えるので、cuts.json 等の Read は混ざらない。
+ * 画を 1 枚も見ずに考えている間も、heartbeat で経過秒・ツール回数・出力文字数が更新される
+ * （以前は Read の回数しか見ていなかったので、ナレーション原稿などで 0/N のまま止まって見えた）。
  */
-const watchReads = (want: string[], onStep: (done: number, total: number, name: string) => void) => {
-  const remain = new Set(want.map(baseName).filter(Boolean));
-  const total = remain.size;
-  let done = 0;
-  return (e: AgentEvent) => {
-    if (e.kind !== 'tool') return;
-    if (e.name === 'StructuredOutput') return onStep(total, total, '書き出し中');
-    if (e.name !== 'Read') return;
-    const n = baseName(String((e.input as {file_path?: string}).file_path ?? ''));
-    if (!remain.delete(n)) return;
-    done++;
-    onStep(done, total, n);
+const agentProgress = (o: {watch?: string[]; onProgress?: AiProgress; log?: (l: string) => void; prefix?: string; labels?: ProgressLabels}) => {
+  const tr = createAgentTracker(o.watch ?? []);
+  const p = o.prefix ? `${o.prefix} ` : '';
+  let lastHbLog = 0;
+  const emit = () => {
+    if (!o.onProgress) return;
+    const v = progressView(tr.stats, o.labels);
+    o.onProgress(v.done, v.total, v.phase);
   };
+  const onEvent = (e: AgentEvent) => {
+    const step = tr.onEvent(e);
+    const st = tr.stats;
+    if (step === 'init') o.log?.(`  ${p}claude が起動しました${st.model ? `（${st.model}）` : ''}`);
+    else if (step === 'watched') o.log?.(`  ${p}${o.labels?.reading ?? '画を確認中'} ${st.watched.done}/${st.watched.total}（${st.watched.last}）`);
+    else if (step === 'tool') o.log?.(`  ${p}▸ ${st.lastTool}${st.lastTarget ? ` ${st.lastTarget}` : ''}`);
+    else if (step === 'writing') o.log?.(`  ${p}${o.labels?.writing ?? '結果を書き出しています'}（${activitySummary(st)}）`);
+    else if (step === 'heartbeat' && st.elapsedSec - lastHbLog >= HEARTBEAT_LOG_SEC) {
+      lastHbLog = st.elapsedSec;
+      o.log?.(`  ${p}… 動いています（${activitySummary(st)}${st.lastTool ? `・直前 ${st.lastTool}` : ''}）`);
+    }
+    emit();
+  };
+  emit();
+  return {onEvent, stats: tr.stats};
 };
 
 const TAG_RULES = [
@@ -170,10 +185,7 @@ export async function aiTag(
           model: opt.model ?? studioConfig.agent.model,
           timeoutMs: studioConfig.agent.timeoutMs,
           onLine: (l) => log(`${tag} ${l}`),
-          onEvent: watchReads(
-            batch.map((c) => sheetPath(c)),
-            (d, t, name) => log(`  ${tag} 画 ${d}/${t}（${name}）`),
-          ),
+          onEvent: agentProgress({watch: batch.map((c) => sheetPath(c)), log, prefix: tag, labels: {reading: '画'}}).onEvent,
           signal: opt.signal,
         });
       } catch (e) {
@@ -217,7 +229,7 @@ export type AiOrderResult = OrderImportResult & {costUsd: number; notes?: string
 /** Claude が素材を見て並び順を決め、brief.order.fixed に取り込む */
 export async function aiOrder(
   projectDir: string,
-  opt: {write?: boolean; copy?: boolean; force?: boolean; model?: string; onLine?: (l: string) => void; signal?: AbortSignal} = {},
+  opt: {write?: boolean; copy?: boolean; force?: boolean; model?: string; onLine?: (l: string) => void; onProgress?: AiProgress; signal?: AbortSignal} = {},
 ): Promise<AiOrderResult> {
   const log = opt.onLine ?? (() => {});
   const env: OrderEnv = loadOrderEnv(projectDir);
@@ -251,10 +263,7 @@ export async function aiOrder(
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,
-    onEvent: watchReads(
-      payload.clips.map((c) => c.sheet),
-      (d, t, name) => log(`  画を確認中 ${d}/${t}（${name}）`),
-    ),
+    onEvent: agentProgress({watch: payload.clips.map((c) => c.sheet), onProgress: opt.onProgress, log, labels: {thinking: '並び順を考えています', writing: '並び順を書き出しています'}}).onEvent,
     signal: opt.signal,
   });
   log(`AI の案: ${run.data.order.join(' → ')}（$${run.costUsd.toFixed(3)} / ${(run.durationMs / 1000).toFixed(0)}秒）`);
@@ -441,15 +450,7 @@ export async function aiTelop(
     .join('\n');
 
   log(`AI テロップ: ${targets.length} グループを書く（model=${opt.model ?? studioConfig.agent.model}）`);
-  opt.onProgress?.(0, targets.length, '起動中');
-  const onEvent = watchReads(
-    targets.map((t) => t.frame ?? ''),
-    (done, total, name) => {
-      const phase = done >= total ? 'テロップを書いています' : `画を確認中 ${done}/${total}（${name}）`;
-      opt.onProgress?.(done, total, phase);
-      log(`  ${phase}`);
-    },
-  );
+  const {onEvent} = agentProgress({watch: targets.map((t) => t.frame ?? ''), onProgress: opt.onProgress, log, labels: {thinking: 'テロップを考えています', writing: 'テロップを書き出しています'}});
   const run: AgentRun<TelopResponse> = await runAgent<TelopResponse>({
     cwd: projectDir,
     prompt,
@@ -621,14 +622,8 @@ export async function aiNarration(
     .join('\n');
 
   log(`AI ナレーション: ${videoSec.toFixed(1)} 秒 / ${cuts.cuts.length} カット（model=${opt.model ?? studioConfig.agent.model}）${caption ? ' / キャプション参照あり' : ''}`);
-  opt.onProgress?.(0, cuts.cuts.length, '起動中');
-  const onEvent = watchReads(
-    frames.filter((f): f is string => !!f),
-    (done, total, name) => {
-      const phase = done >= total ? '原稿を書いています' : `画を確認中 ${done}/${total}（${name}）`;
-      opt.onProgress?.(done, total, phase);
-    },
-  );
+  // 画を見ずに原稿を書くことが多い（見るのは任意）。その間も heartbeat で経過秒とツール回数が進む
+  const {onEvent} = agentProgress({watch: frames.filter((f): f is string => !!f), onProgress: opt.onProgress, log, labels: {thinking: '原稿を考えています', writing: '原稿を書き出しています'}});
   const run = await runAgent<NarrationResponse>({
     cwd: projectDir,
     prompt,
@@ -814,9 +809,13 @@ export async function aiFacts(
     .join('\n');
 
   log(`店舗情報の裏取り: ${brief.shop.name}（${brief.shop.area}）／Instagram 優先（model=${opt.model ?? studioConfig.agent.model}）`);
-  opt.onProgress?.(0, FACT_KEYS.length, '検索中');
+  opt.onProgress?.(0, 0, 'claude を起動しています');
   let seen = 0;
-  const step = (phase: string) => opt.onProgress?.(Math.min(++seen, FACT_KEYS.length), FACT_KEYS.length, phase);
+  let lastPhase = '検索中';
+  const step = (phase: string) => {
+    lastPhase = phase;
+    opt.onProgress?.(Math.min(++seen, FACT_KEYS.length), FACT_KEYS.length, phase);
+  };
   const run = await runAgent<FactsResponse>({
     cwd: projectDir,
     prompt,
@@ -827,9 +826,12 @@ export async function aiFacts(
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,
     onEvent: (e) => {
+      if (e.kind === 'heartbeat') return opt.onProgress?.(Math.min(seen, FACT_KEYS.length), seen ? FACT_KEYS.length : 0, `${lastPhase}（${fmtElapsed(e.elapsedSec)}）`);
+      if (e.kind === 'init') return opt.onProgress?.(0, 0, 'claude が起動しました');
       if (e.kind !== 'tool') return;
       if (e.name === 'WebSearch') step(`検索中「${String((e.input as {query?: string}).query ?? '')}」`.slice(0, 64));
       else if (e.name === 'WebFetch') step(`確認中 ${String((e.input as {url?: string}).url ?? '').replace(/^https?:\/\//, '').slice(0, 44)}`);
+      else if (e.name === 'StructuredOutput') step('結果を書き出しています');
     },
     signal: opt.signal,
   });
@@ -1013,9 +1015,8 @@ export async function aiCaption(
     .join('\n');
 
   log(`AI キャプション: ${brief.shop.name}／手本 ${examples.length} 件（model=${opt.model ?? studioConfig.agent.model}）`);
-  opt.onProgress?.(0, 2 + examples.length + frames.filter(Boolean).length, '起動中');
   const watch = [skill, hashtagBank, ...examples, ...frames.filter((f): f is string => !!f)];
-  const onEvent = watchReads(watch, (done, total, name) => opt.onProgress?.(done, total, done >= total ? '本文を書いています' : `確認中 ${done}/${total}（${name}）`));
+  const {onEvent} = agentProgress({watch, onProgress: opt.onProgress, log, labels: {reading: '確認中', thinking: '本文を考えています', writing: '本文を書き出しています'}});
   const run = await runAgent<CaptionResponse>({
     cwd: projectDir,
     prompt,
@@ -1172,14 +1173,9 @@ export async function aiEdit(
     .join('\n');
 
   log(`AI 修正: 「${instruction.trim()}」（model=${opt.model ?? studioConfig.agent.model}）`);
-  // 画を 1 枚も見ずに答えを書くことがあり、その間は tool のイベントが来ない。
-  // 進捗が「起動中…」のまま何分も止まって見えるので、いまどの段階かを明示する
+  // 画を 1 枚も見ずに答えを書くことがあり、その間は tool のイベントが来ない。heartbeat で経過を出す
   const want = frames.filter((f): f is string => !!f);
-  opt.onProgress?.(0, want.length, 'AI が考えています（画を見ずに書くこともあります）');
-  const step = watchReads(want, (d, t, name) => {
-    log(`  画を確認中 ${d}/${t}（${name}）`);
-    opt.onProgress?.(d, t, d >= t ? '差分を作っています' : `画を確認中 ${d}/${t}`);
-  });
+  const {onEvent: step} = agentProgress({watch: want, onProgress: opt.onProgress, log, labels: {thinking: '直し方を考えています（画を見ずに書くこともあります）', writing: '差分を作っています'}});
   const run: AgentRun<Patch> = await runAgent<Patch>({
     cwd: projectDir,
     prompt,
