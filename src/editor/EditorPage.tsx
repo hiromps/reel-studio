@@ -21,10 +21,12 @@ import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInsp
 import {ValidationPanel} from './ValidationPanel';
 import {AiMenu} from './AiMenu';
 import {useEditorModel} from './useEditorModel';
+import {useMixPreview} from './useMixPreview';
+import {pendingNarration} from './mixPreview';
 import {GROUP_COLORS} from './labels';
 
-type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean};
-const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true};
+type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean};
+const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true};
 
 const emptyLib: SfxLibrary = {version: 1, sounds: []};
 
@@ -85,6 +87,10 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
 
   // ---- 再生まわり ----
   const totalFrames = cuts ? calcTotalFrames(cuts) : 0;
+  // 生成済みのナレーション wav と効果音を、再生に合わせて重ねて鳴らす（レンダーには入れない。mix で載せるものなので）
+  const getFrame = useCallback(() => preview.current?.getCurrentFrame() ?? 0, []);
+  const setPlayerVolume = useCallback((v: number) => preview.current?.setVolume(v), []);
+  const mixStatus = useMixPreview({enabled: prefsSafe.mixPreview && !!narration, narration, mediaBase: s.mediaBase, lib, fps: m.fps, playing, frame, getFrame, setPlayerVolume});
   const seek = useCallback(
     (f: number) => {
       const clamped = Math.max(0, Math.min(Math.max(0, totalFrames - 1), Math.round(f)));
@@ -372,6 +378,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
                 cutCount={cuts.cuts.length}
                 loop={loop}
                 light={s.light}
+                mix={{enabled: prefsSafe.mixPreview, status: mixStatus, pending: pendingNarration(narration), hasNarration: !!narration, onToggle: (v) => setPrefs({...prefsSafe, mixPreview: v})}}
                 onToggle={toggle}
                 onStep={step}
                 onHome={() => seek(0)}

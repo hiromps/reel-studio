@@ -11,6 +11,8 @@ export type PreviewHandle = {
   toggle: () => void;
   isPlaying: () => boolean;
   getCurrentFrame: () => number;
+  /** 素材の音の音量（0〜1）。プレビューに声を重ねるとき環境音として下げる */
+  setVolume: (v: number) => void;
 };
 
 type Props = {
@@ -75,6 +77,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
     },
     isPlaying: () => player.current?.isPlaying() ?? false,
     getCurrentFrame: () => player.current?.getCurrentFrame() ?? 0,
+    setVolume: (v) => player.current?.setVolume(Math.max(0, Math.min(1, v))),
   }));
 
   useEffect(() => {
