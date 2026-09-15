@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      '@engine': path.resolve(here, '../../.claude/skills/hiro-daihon/assets/remotion-template/src'),
+      '@engine': path.resolve(here, 'engine/src'),
       '@shared': path.resolve(here, 'shared'),
       '@core': path.resolve(here, 'core'),
     },

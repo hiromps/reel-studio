@@ -12,6 +12,7 @@ import {loadCatalog} from './catalog';
 import {renderProject} from './render';
 import {synthOne} from './tts';
 import {studioConfig} from '../studio.config';
+import {mixScriptPath} from './mix';
 import {HooksSchema, TRIAL_POSTING_RULES, applyHookNarration, applyHookVariant, checkHooks, hookCutIndices, trialCaptionOf, type HookVariant, type Hooks} from '../shared/hooks';
 import {deliverFileName} from '../shared/deliver';
 import {getPersona} from '../shared/personas';
@@ -157,10 +158,9 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
       // draft の合成結果を本番と同じ名前にすると、あとで本番を作ったつもりで粗い方を納品しかねない
       const mixedRel = path.posix.join('out', `trial_${v.id}${opt.draft ? '_draft' : ''}_narration.mp4`);
       opt.onProgress?.(done, targets.length, `${v.id}: ナレーション合成`);
-      const script = path.join(studioConfig.repoRoot, '.claude', 'skills', 'hiro-daihon', 'scripts', 'mix-narration.js');
       const mr = await exec(
         process.execPath,
-        [script, narrFile, path.join(projectDir, 'narration'), path.join(projectDir, outRel), path.join(projectDir, mixedRel)],
+        [mixScriptPath(), narrFile, path.join(projectDir, 'narration'), path.join(projectDir, outRel), path.join(projectDir, mixedRel)],
         {cwd: projectDir, env: {...process.env, REEL_SFX_DIR: studioConfig.sfxDir}, onLine: (l) => log(`  ${l}`), signal: opt.signal},
       );
       if (mr.code !== 0) throw new Error(`${v.id}: mix に失敗 (exit ${mr.code})`);

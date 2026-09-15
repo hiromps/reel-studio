@@ -1,5 +1,5 @@
 // ナレーション合成（mix）：out/final.mp4 に narration/*.wav と効果音を混ぜて out/final_narration.mp4 を作る。
-// 実体は hiro スキル同梱の scripts/mix-narration.js（speechnorm＋リミッターで -14 LUFS。映像は -c:v copy）。
+// 実体は同梱の scripts/mix-narration.cjs（speechnorm＋リミッターで -14 LUFS。映像は -c:v copy）。
 import fs from 'node:fs';
 import path from 'node:path';
 import {exec} from './exec';
@@ -15,7 +15,7 @@ export type MixOptions = {
   signal?: AbortSignal;
 };
 
-export const mixScriptPath = () => path.join(studioConfig.repoRoot, '.claude', 'skills', 'hiro-daihon', 'scripts', 'mix-narration.js');
+export const mixScriptPath = () => studioConfig.mixScript;
 
 /** 足りないものは ffmpeg の生エラーではなく日本語で止める */
 export const mixPreconditions = (dir: string, inputRel = 'out/final.mp4'): string | null => {
@@ -34,7 +34,7 @@ export const mixNarration = async (dir: string, opt: MixOptions = {}): Promise<{
   if (why) throw new Error(why);
   const input = path.join(dir, inputRel);
   const output = path.join(dir, outputRel);
-  // 効果音の置き場はスクリプト側の既定（repoRoot/sfx）と同じだが、明示して渡す
+  // 効果音の置き場はスクリプトに環境変数で渡す（スクリプト側に既定の場所は無い）
   const r = await exec(process.execPath, [mixScriptPath(), path.join(dir, 'narration.json'), path.join(dir, 'narration'), input, output], {
     cwd: dir,
     env: {...process.env, REEL_SFX_DIR: studioConfig.sfxDir},

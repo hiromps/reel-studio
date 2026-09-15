@@ -14,7 +14,7 @@
     "types": ["node", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
-      "@engine/*": ["../../.claude/skills/hiro-daihon/assets/remotion-template/src/*"],
+      "@engine/*": ["engine/src/*"],
       "@shared/*": ["shared/*"],
       "@core/*": ["core/*"],
       "react": ["node_modules/@types/react"],
@@ -22,5 +22,5 @@
       "remotion": ["node_modules/remotion"]
     }
   },
-  "include": ["shared", "core", "cli", "server", "src", "test", "studio.config.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": ["shared", "core", "cli", "server", "src", "test", "engine/src", "studio.config.ts", "vite.config.ts", "vitest.config.ts"]
 }

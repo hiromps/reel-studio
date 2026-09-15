@@ -11,8 +11,10 @@ export const studioConfig = {
   workDir: path.resolve(here, '..', '..', 'work'),
   /** 生素材の置き場（uploads/<店名>/） */
   uploadsRoot: path.resolve(here, '..', '..', 'uploads'),
-  /** Remotion マスターテンプレート（hiro-daihon が正） */
-  templateDir: path.resolve(here, '..', '..', '.claude', 'skills', 'hiro-daihon', 'assets', 'remotion-template'),
+  /** 同梱の Remotion エンジン。案件はここから複製・同期される */
+  templateDir: path.join(here, 'engine'),
+  /** ナレーション合成スクリプト（CommonJS。パッケージが ESM なので .cjs） */
+  mixScript: path.join(here, 'scripts', 'mix-narration.cjs'),
   /**
    * 人格の既定ボイス（shared/personas.ts）以外に、選べるようにしておきたいボイス。
    * **他人の公開モデルは Fish Audio の `GET /model?self=true` に出てこない**ので、

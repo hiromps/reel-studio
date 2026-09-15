@@ -16,6 +16,7 @@ import {countFrames} from './ffprobe';
 import {readHooks} from './trial';
 import {aiWinner} from './ai-trial';
 import {studioConfig} from '../studio.config';
+import {mixScriptPath} from './mix';
 import {applyHookNarration, applyHookVariant, hookCutIndices, trialCaptionOf} from '../shared/hooks';
 import {DEFAULT_WINNER_SPEED, applyTailNarration, applyTailTelop, checkWinner, spedUpSec, tailTelopOf, type WinnerIssue} from '../shared/winner';
 import {deliverFileName} from '../shared/deliver';
@@ -219,8 +220,7 @@ export const runWinner = async (projectDir: string, opt: WinnerOptions = {}): Pr
     writeJsonAtomic(narrFile, narration);
     mixedRel = path.posix.join('out', `winner_${key}${suffix}_narration.mp4`);
     opt.onProgress?.(3, 5, 'ナレーション合成');
-    const script = path.join(studioConfig.repoRoot, '.claude', 'skills', 'hiro-daihon', 'scripts', 'mix-narration.js');
-    const mr = await exec(process.execPath, [script, narrFile, narrDir, path.join(projectDir, renderedRel), path.join(projectDir, mixedRel)], {
+    const mr = await exec(process.execPath, [mixScriptPath(), narrFile, narrDir, path.join(projectDir, renderedRel), path.join(projectDir, mixedRel)], {
       cwd: projectDir,
       env: {...process.env, REEL_SFX_DIR: studioConfig.sfxDir},
       onLine: (l) => log(`  ${l}`),

@@ -66,7 +66,7 @@ const needsBuild = () => {
     fs.existsSync(path.join(root, 'index.html')) ? fs.statSync(path.join(root, 'index.html')).mtimeMs : 0,
     fs.existsSync(path.join(root, 'vite.config.ts')) ? fs.statSync(path.join(root, 'vite.config.ts')).mtimeMs : 0,
     // エンジン（テロップ描画）もバンドルに含まれる
-    newestMtime(path.resolve(root, '..', '..', '.claude', 'skills', 'hiro-daihon', 'assets', 'remotion-template', 'src')),
+    newestMtime(path.join(root, 'engine', 'src')),
   );
   return sources > built;
 };

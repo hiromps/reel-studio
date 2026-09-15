@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const outIco = path.join(root, 'assets', 'reel-studio.ico');
-const font = path.resolve(root, '..', '..', '.claude', 'skills', 'hiro-daihon', 'assets', 'remotion-template', 'public', 'fonts', 'NotoSerifJP-Bold.ttf');
+const font = path.join(root, 'engine', 'public', 'fonts', 'NotoSerifJP-Bold.ttf');
 const SIZES = [256, 128, 64, 48, 32, 16];
 const BG = '0x1B1F24';
 const FG = '0xFFD966';

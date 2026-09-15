@@ -1,0 +1,19 @@
+{
+  "fps": 60,
+  "theme": "pop",
+  "cuts": [
+    {
+      "src": "uploads/sample.mp4",
+      "inSec": 0,
+      "outSec": 1.5,
+      "main": { "text": "皮はパリッパリで旨すぎた" }
+    },
+    {
+      "src": "uploads/sample.mp4",
+      "inSec": 2.0,
+      "outSec": 3.8,
+      "badge": "第3位",
+      "main": { "text": "80歳店主が60年ワンオペ" }
+    }
+  ]
+}

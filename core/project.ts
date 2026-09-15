@@ -12,8 +12,8 @@ import {fileStamp} from '../shared/time';
 import {readJsonFile, writeJsonAtomic, backupFile} from './json-io';
 import {exec} from './exec';
 
-/** エンジンの系統。hiro 系（hiro/nagi/bonjiri/sayuri）だけがマスターとの同期対象。yui / instagram は別デザインなので触らない */
-export type EngineFamily = 'hiro' | 'yui' | 'instagram' | 'unknown';
+/** エンジンの系統。standard（同梱エンジン＝Noto Serif JP）だけがマスターとの同期対象。yui / instagram は別デザインなので触らない */
+export type EngineFamily = 'standard' | 'yui' | 'instagram' | 'unknown';
 export type EngineDiff = {stale: boolean; family: EngineFamily; files: {file: string; status: 'ok' | 'differs' | 'missing'}[]};
 
 export const engineFamily = (dir: string): EngineFamily => {
@@ -22,7 +22,7 @@ export const engineFamily = (dir: string): EngineFamily => {
   const src = fs.readFileSync(p, 'utf8');
   if (/cinecaption/i.test(src)) return 'yui';
   if (/Zen Old Mincho/i.test(src)) return 'instagram';
-  if (/Noto Serif JP/i.test(src)) return 'hiro';
+  if (/Noto Serif JP/i.test(src)) return 'standard';
   return 'unknown';
 };
 
@@ -72,7 +72,7 @@ const templateSrcFiles = (): string[] => {
 
 export const engineDiff = (dir: string): EngineDiff => {
   const family = engineFamily(dir);
-  if (family !== 'hiro') return {stale: false, family, files: []};
+  if (family !== 'standard') return {stale: false, family, files: []};
   const files = templateSrcFiles().map((f) => {
     const t = path.join(studioConfig.templateDir, 'src', f);
     const p = path.join(dir, 'src', f);
@@ -83,11 +83,11 @@ export const engineDiff = (dir: string): EngineDiff => {
   return {stale: files.some((f) => f.status !== 'ok'), family, files};
 };
 
-/** マスターテンプレートの src/*.tsx で案件側を上書き（差分ファイルは .studio/backups/engine-<ts>/ に退避）。hiro 系以外は触らない */
+/** マスターテンプレートの src/*.tsx で案件側を上書き（差分ファイルは .studio/backups/engine-<ts>/ に退避）。standard 以外は触らない */
 export const syncEngine = (dir: string): {synced: string[]} => {
   const diff = engineDiff(dir);
   const synced: string[] = [];
-  if (diff.family !== 'hiro') return {synced};
+  if (diff.family !== 'standard') return {synced};
   const ts = fileStamp();
   for (const f of diff.files) {
     if (f.status === 'ok') continue;
