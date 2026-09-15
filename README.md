@@ -79,7 +79,9 @@ CLI は Git Bash から `tools/reel-studio/bin/reel <cmd>`（cmd.exe は `bin\re
 | `reel sync --project P [--check]` | エンジン（src/*.tsx）をマスターに同期 |
 | `reel draft\|render --project P [--out f] [--gl swiftshader] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries 3] [--force] [--no-sync] [--strict-proxy] [--props f]` | preflight → レンダー（段階リトライ）→ フレーム数検証 → QC タイル |
 | `reel still --project P --cut N [--offset 0.3]` / `--frame F` | 1 フレーム書き出し（カット頭から 0.3 秒後が既定） |
-| `reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--force]` | **フックだけ差し替えた複数版**を作る（レンダー→音声→mix→納品） |
+| `reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]` | トライアル用の**フック案（A は今の形・B/C は別の切り口）とパターン別キャプション**を書かせて `hooks.json` に入れる |
+| `reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--force] [--force-errors]` | **フックだけ差し替えた複数版**を作る（レンダー→音声→mix→納品。キャプションもパターンごとに出す） |
+| `reel winner --project P [--id A] [--tail "締め"] [--tail-narration "締めナレ"] [--caption-file f] [--speed 1.1] [--draft] [--no-deliver] [--force] [--force-errors] [--model m]` | **勝ちパターンの二次活用**：締めの一言だけ変えて倍速で書き出し直し、新しいキャプションで納品 |
 | `reel build --project P [--plan] [--steps a,b] [--model m] [--force-errors] [--label 修正版]` | **仕上げ**。案件の状態から残っている工程（キャプション/原稿/音声/レンダー/mix/納品）を順に走らせる |
 | `reel deliver --project P [--label 修正版] [--allow-silent] [--overwrite]` | 完成品だけ `outputs/` へ（`<店名>_<人格>_ナレーション付き.mp4` と `_caption.txt`） |
 
@@ -720,6 +722,34 @@ public なので `sfx/` は `.gitignore` 済みで、**音源はコミットし�
 
 どのフックが効いたかを見るために、**冒頭のフックだけを変えた 3 本**を投げて比べる。
 Render の **「トライアル（フック差し替え）」**（`reel trial`）で作る。
+フック案は **「AI に 3 パターン書いてもらう」**（`reel ai hooks`）で書かせられる。
+
+### 運用（ユーザー指示・2026-09-14。`shared/hooks.ts` の `TRIAL_POSTING_RULES` が正）
+
+1 本のベース企画から**冒頭のフックだけ異なる 3 パターン**を作る。本編（フック以降）は共通。
+A / B / C は**それぞれ違う切り口**（疑問形・結果先出し・煽り／警告形 など）にする。
+**キャプションはパターンごとに文面を変える**（同じ文面で複数投稿すると使い回しとして扱われる）。
+
+投稿は Instagram 側の操作なのでツールは代行しない。代わりに納品のたびに画面・ログに出す:
+
+- 投稿は 18:00 / 19:00 / 20:00 の 1 時間おきに、A → B → C の順で 3 本
+- トライアル設定の「全員に自動的にシェア」を必ず OFF にする
+- 投稿後は最低 24 時間空けてから、保存率・再生数で伸びを比べる
+- 一番伸びたパターンだけ「全員にシェア」で全フォロワーに展開する
+- 伸びた 1 本が出たら**勝ちパターンの二次活用**（下記）
+
+### AI にフック案を書かせる（`reel ai hooks` / `core/ai-trial.ts`）
+
+既定では**今のフックを A（基準）としてそのまま残し**、B / C を A とも互いとも違う切り口で書かせる
+（`--fresh` で全部新しく）。書くのはカットごとのテロップ・バッジ・フック区間のナレーション 1 文・
+そのパターン専用のキャプション。素材の差し替えは書かせない（フックの素材選びはユーザーが決める決まり）。
+
+- **差し替え範囲はテロップの切れ目まで自動で伸ばす**（`alignedHookCutCount`、上限 6 カット・5.5 秒）。
+  同じ文言が続くカットの途中で範囲が切れると、前半だけ変わって古い文言が 1 カット残り、
+  つながらない並びになるため（那由多: 3 カット 3.51 秒 → 4 カット 4.86 秒）
+- キャプションは共通の `caption.txt` を元に、**事実（店名・住所・営業時間・価格・頂いたもの）を変えずに
+  文面を変えて**書かせる。冒頭の一文はそのパターンのフックに合わせる。A は共通の `caption.txt` のまま
+- 書いたあとは `checkHooks` と `checkCaption` で点検してログに出す。hooks.json は上書き前に `.studio/backups/` へ
 
 ### 変わるもの・変わらないもの
 
@@ -727,7 +757,7 @@ Render の **「トライアル（フック差し替え）」**（`reel trial`�
 見た印象がほとんど変わらず A/B の差が出ないため（2026-09-12 のユーザー指示）。
 `meta.slots` の `1_hook` がそれより長い型では、そちらの長さに合わせる。
 
-| 変わる | 冒頭 N カットの**カットごとの**テロップと素材、バッジ（1 枚目）、ナレーション 1 本目 |
+| 変わる | 冒頭 N カットの**カットごとの**テロップと素材、バッジ（1 枚目）、**フック区間のナレーション**、**キャプション** |
 |---|---|
 | **変わらない** | それ以外のカット・テロップ・ナレーション。**cuts.json を書き換えない** |
 
@@ -739,17 +769,18 @@ Render の **「トライアル（フック差し替え）」**（`reel trial`�
 元の `cuts.json` はそのままなので、フック以降は**1 フレームも変わらない**（実測：フック後の
 フレームハッシュが 3 パターンで完全一致）。
 
-ナレーション 1 本目は id を `01_hook__B` のように変えて生成する（共有の `narration/` で wav が
-ぶつからないように）。2 本目以降の wav はそのまま使い回すので、作り直すのは 1 本だけ。
+ナレーションは**フック区間に属するブロック**（中点が区間内にあるもの。`hookNarrationIds`）を
+**1 本にまとめて差し替える**。id は `01_hook__B` のように変えて生成する（共有の `narration/` で wav が
+ぶつからないように）。それ以外の wav はそのまま使い回す。次のテロップ用に区間の終わり 0.2 秒前から
+始まるブロックは巻き込まない。差し替えた 1 本が次のブロックに食い込むときは W を出す。
 
 ### 書き出し
 
 ```
 out/trial_A_narration.mp4                          ← 案件フォルダ（確認用）
 outputs/<店名>_<人格>_ナレーション付き_フックA.mp4   ← 納品
+outputs/<店名>_<人格>_caption_フックA.txt            ← パターン別キャプション（専用が無ければ共通の caption.txt）
 ```
-
-キャプションは全パターン共通なので、通常の「納品」ボタンで 1 つだけ出す。
 
 ### 点検（`shared/hooks.ts` の `checkHooks`・テストあり）
 
@@ -759,6 +790,7 @@ outputs/<店名>_<人格>_ナレーション付き_フックA.mp4   ← 納品
 | `HOOK_EMPTY`（E） | テロップ・素材・ナレーションのどれも変えていない |
 | `HOOK_NO_CUT`（E） | cuts.json にフック区間が無い |
 | `HOOK_SAME`（W） | 中身が同じパターンが 2 つある＝比較にならない |
+| `HOOK_CAPTION_SHARED`（W） | キャプションが同じ文面になるパターンがある（共通 caption.txt を 2 つが使う場合も） |
 | `HOOK_ONLY_ONE_CUT`（W） | 1 カットしか変えていない＝違いが伝わりにくい |
 | `HOOK_OVER_SPAN`（W） | 差し替え範囲より多い枚数の文言が入っている |
 | `HOOK_TOO_FEW`（W） | 1 パターンだけ |
@@ -768,11 +800,39 @@ outputs/<店名>_<人格>_ナレーション付き_フックA.mp4   ← 納品
 「ドラフトで試す」（0.25 倍・納品しない）。draft の出力は `trial_<id>_draft_narration.mp4` で、
 本番と混ざらない。
 
+レンダーは通常レンダーと同じ preflight（`validateCuts`）を通る。検証の E（F7 の看板温存
+`F7_SIGNAGE_EARLY`・画角の連続・フックの型など「構成の意見」）で止まったときは、
+カードの **「指摘を承知でレンダー」** にチェック（CLI は `--force-errors`）で通せる。二次活用版も同じ。
+素材が無い・尺を超えている等の致命的なものは承知でも通らない（`FATAL_CODES`）。
+2026-09-15: bonjour arima（凪・F7）で看板クリップを自分で 4・12・15 カット目に置いた構成が、
+トライアルにだけこの配線が無くて止まったので追加した。
+
 実測（bonjour arima・冒頭 3 カット = 3.9 秒）: 1 枚目と 2 枚目のフレームハッシュが 3 パターンで
 すべて異なり、3 枚目（文言を空にした店名リビール）とそれ以降は完全一致した。
 
 **音声は各パターンで独立に −14 LUFS へ正規化される**ので、フック以降の音も数値上はわずかに違う
 （全体のラウドネスを測ってから一律ゲインをかける方式のため）。映像は完全に同一。
+
+### 勝ちパターンの二次活用（`reel winner` / `core/winner.ts` / `shared/winner.ts`）
+
+伸びた 1 本が決まったら、**締めの一言（テロップとナレーション）だけ変えて 1.1 倍速で書き出し直し、
+キャプションを新しく書いて、新しいトライアルリールとして再投稿する**。映像は締め以外変えない。
+
+```
+reel winner --project P --id B                       ← 締め・締めナレ・キャプションは AI が書く
+reel winner --project P --id B --tail "一度は行っとこ" --tail-narration "いちどは行っといて" --caption-file new.txt
+```
+
+| 工程 | 何をするか |
+|---|---|
+| 1 | パターン B のフックを当てた cuts に、**末尾のテロップグループ**（同じ文言が続く範囲）だけ新しい締めを入れて `.studio/trial/BW.cuts.json` に書く |
+| 2 | `--props` でレンダー → `out/winner_B.mp4` |
+| 3 | 締めのナレーションだけ音声生成（id `05_cta__WB`）→ mix → `out/winner_B_narration.mp4`。フックの wav はトライアルのものを使い回す |
+| 4 | ffmpeg で倍速（映像 `setpts=PTS/1.1`・音声 `atempo=1.1` でピッチを保つ）→ `out/winner_B_x1.1_narration.mp4` |
+| 5 | `outputs/<店名>_<人格>_ナレーション付き_フックB_二次.mp4` と `_caption_フックB_二次.txt` |
+
+点検（`checkWinner`）: 締めが今と同じ（E）、締めが来店を促す語族でない（W）、キャプションが元と同じ文面（止める。`--force` で通す）、
+倍速が 1.0〜1.5 の外（E）。GUI は Render の「トライアル」カードの「勝ちパターンの二次活用」。
 
 ## 納品（`outputs/`）
 
@@ -809,7 +869,7 @@ outputs/musch_hiro_ナレーション付き_v2.mp4              ← 同名で中
 - `brief.json` — edit-pipeline.md Step 0 の回答。persona / format / hook / reveal / savePriorities / order / units / precut …。スキーマ `shared/schema/brief.ts`
 - `cuts.json` — 既存互換。`id` と `meta.slots` / `meta.telopGroups` / `meta.aliases` / `meta.generated` を追加（Remotion は無視）。スキーマ `shared/schema/cuts.ts`
 - `script.md` — 自然言語の台本（`ai-script` の入力）。無い案件がふつう
-- `hooks.json` — トライアルリールのフック候補（`shared/hooks.ts`）。無い案件がふつう
+- `hooks.json` — トライアルリールのフック候補（`shared/hooks.ts`）。パターンごとの `angle`（切り口）と `caption`（専用キャプション）を持つ。無い案件がふつう
 - `narration.json` — 既存契約（narration-tts.md §6）＋ 音の設計（`narrationGainDb` / `ambientGain` / `sfx` / `sfxGainDb` / `sfxDuck`）
 - 派生物は `.studio/`（thumbs / strips / cutframes / backups / logs / tags-export.json / render-result.json）
 

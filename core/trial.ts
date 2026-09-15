@@ -7,14 +7,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {exec} from './exec';
 import {readJsonFile, writeJsonAtomic} from './json-io';
-import {readBrief, readCuts, readNarration} from './project';
+import {readBrief, readCaption, readCuts, readNarration} from './project';
 import {loadCatalog} from './catalog';
 import {renderProject} from './render';
 import {synthOne} from './tts';
 import {studioConfig} from '../studio.config';
-import {HooksSchema, applyHookNarration, applyHookVariant, checkHooks, hookCutIndices, type HookVariant, type Hooks} from '../shared/hooks';
+import {HooksSchema, TRIAL_POSTING_RULES, applyHookNarration, applyHookVariant, checkHooks, hookCutIndices, trialCaptionOf, type HookVariant, type Hooks} from '../shared/hooks';
 import {deliverFileName} from '../shared/deliver';
 import {getPersona} from '../shared/personas';
+import {cutDurationSec} from '../shared/timeline';
 
 export const hooksPath = (dir: string) => path.join(dir, 'hooks.json');
 
@@ -31,6 +32,8 @@ export type TrialItem = {
   outRel: string;
   /** 納品した名前（outputs/ 直下） */
   deliveredAs?: string;
+  /** 納品したキャプションの名前（outputs/ 直下）。パターン専用が無ければ共通の caption.txt を同名で出す */
+  captionAs?: string;
   frames: number;
   durationSec: number;
   sizeBytes: number;
@@ -46,7 +49,14 @@ export type TrialOptions = {
   /** 0.25 倍の粗いレンダーで並びだけ確認する */
   draft?: boolean;
   gl?: string;
+  /** W を無視して進める */
   force?: boolean;
+  /**
+   * 検証の E（F7 の看板温存・画角の連続など「構成の意見」）を承知でレンダーする。
+   * 通常レンダー・仕上げと同じ逃げ道（render.ts の allowErrors）。素材が無い等の致命的なものは通らない。
+   * 2026-09-15: F7 で看板クリップを自分で早めに置いた構成が、ここに配線が無くてトライアルだけ止まった
+   */
+  allowErrors?: boolean;
   onLine?: (line: string) => void;
   onProgress?: (done: number, total: number, phase: string) => void;
   signal?: AbortSignal;
@@ -67,7 +77,8 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
   const catalog = loadCatalog(projectDir);
   const narration = readNarration(projectDir);
 
-  const issues = checkHooks(hooks, {cuts});
+  const commonCaption = (readCaption(projectDir) ?? '').trim();
+  const issues = checkHooks(hooks, {cuts, caption: commonCaption});
   const errors = issues.filter((i) => i.severity === 'E');
   for (const i of issues) log(`  ${i.severity} ${i.code} ${i.message}`);
   if (errors.length && !opt.force) throw new Error(`フックの指定に問題があります:\n${errors.map((e) => `  ${e.message}`).join('\n')}`);
@@ -75,7 +86,8 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
   const targets = hooks.variants.filter((v) => !opt.ids?.length || opt.ids.includes(v.id));
   if (!targets.length) throw new Error(`指定した id のパターンがありません: ${opt.ids?.join(', ')}`);
   const idx = hookCutIndices(cuts, hooks.cutCount);
-  log(`トライアル ${targets.length} パターン（差し替えるのは冒頭 ${idx.length} カット: ${idx.map((i) => i + 1).join('・')}）`);
+  const spanEndSec = idx.reduce((s, i) => s + cutDurationSec(cuts.cuts[i]), 0);
+  log(`トライアル ${targets.length} パターン（差し替えるのは冒頭 ${idx.length} カット: ${idx.map((i) => i + 1).join('・')}＝${spanEndSec.toFixed(2)} 秒）`);
 
   fs.mkdirSync(trialDir(projectDir), {recursive: true});
   const outputsDir = studioConfig.outputsDir;
@@ -112,15 +124,16 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
       draft: opt.draft,
       gl: opt.gl,
       force: opt.force,
+      allowErrors: opt.allowErrors,
       onLine: (l) => log(`  ${l}`),
       onProgress: (p) => opt.onProgress?.(done, targets.length, `${v.id}: レンダー ${p.phase} ${p.done}/${p.total}`),
       signal: opt.signal,
     });
 
-    // ── ナレーション（1 本目だけ差し替え）→ mix ──
+    // ── ナレーション（フック区間に属するブロックを 1 本にまとめて差し替え）→ mix ──
     let finalRel = outRel;
     if (narration?.segments.length) {
-      const {narration: vn, wavId} = applyHookNarration(narration, v);
+      const {narration: vn, wavId, replaced, nextAt} = applyHookNarration(narration, v, {spanEndSec, charsPerSec: persona.narration.charsPerSecMeasured});
       if (wavId) {
         opt.onProgress?.(done, targets.length, `${v.id}: 音声生成`);
         const wav = path.join(projectDir, 'narration', `${wavId}.wav`);
@@ -131,7 +144,12 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
           out: wav,
           signal: opt.signal,
         });
-        log(`  ナレーション1本目を差し替え: 「${v.narration.trim()}」 ${dur.toFixed(2)}s`);
+        log(`  フック区間のナレーション（${replaced.join(', ')}）を差し替え: 「${v.narration.trim()}」 ${dur.toFixed(2)}s`);
+        const head = vn.segments.find((s) => s.id === wavId);
+        if (head && nextAt !== null && head.at + dur > nextAt + 0.05) {
+          const over = head.at + dur - nextAt;
+          warnings.push(`${v.id}: フックのナレーションが次のブロック（${nextAt.toFixed(2)} 秒）に ${over.toFixed(2)} 秒食い込みます。文を短くするか、Timeline で引き直してください`);
+        }
         vn.segments = vn.segments.map((s) => (s.id === wavId ? {...s, durSec: dur, needsTts: undefined} : s));
       }
       const narrFile = path.join(trialDir(projectDir), `${v.id}.narration.json`);
@@ -151,16 +169,23 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
       warnings.push(`${v.id}: narration.json が無いので素材の音のままです`);
     }
 
-    // ── 納品（フック名を入れて区別できるように） ──
+    // ── 納品（フック名を入れて区別できるように）。キャプションもパターンごとに出す ──
     let deliveredAs: string | undefined;
+    let captionAs: string | undefined;
     if (opt.deliver !== false && !opt.draft) {
       const name = deliverFileName({shop: brief.shop.name, persona: persona.id, kind: 'narration', label: `フック${v.id}`});
       fs.copyFileSync(path.join(projectDir, finalRel), path.join(outputsDir, name));
       deliveredAs = name;
       log(`  → ${name}`);
+      const cap = trialCaptionOf(v, commonCaption);
+      if (cap) {
+        captionAs = deliverFileName({shop: brief.shop.name, persona: persona.id, kind: 'caption', label: `フック${v.id}`});
+        fs.writeFileSync(path.join(outputsDir, captionAs), `${cap}\n`, 'utf8');
+        log(`  → ${captionAs}${v.caption.trim() ? '' : '（共通の caption.txt）'}`);
+      } else warnings.push(`${v.id}: キャプションがありません（専用も共通の caption.txt も無い）`);
     }
 
-    items.push({id: v.id, label: v.label, changes, outRel: finalRel, deliveredAs, frames: r.frames, durationSec: r.durationSec, sizeBytes: r.sizeBytes});
+    items.push({id: v.id, label: v.label, changes, outRel: finalRel, deliveredAs, captionAs, frames: r.frames, durationSec: r.durationSec, sizeBytes: r.sizeBytes});
     done++;
     opt.onProgress?.(done, targets.length, `${v.id}: 完了`);
   }
@@ -171,5 +196,9 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
 
   log(`トライアル完了: ${items.length} パターン`);
   for (const w of warnings) log(`  ! ${w}`);
+  if (opt.deliver !== false && !opt.draft) {
+    log('投稿の運用ルール（Instagram 側の操作。ツールは代行しない）:');
+    for (const r of TRIAL_POSTING_RULES) log(`  ・${r}`);
+  }
   return {items, warnings, outputsDir};
 };

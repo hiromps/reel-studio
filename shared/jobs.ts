@@ -27,7 +27,9 @@ export const JOB_TYPES = [
   'sfx-scan',
   'sfx-auto',
   'deliver',
+  'ai-hooks',
   'trial',
+  'winner',
   'build',
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
@@ -36,9 +38,9 @@ export type JobType = (typeof JOB_TYPES)[number];
  * ffmpeg / Remotion を回すジョブ。CPU とメモリを食い合うので**全体で 1 本だけ**にする
  * （このPCは空きメモリが少なく、レンダーを 2 本並べると落ちた実績がある）。
  * ここに無いもの（AI・音声生成）は待ち時間のほとんどが外部処理なので、案件をまたいで同時に動かしてよい。
- * build はレンダーと mix を含むので重い扱い。
+ * build はレンダーと mix を含むので重い扱い。winner（二次活用）もレンダー・mix・ffmpeg の倍速を含む。
  */
-export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>(['catalog', 'thumbs', 'proxy', 'preview-proxy', 'render', 'draft', 'still', 'qc-tile', 'mix', 'trial', 'build']);
+export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>(['catalog', 'thumbs', 'proxy', 'preview-proxy', 'render', 'draft', 'still', 'qc-tile', 'mix', 'trial', 'winner', 'build']);
 
 export const isHeavyJob = (type: string): boolean => HEAVY_JOBS.has(type as JobType);
 

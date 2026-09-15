@@ -1,5 +1,21 @@
 import {describe, expect, it} from 'vitest';
-import {DEFAULT_HOOK_CUTS, applyHookNarration, applyHookVariant, checkHooks, firstNarrationId, hookCutIndices, variantTouches, type HookVariant, type Hooks} from '@shared/hooks';
+import {
+  DEFAULT_HOOK_CUTS,
+  MAX_HOOK_CUTS,
+  TRIAL_POSTING_RULES,
+  alignedHookCutCount,
+  applyHookNarration,
+  applyHookVariant,
+  checkHooks,
+  firstNarrationId,
+  hookCutIndices,
+  hookNarrationIds,
+  hookSpanSec,
+  trialCaptionOf,
+  variantTouches,
+  type HookVariant,
+  type Hooks,
+} from '@shared/hooks';
 import type {Narration, ReelData} from '@shared/schema';
 
 /** 5 カット。slots ではフックは c01 だけ（＝既定の 3 カットの方が長い） */
@@ -18,7 +34,7 @@ const cutsOf = (n = 5): ReelData =>
     meta: {slots: [{segment: '1_hook'}, {segment: '2_proof'}, {segment: '2_reveal'}, {segment: '3_reason'}, {segment: '5_cta'}]},
   }) as unknown as ReelData;
 
-const v = (o: Partial<HookVariant> = {}): HookVariant => ({id: 'A', label: '', telops: [], clipIds: [], badge: undefined, narration: '', ...o});
+const v = (o: Partial<HookVariant> = {}): HookVariant => ({id: 'A', label: '', angle: '', telops: [], clipIds: [], badge: undefined, narration: '', caption: '', ...o});
 const clipOf = (id: string) => ({src: `uploads/${id}_new.mp4`, durationSec: 10});
 
 describe('hookCutIndices', () => {
@@ -157,5 +173,96 @@ describe('checkHooks', () => {
   it('ちゃんと 3 カットぶん違えば指摘なし', () => {
     const r = checkHooks(hooks([v({id: 'A', telops: ['あ', 'い', 'う']}), v({id: 'B', telops: ['か', 'き', 'く']})]));
     expect(r).toEqual([]);
+  });
+
+  it('キャプションが同じ文面になるパターンは W（共通 caption.txt を 2 つが使うときも）', () => {
+    const shared = checkHooks(hooks([v({id: 'A', telops: ['あ', 'い', 'う']}), v({id: 'B', telops: ['か', 'き', 'く']})]), {caption: '共通の本文'});
+    expect(shared.find((i) => i.code === 'HOOK_CAPTION_SHARED')?.message).toContain('A と B');
+    const distinct = checkHooks(hooks([v({id: 'A', telops: ['あ', 'い', 'う']}), v({id: 'B', telops: ['か', 'き', 'く'], caption: 'B だけの本文'})]), {caption: '共通の本文'});
+    expect(distinct.some((i) => i.code === 'HOOK_CAPTION_SHARED')).toBe(false);
+    // caption を渡さなければ（画面の読み込み前など）この点検はしない
+    expect(checkHooks(hooks([v({id: 'A', telops: ['あ', 'い', 'う']}), v({id: 'B', telops: ['か', 'き', 'く']})])).some((i) => i.code === 'HOOK_CAPTION_SHARED')).toBe(false);
+  });
+});
+
+describe('trialCaptionOf', () => {
+  it('専用があれば専用、無ければ共通', () => {
+    expect(trialCaptionOf(v({caption: ' 専用 '}), '共通')).toBe('専用');
+    expect(trialCaptionOf(v(), '共通')).toBe('共通');
+    expect(trialCaptionOf(v(), null)).toBe('');
+  });
+});
+
+describe('alignedHookCutCount', () => {
+  /** 冒頭 1〜2 が「あ」、3〜4 が「い」、5 が「う」。各 1.2 秒 */
+  const grouped = (): ReelData =>
+    ({
+      fps: 30,
+      cuts: ['あ', 'あ', 'い', 'い', 'う', 'え'].map((t, i) => ({id: `c${i}`, src: `uploads/${i}.mp4`, inSec: 0, outSec: 1.2, main: {text: t}})),
+    }) as unknown as ReelData;
+
+  it('テロップグループの途中で切れる範囲を、切れ目まで伸ばす（3 → 4）', () => {
+    expect(alignedHookCutCount(grouped(), 3)).toBe(4);
+    expect(hookSpanSec(grouped(), 4)).toBeCloseTo(4.8);
+  });
+
+  it('切れ目に合っていればそのまま', () => {
+    expect(alignedHookCutCount(grouped(), 2)).toBe(2);
+    expect(alignedHookCutCount(grouped(), 4)).toBe(4);
+  });
+
+  it('上限（カット数・秒）を超えては伸ばさない', () => {
+    const long = grouped();
+    long.cuts = long.cuts.map((c) => ({...c, main: {text: 'あ'}, outSec: 2}));
+    expect(alignedHookCutCount(long, 3)).toBe(3); // 3 カットで 6 秒 > 上限秒なので伸びない
+    const many = {fps: 30, cuts: Array.from({length: 9}, (_, i) => ({id: `c${i}`, src: `uploads/${i}.mp4`, inSec: 0, outSec: 0.5, main: {text: 'あ'}}))} as unknown as ReelData;
+    expect(alignedHookCutCount(many, 3)).toBe(MAX_HOOK_CUTS);
+  });
+});
+
+describe('hookNarrationIds / applyHookNarration（区間指定）', () => {
+  /** 那由多の実例に近い形：1 本目 0〜2.17、2 本目 2.16〜4.5、3 本目は次のテロップ用で区間の終わり 0.2 秒前に始まる */
+  const nayuta = (): Narration =>
+    ({
+      voice: 'v',
+      segments: [
+        {id: '01_intro', at: 0, text: '大阪のきゅうわりの人がまだ知らない', durSec: 2.171},
+        {id: '02_shock', at: 2.16, text: '実際に行った人はみんな衝撃を受ける', durSec: 2.34},
+        {id: '03_walk', at: 4.66, text: 'じゅうそう駅からちょっと歩いた商店街の中にあるお店で', durSec: 3.1},
+      ],
+    }) as Narration;
+
+  it('ブロックの中点が区間内にあるものだけがフックのナレーション（次のテロップ用の早出しは巻き込まない）', () => {
+    expect(hookNarrationIds(nayuta(), 4.86)).toEqual(['01_intro', '02_shock']);
+    expect(hookNarrationIds(nayuta(), 2.2)).toEqual(['01_intro']);
+  });
+
+  it('durSec が無ければ文字数と話速から見積もる', () => {
+    const n = nayuta();
+    n.segments = n.segments.map((s) => ({...s, durSec: undefined}));
+    expect(hookNarrationIds(n, 4.86, 11)).toEqual(['01_intro', '02_shock']);
+  });
+
+  it('区間のブロックを 1 本にまとめて差し替え、次のブロックはそのまま。nextAt が返る', () => {
+    const {narration: n, wavId, replaced, nextAt} = applyHookNarration(nayuta(), v({id: 'B', narration: '新しいフックの読み'}), {spanEndSec: 4.86});
+    expect(wavId).toBe('01_intro__B');
+    expect(replaced).toEqual(['01_intro', '02_shock']);
+    expect(nextAt).toBeCloseTo(4.66);
+    expect(n.segments.map((s) => s.id)).toEqual(['01_intro__B', '03_walk']);
+    expect(n.segments[0]).toMatchObject({at: 0, text: '新しいフックの読み', needsTts: true});
+    expect(n.segments[1]).toEqual(nayuta().segments[2]);
+  });
+
+  it('区間を渡さなければ 1 本目だけ（旧来どおり）', () => {
+    const {replaced, nextAt} = applyHookNarration(nayuta(), v({id: 'B', narration: '読み'}));
+    expect(replaced).toEqual(['01_intro']);
+    expect(nextAt).toBeCloseTo(2.16);
+  });
+});
+
+describe('TRIAL_POSTING_RULES', () => {
+  it('投稿時刻・自動シェア OFF・24 時間・勝ちだけ展開・二次活用が入っている', () => {
+    const all = TRIAL_POSTING_RULES.join('\n');
+    for (const k of ['18:00', '19:00', '20:00', '自動的にシェア', '24 時間', '全員にシェア', '1.1 倍速']) expect(all).toContain(k);
   });
 });

@@ -18,6 +18,8 @@ import {generateTts} from '../core/tts';
 import {autoPlaceSfx, scanLibrary} from '../core/sfx';
 import {deliver} from '../core/deliver';
 import {runTrial} from '../core/trial';
+import {aiHooks} from '../core/ai-trial';
+import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
@@ -305,6 +307,50 @@ class JobQueue extends EventEmitter {
           warnings: r.warnings,
         };
       }
+      // トライアルリールのフック案（A は今の形・B/C は別の切り口）とパターン別キャプションを hooks.json に書く
+      case 'ai-hooks': {
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const r = await aiHooks(dir, {
+          count: typeof p.count === 'number' ? p.count : undefined,
+          cutCount: typeof p.cutCount === 'number' ? p.cutCount : undefined,
+          fresh: !!p.fresh,
+          force: !!p.force,
+          model: typeof p.model === 'string' ? p.model : undefined,
+          instruction: typeof p.instruction === 'string' ? p.instruction : undefined,
+          onLine,
+          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          signal,
+        });
+        return {
+          variants: r.hooks.variants.map((v) => ({id: v.id, angle: v.angle, label: v.label, telops: v.telops, narration: v.narration, captionChars: [...v.caption].length, why: r.why[v.id]})),
+          cutCount: r.cutCount,
+          spanSec: r.spanSec,
+          issues: r.issues,
+          costUsd: r.costUsd,
+          notes: r.notes,
+        };
+      }
+      // 勝ちパターンの二次活用：締めだけ変えて倍速で書き出し直し、新しいキャプションで納品
+      case 'winner': {
+        const r = await runWinner(dir, {
+          id: typeof p.id === 'string' && p.id ? p.id : undefined,
+          tailTelop: typeof p.tailTelop === 'string' ? p.tailTelop : undefined,
+          tailNarration: typeof p.tailNarration === 'string' ? p.tailNarration : undefined,
+          caption: typeof p.caption === 'string' ? p.caption : undefined,
+          speed: typeof p.speed === 'number' ? p.speed : undefined,
+          draft: !!p.draft,
+          deliver: p.deliver !== false,
+          gl: typeof p.gl === 'string' ? p.gl : undefined,
+          force: !!p.force,
+          allowErrors: !!p.allowErrors,
+          model: typeof p.model === 'string' ? p.model : undefined,
+          instruction: typeof p.instruction === 'string' ? p.instruction : undefined,
+          onLine,
+          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          signal,
+        });
+        return {key: r.key, tailTelop: r.tailTelop, tailNarration: r.tailNarration, speed: r.speed, outRel: r.outRel, deliveredAs: r.deliveredAs, captionAs: r.captionAs, durationSec: r.durationSec, mb: Math.round((r.sizeBytes / 1024 / 1024) * 10) / 10, issues: r.issues, costUsd: r.costUsd};
+      }
       // トライアルリール：フックだけ差し替えた複数バージョン（レンダー→音声→mix→納品）
       case 'trial': {
         const r = await runTrial(dir, {
@@ -313,12 +359,13 @@ class JobQueue extends EventEmitter {
           draft: !!p.draft,
           gl: typeof p.gl === 'string' ? p.gl : undefined,
           force: !!p.force,
+          allowErrors: !!p.allowErrors,
           onLine,
           onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
           signal,
         });
         return {
-          items: r.items.map((x) => ({id: x.id, label: x.label, changes: x.changes, outRel: x.outRel, deliveredAs: x.deliveredAs, mb: Math.round((x.sizeBytes / 1024 / 1024) * 10) / 10, durationSec: x.durationSec})),
+          items: r.items.map((x) => ({id: x.id, label: x.label, changes: x.changes, outRel: x.outRel, deliveredAs: x.deliveredAs, captionAs: x.captionAs, mb: Math.round((x.sizeBytes / 1024 / 1024) * 10) / 10, durationSec: x.durationSec})),
           warnings: r.warnings,
           outputsDir: r.outputsDir,
         };

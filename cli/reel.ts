@@ -14,6 +14,7 @@
 //   reel ai script --project P [--model m] [--force] [--dry]                     （script.md の台本から cuts+narration を組み立て）
 //   reel ai facts --project P [--force] [--model m]                              （店舗情報をWebで裏取り→brief.facts。Instagram優先）
 //   reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]      （裏取り→caption.txt）
+//   reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]  （トライアル用のフック案＋パターン別キャプション→hooks.json）
 //   reel sfx scan | list                                                        （効果音ライブラリの棚卸し）
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
 //   reel sfx auto --project P [--max n] [--gap s] [--exclude role,role] [--dry]   （cuts.json から自動配置）
@@ -25,7 +26,8 @@
 //   reel sync --project P [--check]
 //   reel draft|render --project P [--out f] [--gl x] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries n] [--force] [--force-errors] [--no-sync] [--strict-proxy] [--props f]
 //   reel still --project P (--cut N | --frame F) [--out f]
-//   reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--gl x] [--force]     （フックだけ差し替えた複数版）
+//   reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--gl x] [--force] [--force-errors]     （フックだけ差し替えた複数版。キャプションもパターンごとに納品）
+//   reel winner --project P [--id A] [--tail "締めテロップ"] [--tail-narration "締めナレ"] [--caption-file f] [--speed 1.1] [--draft] [--no-deliver] [--force] [--force-errors] [--model m]  （勝ちパターンの二次活用：締めだけ変えて倍速で出し直す）
 //   reel build --project P [--plan] [--steps caption,narration,tts,render,mix,deliver] [--model m] [--force-errors] [--label 修正版]  （仕上げ：残っている工程を順に走らせる）
 //   reel deliver --project P [--label 修正版] [--allow-silent] [--overwrite]      （完成品だけ outputs/ へ）
 //   reel install --project P
@@ -49,6 +51,9 @@ import {deliver, narrationReady} from '../core/deliver';
 import {buildPlan, runBuild} from '../core/build';
 import {buildSelectionIssues, defaultBuildSelection, orderBuildSteps, type BuildStepId} from '../shared/build';
 import {runTrial, readHooks} from '../core/trial';
+import {aiHooks} from '../core/ai-trial';
+import {runWinner} from '../core/winner';
+import {TRIAL_POSTING_RULES} from '../shared/hooks';
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxRole} from '../shared/sfx';
 import {cloneProject, createProject, engineDiff, listProjects, npmInstall, readBrief, readCuts, resolveProjectDir, syncEngine, writeCuts} from '../core/project';
 import {applyAliases, pendingAliases} from '../core/alias';
@@ -319,7 +324,31 @@ async function main() {
         return;
       }
 
-      err('reel ai tag | reel ai order | reel ai telop | reel ai script | reel ai narration | reel ai facts | reel ai caption | reel ai edit "<直したいこと>"');
+      if (sub === 'hooks') {
+        const r = await aiHooks(dir, {
+          count: num(flags, 'count'),
+          cutCount: num(flags, 'cut-count'),
+          fresh: bool(flags, 'fresh'),
+          force: bool(flags, 'force'),
+          model,
+          instruction: pos.slice(1).join(' ') || str(flags, 'prompt'),
+          onLine: (l) => err(l),
+        });
+        out(`hooks.json: ${r.hooks.variants.length} パターン／差し替え範囲 冒頭 ${r.cutCount} カット（${r.spanSec.toFixed(2)} 秒）／$${r.costUsd.toFixed(3)}`);
+        for (const v of r.hooks.variants) {
+          out(`\n## パターン ${v.id}${v.angle ? `［${v.angle}］` : ''}${v.label ? ` — ${v.label}` : ''}`);
+          out(`テロップ: ${v.telops.map((t) => (t ? `「${t}」` : '（今のまま）')).join(' → ')}`);
+          out(`ナレーション: ${v.narration ? `「${v.narration}」` : '（今のまま）'}`);
+          if (r.why[v.id]) out(`狙い: ${r.why[v.id]}`);
+          out(v.caption ? `キャプション:\n${v.caption}` : 'キャプション: 共通の caption.txt');
+        }
+        out('');
+        for (const i of r.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
+        out(`次: reel trial --project ${path.basename(dir)}（レンダー→音声→mix→納品。キャプションもパターンごとに出ます）`);
+        return;
+      }
+
+      err('reel ai tag | reel ai order | reel ai telop | reel ai script | reel ai narration | reel ai facts | reel ai caption | reel ai hooks | reel ai edit "<直したいこと>"');
       process.exitCode = 1;
       return;
     }
@@ -458,15 +487,65 @@ async function main() {
       const dir = projectFromFlags(flags);
       if (!readHooks(dir)) throw new Error('hooks.json が無い（フック候補を書いてください。GUI の「トライアル（フック差し替え）」でも作れます）');
       const idsArg = str(flags, 'ids');
-      const r = await runTrial(dir, {
-        ids: idsArg ? idsArg.split(',').map((x) => x.trim()).filter(Boolean) : undefined,
-        deliver: bool(flags, 'deliver', true),
-        draft: bool(flags, 'draft'),
-        gl: str(flags, 'gl'),
-        force: bool(flags, 'force'),
-        onLine: (l) => err(l),
-      });
-      for (const it of r.items) out(`${it.id}	${it.durationSec.toFixed(2)}s	${it.deliveredAs ?? it.outRel}`);
+      try {
+        const r = await runTrial(dir, {
+          ids: idsArg ? idsArg.split(',').map((x) => x.trim()).filter(Boolean) : undefined,
+          deliver: bool(flags, 'deliver', true),
+          draft: bool(flags, 'draft'),
+          gl: str(flags, 'gl'),
+          force: bool(flags, 'force'),
+          allowErrors: bool(flags, 'force-errors'),
+          onLine: (l) => err(l),
+        });
+        for (const it of r.items) out(`${it.id}	${it.durationSec.toFixed(2)}s	${it.deliveredAs ?? it.outRel}${it.captionAs ? `	${it.captionAs}` : ''}`);
+        if (bool(flags, 'deliver', true) && !bool(flags, 'draft')) {
+          out('\n投稿の運用ルール:');
+          for (const rule of TRIAL_POSTING_RULES) out(`  ・${rule}`);
+        }
+      } catch (e) {
+        if (e instanceof PreflightError) {
+          err(e.message);
+          err('（並びやテロップを自分で決めていて、検証の意見で止められたくない場合は --force-errors）');
+          process.exitCode = 2;
+          return;
+        }
+        throw e;
+      }
+      return;
+    }
+
+    // 勝ちパターンの二次活用：締めだけ変えて倍速で出し直し、新しいキャプションで納品
+    case 'winner': {
+      const dir = projectFromFlags(flags);
+      const captionFile = str(flags, 'caption-file');
+      try {
+        const r = await runWinner(dir, {
+          id: str(flags, 'id'),
+          tailTelop: str(flags, 'tail'),
+          tailNarration: str(flags, 'tail-narration'),
+          caption: captionFile ? fs.readFileSync(path.resolve(captionFile), 'utf8') : undefined,
+          speed: num(flags, 'speed'),
+          draft: bool(flags, 'draft'),
+          deliver: bool(flags, 'deliver', true),
+          gl: str(flags, 'gl'),
+          force: bool(flags, 'force'),
+          allowErrors: bool(flags, 'force-errors'),
+          model: str(flags, 'model'),
+          instruction: pos.join(' ') || undefined,
+          onLine: (l) => err(l),
+        });
+        out(`${r.key}	${r.speed}x	${r.durationSec.toFixed(2)}s	${r.deliveredAs ?? r.outRel}${r.captionAs ? `	${r.captionAs}` : ''}`);
+        out(`締め: 「${r.tailTelop}」${r.tailNarration ? ` / ナレ「${r.tailNarration}」` : ''}`);
+        if (r.caption) out(`\nキャプション:\n${r.caption}`);
+      } catch (e) {
+        if (e instanceof PreflightError) {
+          err(e.message);
+          err('（並びやテロップを自分で決めていて、検証の意見で止められたくない場合は --force-errors）');
+          process.exitCode = 2;
+          return;
+        }
+        throw e;
+      }
       return;
     }
 

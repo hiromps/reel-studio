@@ -93,7 +93,7 @@ const HEARTBEAT_LOG_SEC = 30;
  * 画を 1 枚も見ずに考えている間も、heartbeat で経過秒・ツール回数・出力文字数が更新される
  * （以前は Read の回数しか見ていなかったので、ナレーション原稿などで 0/N のまま止まって見えた）。
  */
-const agentProgress = (o: {watch?: string[]; onProgress?: AiProgress; log?: (l: string) => void; prefix?: string; labels?: ProgressLabels}) => {
+export const agentProgress = (o: {watch?: string[]; onProgress?: AiProgress; log?: (l: string) => void; prefix?: string; labels?: ProgressLabels}) => {
   const tr = createAgentTracker(o.watch ?? []);
   const p = o.prefix ? `${o.prefix} ` : '';
   let lastHbLog = 0;
@@ -904,7 +904,7 @@ type CaptionResponse = {caption: string; missing?: string[]; notes?: string};
 export type AiCaptionResult = {caption: string; file: string; issues: CaptionIssue[]; missing: string[]; costUsd: number; notes?: string; research?: AiFactsResult};
 
 /** 同じ人格で過去に書いたキャプションを、書き方の手本として渡す（新しい順に n 件） */
-const captionExamples = (personaId: string, exclude: string, n = 2): string[] => {
+export const captionExamples = (personaId: string, exclude: string, n = 2): string[] => {
   const root = studioConfig.workDir;
   if (!fs.existsSync(root)) return [];
   const found: {file: string; mtime: number}[] = [];
