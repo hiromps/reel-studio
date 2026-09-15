@@ -1,6 +1,6 @@
 {
   "id": "F1",
-  "name": "定番レビュー型（まひろ基本形）",
+  "name": "定番レビュー型",
   "maxSec": 35,
   "targetSec": [27, 32],
   "nominalSec": 30,

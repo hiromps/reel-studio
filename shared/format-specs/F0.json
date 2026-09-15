@@ -1,6 +1,6 @@
 {
   "id": "F0",
-  "name": "oc.eat一点突破型（異常値フォーマット）",
+  "name": "一点突破型（異常値フォーマット）",
   "maxSec": 27,
   "targetSec": [20, 27],
   "nominalSec": 27,

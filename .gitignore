@@ -1,3 +1,19 @@
 node_modules/
 dist/
 *.log
+
+# 案件・素材・納品・効果音の既定の置き場（設定で別の場所にもできる）。中身は配布物ではない
+/data/
+/work/
+/uploads/
+/outputs/
+# 効果音ラボ等の音源は再配布禁止
+/sfx/
+
+# 秘密
+.env
+.env.*
+.claude/settings.local.json
+
+# 一時ファイル
+.playwright-mcp/

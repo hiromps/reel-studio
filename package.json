@@ -2,7 +2,19 @@
   "name": "reel-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Remotion グルメリール制作の GUI／CLI（素材カタログ化・構成プラン・検証・レンダー）",
+  "description": "Reel Studio: GUI/CLI that turns raw food-shop footage into 9:16 short reels with telops, AI narration, and captions (Remotion + Claude Code + Fish Audio)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hiromps/reel-studio.git"
+  },
+  "homepage": "https://github.com/hiromps/reel-studio#readme",
+  "bugs": {
+    "url": "https://github.com/hiromps/reel-studio/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "bin": {
     "reel": "bin/reel"
@@ -16,7 +28,8 @@
     "dev": "vite",
     "build": "vite build",
     "start": "node scripts/launch.mjs",
-    "start:dev": "node scripts/launch.mjs --dev"
+    "start:dev": "node scripts/launch.mjs --dev",
+    "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@remotion/player": "4.0.522",
