@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Reel Studio CLI。Claude（スキル）と人が同じ関数を叩く入口。
+//   reel settings show [--json] | path | import-legacy [--from <dir>]   （設定の確認・旧来の置き場から Fish Audio の鍵を取り込む）
+//   reel personas list [--json]                                          （人格の一覧。編集は GUI の Settings）
 //   reel projects
-//   reel new <slug> --persona hiro|nagi|sayuri|bonjiri [--shop 店名]
+//   reel new <slug> --persona <人格id> [--shop 店名]
 //   reel new <slug> --from <既存slug> [--shop 別ブランド名] [--persona p] [--no-facts]   （同じ素材で別バージョン。素材はリンク共有）
 //   reel catalog <materialsDir> --project <slug|dir> [--no-proxy] [--no-thumbs] [--scenes] [--speech] [--force]
 //   reel tag --project P --export [out.json] | --import <file>
@@ -34,6 +36,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
+import {loadSettings, maskSecret, mergeSettings, personasFile, saveSettings, settingsFile, settingsView} from '../core/settings';
+import {readLegacyFishEnv} from '../core/legacy-env';
+import {claudeBinInfo} from '../core/agent';
+import {loadPersonasFromDisk} from '../core/personas-store';
+import {PATH_KEYS, type SettingsPatch} from '../shared/schema/settings';
+import {listPersonas} from '../shared/personas';
 import {planCuts, PlanError} from '../shared/plan';
 import {formatValidation} from '../shared/validate';
 import {defaultPersonaId, getPersona} from '../shared/personas';
@@ -108,12 +116,54 @@ const help = () => {
 
 async function main() {
   const {cmd, pos, flags} = parseArgs(process.argv.slice(2));
+  // 人格は ~/.reel-studio/personas.json が正（無ければ同梱のサンプルで seed）
+  loadPersonasFromDisk();
   switch (cmd) {
     case 'help':
     case '--help':
     case '-h':
       help();
       return;
+
+    case 'settings': {
+      const sub = pos[0] ?? 'show';
+      if (sub === 'path') return out(settingsFile());
+      if (sub === 'import-legacy') {
+        // 旧来の置き場（Claude Code の settings.local.json / .mcp.json）から鍵を移す。値は表示しない
+        const from = str(flags, 'from');
+        const legacy = readLegacyFishEnv(from);
+        if (!legacy.apiKey && !legacy.modelId)
+          throw new Error(`旧来の置き場に FISH_API_KEY が見つかりません（探した: ${from ? `${from}/.claude/settings.local.json, ${from}/.mcp.json, ` : ''}~/.claude/settings.json）`);
+        const patch: SettingsPatch = {tts: {...(legacy.apiKey ? {apiKey: legacy.apiKey} : {}), ...(legacy.modelId ? {modelId: legacy.modelId} : {})}};
+        saveSettings(mergeSettings(loadSettings(), patch));
+        if (legacy.apiKey) out(`FISH_API_KEY: 取り込みました（${maskSecret(legacy.apiKey)}）← ${legacy.sources.apiKey}`);
+        if (legacy.modelId) out(`FISH_MODEL_ID: ${legacy.modelId} ← ${legacy.sources.modelId}`);
+        out(`→ ${settingsFile()}`);
+        return;
+      }
+      if (sub !== 'show') throw new Error('reel settings show [--json] | path | import-legacy [--from <dir>]');
+      const info = claudeBinInfo();
+      const v = settingsView({bin: info.bin, available: claudeAvailable(), source: info.source, version: null}, studioConfig.templateDir);
+      if (bool(flags, 'json')) return out(JSON.stringify(v, null, 2));
+      out(`設定ファイル: ${v.file}${v.exists ? '' : '（無い＝既定値で動作）'}`);
+      if (v.problem) out(`! ${v.problem}`);
+      for (const k of PATH_KEYS) out(`${k.padEnd(12)} ${v.paths[k].value}  (${v.paths[k].source}${v.paths[k].exists ? '' : '・まだ無い'})`);
+      const key = v.settings.tts.apiKey;
+      out(`Fish Audio   ${key.present ? `鍵あり ${key.masked}（${key.source === 'env' ? '環境変数' : '設定ファイル'}）` : '鍵なし'} / model ${v.settings.tts.modelId} / 追加ボイス ${v.settings.tts.voices.length} 件`);
+      out(`claude       ${v.claude.bin}（${v.claude.source}${v.claude.available ? '' : '・見つからない'}）/ 既定モデル ${v.settings.agent.model}`);
+      out(`人格         ${listPersonas().map((p) => p.id).join(', ')} ← ${personasFile()}`);
+      return;
+    }
+
+    case 'personas': {
+      const list = listPersonas();
+      if (bool(flags, 'json')) return out(JSON.stringify(list, null, 2));
+      out('| id | 表示名 | 型 | ボイス | speed | skillDir |');
+      out('|---|---|---|---|---|---|');
+      for (const p of list) out(`| ${p.id} | ${p.label} | ${p.defaultFormat} | ${p.narration.voiceId ? p.narration.voiceTitle || p.narration.voiceId : '（未設定）'} | ${p.narration.speed} | ${p.skillDir ?? ''} |`);
+      out(`（${personasFile()}。編集は GUI の Settings「人格」）`);
+      return;
+    }
 
     case 'projects': {
       const list = listProjects();
@@ -126,7 +176,7 @@ async function main() {
 
     case 'new': {
       const slug = pos[0];
-      if (!slug) throw new Error('reel new <slug> --persona <hiro|nagi|sayuri|bonjiri> | reel new <slug> --from <既存slug>');
+      if (!slug) throw new Error('reel new <slug> --persona <人格id> | reel new <slug> --from <既存slug>');
       const from = str(flags, 'from');
       let dir: string;
       let created = true;
@@ -213,7 +263,7 @@ async function main() {
     case 'ai': {
       const sub = pos[0];
       const dir = projectFromFlags(flags);
-      if (!claudeAvailable()) err(`※ claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に無い場合は REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+      if (!claudeAvailable()) err(`※ claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に無い場合は Settings の「AI」か環境変数 REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
       const model = str(flags, 'model');
 
       if (sub === 'tag') {
