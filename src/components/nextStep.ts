@@ -53,7 +53,7 @@ export const nextStepOf = ({active, catalog, brief, cuts, narration, caption, di
     };
   if (dirty.catalog) return {id: 'save-catalog', tab: 'materials', text: 'catalog.json に未保存の変更があります', cta: '保存しに行く'};
 
-  if (!brief) return {id: 'brief', tab: 'brief', text: '人格（hiro / 凪 / さゆり / ぼんじり）を選んで brief（何を伝えるか）を作ります', cta: 'Brief へ'};
+  if (!brief) return {id: 'brief', tab: 'brief', text: '人格（誰の声・文体で作るか）を選んで brief（何を伝えるか）を作ります', cta: 'Brief へ'};
 
   if (!cuts || cuts.cuts.length === 0)
     return {id: 'plan', tab: 'brief', text: 'カット構成を作ります。台本があれば Brief の「台本から組み立てる」、無ければ「プラン生成」。自分で並べるなら Timeline の素材ビンから', cta: 'Brief へ'};

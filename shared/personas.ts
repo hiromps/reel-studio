@@ -1,121 +1,121 @@
-// 人格（persona）ごとの既定値。単一ソース。スキル文書の数値と食い違ったらこちらを正とする。
-import type {FormatId, PersonaId} from './schema/brief';
-import type {ThemeName} from './schema/cuts';
+// 人格（persona）のレジストリ。ブラウザでも Node でも動く（fs を使わない）。
+//
+// - サーバー / CLI は起動時に core/personas-store.ts が ~/.reel-studio/personas.json を読んで setPersonas() する
+// - ブラウザは GET /api/personas の結果を store が setPersonas() する
+// - BUILTIN_PERSONAS は初回起動時の seed（汎用サンプル）。ユーザーは Settings「人格」で自由に編集・削除できる
+import {PersonaSchema, type Persona} from './schema/persona';
 
-export type Persona = {
-  id: PersonaId;
-  label: string;
-  defaultFormat: FormatId;
-  theme: ThemeName;
-  /** 締めテロップの既定文（先頭が draft に使われる） */
-  cta: string[];
-  /** 締めテロップとして認める語族（validate の CTA_TEXT 判定） */
-  ctaPatterns: string[];
-  narration: {
-    voiceId: string;
-    voiceTitle: string;
-    speed: number;
-    /** 文字数設計に使う値（ブロック秒数 × charsPerSec が上限） */
-    charsPerSec: number;
-    /** 参考：実測話速 */
-    charsPerSecMeasured: number;
-  };
-  tone: string;
-  skillDir: string;
-  /** キャプション（SKILL.md Step 4）の、コード側で機械的に点検できる部分だけ */
-  caption: {
-    /** ハッシュタグの本数（ちょうどこの数） */
-    hashtags: number;
-    /** 「他の投稿はコチラ」で誘導する自分のアカウント。無ければその行を書かない */
-    repostAccount?: string;
-    /** 長さの目安（文字）。0 = 上限なし */
-    maxChars: number;
-  };
-  /** F7 の店名リビールグループを空テロップにしてよい（凪：店名を文字で書かない） */
-  allowEmptyReveal: boolean;
-};
+export {PersonaSchema, PersonasFileSchema, HookStyleSchema} from './schema/persona';
+export type {Persona, HookStyle, PersonasFile} from './schema/persona';
 
-export const PERSONAS: Record<PersonaId, Persona> = {
-  hiro: {
-    id: 'hiro',
-    label: 'hiro（oc.eat）',
+/** キャプションの型（汎用）。人格ごとに Settings で書き換えられる */
+export const GENERIC_CAPTION_GUIDE = `# キャプションの型
+
+動画に出ているテロップ・ナレーション・裏取り済みの事実だけで書く。推測で料理名・価格・住所・営業時間を作らない。
+
+1. **フック 2 行**: 動画の冒頭フックと同じ切り口の一言（末尾に絵文字 1 個まで）。2 行目に「まさかの〜を見つけた」のような発見のリアクション
+2. **ファクト 3〜4 行**: 新しさ（オープン時期）・営業時間の特徴・内装や仕入れのこだわり・設備を 1 情報 1 行で。驚き・情景の行だけに絵文字を添える（全行には付けない）
+3. **料理の感想 1〜2 行**: 見た目と味の両方を肯定する一言。ドリンク等のバリエーションがあれば軽く触れる
+4. **「頂いたもの🍽️」見出し＋「・」箇条書き**: 5 品まで、価格つき。各品の行には絵文字を付けない。複数種をまとめるときは「／」でつなぎ「各◯円」。**素材映像で実食・手持ちが確認できる品だけ**を書く（メニュー表やのぼりに載っているだけの品を食べたことにしない）
+5. 区切り線「———————————————」
+6. **店名＋pr 表記＋IG ハンドル**（PR 案件のみ。「『店名』pr」の 1 行、次の行に「@店の IG ハンドル」。PR でなければこのブロックごと省略する）
+7. **実用情報**: 📍住所　🚶アクセス　🕘営業時間（定休日）、必要なら※で特記事項
+8. 区切り線「———————————————」
+9. **ハッシュタグ**（本数は人格の設定どおり。hashtag-bank.md の枠で厳選する）
+
+- 来店を促す一文（「ぜひ行ってみて」等）は必須ではない。入れるなら 3 の直後か実用情報の後に 1 行
+- 保存・いいね・シェア・コメント・フォローを促す文言は書かない
+- 文末に句点「。」を付けない
+- 全体で 12〜18 行（空行込み）。注文点数が多い店でも「頂いたもの」は 5 品に絞り、残りは点数と合計金額の一言に要約する（全品を書くと長文化して離脱される）
+`;
+
+/** ハッシュタグの選び方（汎用） */
+export const GENERIC_HASHTAG_BANK = `# ハッシュタグの選び方
+
+本数は人格の設定どおり。少数精鋭で、投稿ごとに一番刺さるものだけを選ぶ。
+
+1. **エリア（1 個）**: 市・区レベルを基本にする（例 #東大阪グルメ）。駅・街レベルの方が刺さるならそちらを優先してよい（例 #布施グルメ）
+2. **ジャンル・企画の核（1 個）**: 料理ジャンルか、その回の企画の核を 1 語で（例 #食べ放題 #町中華 #デカ盛り #新店グルメ）
+3. **決め手（1 個）**: 店名タグ、またはその投稿で一番保存に効きそうな語（例 #しゃぶしゃぶ）
+4. 4 個目以降を使う人格は、料理名 → シーン（#デート #女子会 等）→ 近隣エリアの順に足す
+
+- コミュニティ系（#グルメ好きな人と繋がりたい 等）は使わない
+- PR 案件は #PR ではなく、本文の店名直後に小文字「pr」で表記する
+- 関係ないビッグタグ（エリア違い等）は入れない
+- 設定の本数を超えて付けない
+`;
+
+const builtin = (p: Omit<Persona, 'captionGuide' | 'hashtagBank'> & Partial<Pick<Persona, 'captionGuide' | 'hashtagBank'>>): Persona =>
+  PersonaSchema.parse({captionGuide: GENERIC_CAPTION_GUIDE, hashtagBank: GENERIC_HASHTAG_BANK, ...p});
+
+/**
+ * 同梱のサンプル人格。ボイスは未設定（Settings「人格」で Fish Audio のボイスを入れると音声生成が動く）。
+ * ここの値を変えても既に seed 済みの personas.json には反映されない（そちらが正）。
+ */
+export const BUILTIN_PERSONAS: Persona[] = [
+  builtin({
+    id: 'standard',
+    label: 'スタンダード（落ち着いた男性）',
     defaultFormat: 'F0',
     theme: 'pop',
     cta: ['ぜひ行ってみて'],
     ctaPatterns: ['行ってみて', '詳細はキャプションへ'],
-    narration: {
-      voiceId: '29796a4f8d0948de9e7f0afcf6dc42ca',
-      voiceTitle: 'hiro音声',
-      speed: 1.6,
-      charsPerSec: 11.0,
-      charsPerSecMeasured: 11.3,
-    },
-    tone: '関西弁控えめの男性口調。「〜わ」「〜んや。」言い切り禁止',
-    skillDir: '.claude/skills/hiro-daihon',
+    narration: {voiceId: '', voiceTitle: '', speed: 1.6, charsPerSec: 11.0, charsPerSecMeasured: 11.3},
+    tone: '関西弁控えめの落ち着いた男性口調。言い切りは柔らかく',
+    hookStyle: 'areaDigit',
+    narrationRules: ['語尾に「〜わ」を使わない。「〜んや」「〜のや」で言い切らない（「〜んやって」「〜んやった」と後ろへ接続するのは可）'],
     caption: {hashtags: 3, maxChars: 600},
     allowEmptyReveal: false,
-  },
-  nagi: {
-    id: 'nagi',
-    label: '凪（発見型）',
+  }),
+  builtin({
+    id: 'discovery',
+    label: '発見型（正体隠し・淡々）',
     defaultFormat: 'F7',
     theme: 'human',
     cta: ['これは布教したい'],
     ctaPatterns: ['布教', '教えたくない', '通いたい', '行くしかない', '行ってみて'],
-    narration: {
-      voiceId: '45c5d3723c9c42f598e4776dcfd5f02d',
-      voiceTitle: '落ち着いた男性',
-      speed: 1.6,
-      charsPerSec: 7.5,
-      charsPerSecMeasured: 8.4,
-    },
-    tone: '標準語・体言止めの短文。オタク語彙は1台本2〜3語まで',
-    skillDir: '.claude/skills/nagi-daihon',
+    narration: {voiceId: '', voiceTitle: '', speed: 1.6, charsPerSec: 7.5, charsPerSecMeasured: 8.4},
+    tone: '標準語・体言止めの短文。オタク語彙（沼・尊い等）は 1 台本 2〜3 語まで',
+    hookStyle: 'areaDigit',
+    narrationRules: [],
     caption: {hashtags: 3, maxChars: 600},
     allowEmptyReveal: true,
-  },
-  sayuri: {
-    id: 'sayuri',
-    label: 'さゆり',
+  }),
+  builtin({
+    id: 'casual',
+    label: 'カジュアル（親しみやすい女性）',
     defaultFormat: 'F0',
     theme: 'pop',
     cta: ['行ってみてな'],
     ctaPatterns: ['行ってみて', '詳細はキャプションへ'],
-    narration: {
-      // 「さいちゃん」（8656b0cad5cc429bb01c7f01fee0160c）は 2026-09-12 に Fish Audio から消えた（API が 404）。
-      // ユーザー判断で **sayuri は当面使わない**ので空のままにしてある。
-      // 空だと音声生成が「ボイスが未設定です」で止まる＝黙って別の声で作ってしまう事故が起きない。
-      // 再開するときは新しい reference_id をここに入れる（話速の実測もやり直すこと）
-      voiceId: '',
-      voiceTitle: '（未設定・当面使わない）',
-      speed: 1.5,
-      charsPerSec: 9.0,
-      charsPerSecMeasured: 9.0,
-    },
-    tone: '砕けた関西弁・女性。テロップの「〜わ」はOK、ナレーションでは使わない',
-    skillDir: '.claude/skills/sayuri-daihon',
-    caption: {hashtags: 5, repostAccount: 'gurupo_chan_', maxChars: 0},
+    narration: {voiceId: '', voiceTitle: '', speed: 1.5, charsPerSec: 9.0, charsPerSecMeasured: 9.0},
+    tone: '砕けた関西弁・女性。テロップの「〜わ」は OK、ナレーションでは使わない',
+    hookStyle: 'free',
+    narrationRules: ['語尾に「〜わ」を使わない'],
+    caption: {hashtags: 5, maxChars: 0},
     allowEmptyReveal: false,
-  },
-  bonjiri: {
-    id: 'bonjiri',
-    label: 'ぼんじり（bonjiri_gourmet）',
-    defaultFormat: 'F0',
-    theme: 'pop',
-    cta: ['これは布教したい'],
-    ctaPatterns: ['布教', '行ってみて'],
-    narration: {
-      voiceId: 'a0b4c6375b4c4ebc85f807d01efd0075',
-      voiceTitle: 'んーちゃん',
-      speed: 1.6,
-      charsPerSec: 8.2,
-      charsPerSecMeasured: 8.2,
-    },
-    tone: 'コミカル／オタク寄り。「〜わ」「〜んや。」言い切りは使わない',
-    skillDir: '.claude/skills/bonjiri-daihon',
-    caption: {hashtags: 3, maxChars: 600},
-    allowEmptyReveal: false,
-  },
+  }),
+];
+
+// ───────────────────────── レジストリ ─────────────────────────
+
+let registry = new Map<string, Persona>(BUILTIN_PERSONAS.map((p) => [p.id, p]));
+
+/** 一覧を丸ごと差し替える（サーバー起動時・保存後・ブラウザの取得後） */
+export const setPersonas = (list: Persona[]): void => {
+  registry = new Map(list.map((p) => [p.id, PersonaSchema.parse(p)]));
 };
 
-export const getPersona = (id: PersonaId): Persona => PERSONAS[id];
+export const listPersonas = (): Persona[] => [...registry.values()];
+
+export const findPersona = (id: string): Persona | undefined => registry.get(id);
+
+/** 無ければ例外（どこで直すかを文に入れる） */
+export const getPersona = (id: string): Persona => {
+  const p = registry.get(id);
+  if (!p) throw new Error(`人格「${id}」が登録されていません。Settings の「人格」で追加するか、brief.json の persona を直してください（登録済み: ${[...registry.keys()].join(', ') || 'なし'}）`);
+  return p;
+};
+
+/** 新規案件の既定（一覧の先頭） */
+export const defaultPersonaId = (): string => listPersonas()[0]?.id ?? 'standard';

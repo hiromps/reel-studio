@@ -6,7 +6,7 @@ import {BriefSchema, type Brief, type PersonaId} from '../shared/schema/brief';
 import {ReelDataSchema, type ReelData} from '../shared/schema/cuts';
 import {NarrationSchema, type Narration} from '../shared/schema/narration';
 import {CatalogSchema} from '../shared/schema/catalog';
-import {PERSONAS} from '../shared/personas';
+import {findPersona, getPersona} from '../shared/personas';
 import {resolveClip} from '../shared/validate';
 import {fileStamp} from '../shared/time';
 import {readJsonFile, writeJsonAtomic, backupFile} from './json-io';
@@ -118,7 +118,7 @@ export const projectInfo = (dir: string): ProjectInfo => {
     try {
       const b = readJsonFile(path.join(dir, 'brief.json'), BriefSchema);
       persona = b.persona;
-      format = b.format ?? PERSONAS[b.persona].defaultFormat;
+      format = b.format ?? findPersona(b.persona)?.defaultFormat;
     } catch {
       /* 壊れた brief は無視 */
     }
@@ -164,7 +164,7 @@ export const briefSkeleton = (persona: PersonaId, shopName = ''): Brief =>
     persona,
     shop: {name: shopName, area: '', genre: '', pr: false},
     materialMode: 'raw',
-    format: PERSONAS[persona].defaultFormat,
+    format: getPersona(persona).defaultFormat,
     core: '',
     savePriorities: ['access', 'hours', 'budget'],
     order: {mode: 'auto'},

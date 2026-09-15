@@ -9,6 +9,8 @@ import {engineDiff, listProjects} from '../core/project';
 import {exec} from '../core/exec';
 import {pickFolder} from '../core/pick-folder';
 import {ttsAvailable} from '../core/tts';
+import {claudeAvailable} from '../core/agent';
+import {settingsDir, settingsProblem} from '../core/settings';
 import {JOB_TYPES} from './jobs';
 import {projectsRouter} from './routes/projects';
 import {filesRouter} from './routes/files';
@@ -82,10 +84,14 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/config', (_req, res) => {
   res.json({
-    repoRoot: studioConfig.repoRoot,
+    dataRoot: studioConfig.dataRoot,
     workDir: studioConfig.workDir,
     uploadsRoot: studioConfig.uploadsRoot,
+    outputsDir: studioConfig.outputsDir,
+    sfxDir: studioConfig.sfxDir,
     templateDir: studioConfig.templateDir,
+    settingsDir: settingsDir(),
+    settingsProblem: settingsProblem(),
     port: studioConfig.port,
     // 画面（dist）はリクエストのたびに読み直されるのに対し、この一覧は起動時に固まる。
     // 新しいボタンが出ているのにジョブが弾かれる＝サーバーが古いプロセス、を GUI 側で検知させる
@@ -94,6 +100,8 @@ app.get('/api/config', (_req, res) => {
     stale: sourceMtimeMs() > startedAtMs,
     // 音声生成（Fish Audio）が使えるか。鍵そのものは返さない
     tts: ttsAvailable(),
+    // 裏で走らせる claude が見つかっているか
+    claude: claudeAvailable(),
     startedAt: new Date(startedAtMs).toISOString(),
     uploadsFolders: fs.existsSync(studioConfig.uploadsRoot) ? fs.readdirSync(studioConfig.uploadsRoot).filter((d) => fs.statSync(path.join(studioConfig.uploadsRoot, d)).isDirectory()) : [],
   });

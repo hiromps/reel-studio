@@ -3,7 +3,7 @@ import path from 'node:path';
 import {planCuts, PlanError, applyAliasNames} from '@shared/plan';
 import {validateCuts, formatValidation} from '@shared/validate';
 import {FORMAT_SPECS} from '@shared/format-specs';
-import {PERSONAS} from '@shared/personas';
+import {TEST_PERSONAS} from './helpers';
 import {cutDurationSec, totalSec, telopGroupsOf} from '@shared/timeline';
 import {isPlaceholder} from '@shared/telop-text';
 import type {Clip} from '@shared/schema';
@@ -33,7 +33,7 @@ const catalogFromProject = (name: string, probeName: string, fps: number) => {
 
 describe('planCuts — 決定論と制約（F7 / F0 / F1）', () => {
   const catalog = makeCatalog('reunion', richClips());
-  const brief = makeBrief({persona: 'hiro', format: 'F7', hook: {clipId: '11', text: '東大阪、9割が知らない'}, savePriorities: ['hours', 'budget', 'menu'], shop: {name: 'Cafe REUNION', area: '東大阪', genre: 'ティールーム', pr: false}});
+  const brief = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '11', text: '東大阪、9割が知らない'}, savePriorities: ['hours', 'budget', 'menu'], shop: {name: 'Cafe REUNION', area: '東大阪', genre: 'ティールーム', pr: false}});
 
   it('同じ入力なら同じ出力（決定論）', () => {
     const a = planCuts({catalog, brief, options: opts});
@@ -58,7 +58,7 @@ describe('planCuts — 決定論と制約（F7 / F0 / F1）', () => {
     // プレースホルダを埋めた状態で validate → E ゼロ
     const filled = JSON.parse(JSON.stringify(r.cuts));
     for (const c of filled.cuts) if (c.main && isPlaceholder(c.main.text)) c.main.text = 'テスト文言';
-    const v = validateCuts(filled, {catalog, brief, spec: FORMAT_SPECS.F7, persona: PERSONAS.hiro});
+    const v = validateCuts(filled, {catalog, brief, spec: FORMAT_SPECS.F7, persona: TEST_PERSONAS.standard});
     expect(v.errors, formatValidation(v)).toEqual([]);
     expect(v.summary.revealPct).toBeGreaterThanOrEqual(0.8);
     // 焦らし → リビール → CTA の順
@@ -88,7 +88,7 @@ describe('planCuts — 決定論と制約（F7 / F0 / F1）', () => {
     expect(totalSec(r.cuts)).toBeLessThanOrEqual(27.05);
     const filled = JSON.parse(JSON.stringify(r.cuts));
     for (const c of filled.cuts) if (c.main && isPlaceholder(c.main.text)) c.main.text = 'テスト文言';
-    const v = validateCuts(filled, {catalog, brief: b0, spec: FORMAT_SPECS.F0, persona: PERSONAS.hiro});
+    const v = validateCuts(filled, {catalog, brief: b0, spec: FORMAT_SPECS.F0, persona: TEST_PERSONAS.standard});
     expect(v.errors, formatValidation(v)).toEqual([]);
   });
 
@@ -111,11 +111,11 @@ describe('planCuts — 決定論と制約（F7 / F0 / F1）', () => {
     const b = makeBrief({...brief, ngClipIds: ['16', '18']});
     const r = planCuts({catalog, brief: b, options: opts});
     expect(r.cuts.meta!.slots!.some((s) => s.clipId === '16' || s.clipId === '18')).toBe(false);
-    expect(() => planCuts({catalog, brief: makeBrief({persona: 'hiro', format: 'F7'}), options: opts})).toThrow(PlanError);
+    expect(() => planCuts({catalog, brief: makeBrief({persona: 'standard', format: 'F7'}), options: opts})).toThrow(PlanError);
   });
 
   it('nagi persona: 既定 F7、リビールは無言、締めは布教', () => {
-    const b = makeBrief({persona: 'nagi', hook: {clipId: '11', text: '東大阪、この沼9割知らない'}});
+    const b = makeBrief({persona: 'discovery', hook: {clipId: '11', text: '東大阪、この沼9割知らない'}});
     const r = planCuts({catalog, brief: b, options: opts});
     expect(r.cuts.meta!.generated!.specId).toBe('F7');
     expect(r.cuts.theme).toBe('human');
@@ -126,7 +126,7 @@ describe('planCuts — 決定論と制約（F7 / F0 / F1）', () => {
 
   it('F2: units ごとに badge 見出しが付く', () => {
     const b = makeBrief({
-      persona: 'hiro',
+      persona: 'standard',
       format: 'F2',
       hook: {clipId: '11'},
       units: [
@@ -145,7 +145,7 @@ describe('planCuts — 固定順（fixed）の回帰', () => {
   it('musch-aki: 19 クリップの順序が保たれ、尺が [0.8, 3.0]、グループ数が尺÷1.8〜2.0 付近', () => {
     const {catalog, order} = catalogFromProject('musch-aki', 'musch-aki', 60);
     expect(order.length).toBe(19);
-    const brief = makeBrief({persona: 'hiro', format: 'F1', materialMode: 'raw', order: {mode: 'fixed', fixed: order}, hook: {clipId: order[0], text: '東梅田、9割が知らない'}, targetSec: 33.7});
+    const brief = makeBrief({persona: 'standard', format: 'F1', materialMode: 'raw', order: {mode: 'fixed', fixed: order}, hook: {clipId: order[0], text: '東梅田、9割が知らない'}, targetSec: 33.7});
     const r = planCuts({catalog, brief, options: opts});
     expect(r.cuts.cuts.length).toBe(19);
     expect(r.cuts.meta!.slots!.map((s) => s.clipId)).toEqual(order);
@@ -167,7 +167,7 @@ describe('planCuts — 固定順（fixed）の回帰', () => {
   it('2050coffee: 17 クリップ固定順で全尺使用（outSec が素材尺に一致）', () => {
     const {cuts: existing, catalog, order} = catalogFromProject('2050coffee', '2050coffee', 60);
     expect(order.length).toBe(17);
-    const brief = makeBrief({persona: 'hiro', format: 'F7', order: {mode: 'fixed', fixed: order}, hook: {clipId: order[0], text: '祇園、9割が知らない'}, targetSec: 30});
+    const brief = makeBrief({persona: 'standard', format: 'F7', order: {mode: 'fixed', fixed: order}, hook: {clipId: order[0], text: '祇園、9割が知らない'}, targetSec: 30});
     const r = planCuts({catalog, brief, options: opts});
     expect(r.cuts.cuts.length).toBe(17);
     r.cuts.cuts.forEach((c, i) => {
@@ -185,7 +185,7 @@ describe('planCuts — precut と alias', () => {
     const clip = makeClip({id: '01', slug: 'edited', dur: 14.0, kind: 'other', scenes: [1.2, 2.4, 4.0, 5.5, 7.2, 8.8, 10.1, 11.9, 13.0]});
     delete (clip as any).tags;
     const catalog = makeCatalog('pre', [clip]);
-    const brief = makeBrief({persona: 'sayuri', format: 'F0', materialMode: 'precut', precut: {keepOrder: true, durationPolicy: 'asIs', fixedTelops: [{atSec: 0, text: '梅田、9割が知らない'}, {atSec: 13.5, text: '行ってみてな'}]}});
+    const brief = makeBrief({persona: 'casual', format: 'F0', materialMode: 'precut', precut: {keepOrder: true, durationPolicy: 'asIs', fixedTelops: [{atSec: 0, text: '梅田、9割が知らない'}, {atSec: 13.5, text: '行ってみてな'}]}});
     const r = planCuts({catalog, brief, options: opts});
     const cuts = r.cuts.cuts;
     expect(cuts.length).toBe(10);
@@ -227,7 +227,7 @@ describe('planCuts — precut と alias', () => {
       makeClip({id: '04', slug: 'sign', dur: 4.0, kind: 'signage', signage: true}),
     ];
     const catalog = makeCatalog('few', clips);
-    const brief = makeBrief({persona: 'hiro', format: 'F7', hook: {clipId: '01', text: '東大阪、9割が知らない'}});
+    const brief = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '01', text: '東大阪、9割が知らない'}});
     const r = planCuts({catalog, brief, options: opts});
     expect(r.aliases.length).toBeGreaterThan(0);
     const filled = JSON.parse(JSON.stringify(r.cuts));

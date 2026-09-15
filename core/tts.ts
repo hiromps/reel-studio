@@ -6,14 +6,15 @@
 //   POST https://api.fish.audio/v1/tts
 //   Authorization: Bearer <FISH_API_KEY> / developer-id: <固定> / model: <FISH_MODEL_ID>
 //   body: {text, format, latency, prosody:{speed, volume}, reference_id, ...}
-// 仕様の根拠は .claude/skills/hiro-daihon/references/narration-tts.md §2。
+// 鍵は環境変数 FISH_API_KEY か Settings「音声生成」（~/.reel-studio/settings.json）から取る。
 import fs from 'node:fs';
 import path from 'node:path';
 import {execOk} from './exec';
 import {readBrief, readNarration, writeNarration} from './project';
-import {PERSONAS, getPersona} from '../shared/personas';
+import {getPersona, listPersonas} from '../shared/personas';
 import {checkNarration} from '../shared/narration';
 import {studioConfig} from '../studio.config';
+import {loadSettings} from './settings';
 import type {Narration, NarrationSegment} from '../shared/schema/narration';
 
 const ENDPOINT = 'https://api.fish.audio/v1/tts';
@@ -21,60 +22,27 @@ const ENDPOINT = 'https://api.fish.audio/v1/tts';
 const DEVELOPER_ID = '6322d9df15d044e7b928de27c863480f';
 const DEFAULT_MODEL = 's2.1-pro-free';
 
-type FishEnv = {apiKey: string; modelId: string; source: string};
-
-const readJsonSafe = (file: string): Record<string, unknown> | null => {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-};
+type FishEnv = {apiKey: string; modelId: string; /** 鍵の在り処の表示名（値は含まない） */ source: string};
 
 /** `${FOO}` のような参照はそのままでは使えない（展開元はここには無い） */
-const literal = (v: unknown): string | null => (typeof v === 'string' && v && !v.startsWith('${') ? v : null);
-
-const envBlock = (file: string): Record<string, unknown> => {
-  const j = readJsonSafe(file);
-  const out: Record<string, unknown> = {};
-  const env = j?.env;
-  if (env && typeof env === 'object') Object.assign(out, env);
-  // .mcp.json は mcpServers.<name>.env に入っている
-  const servers = j?.mcpServers;
-  if (servers && typeof servers === 'object')
-    for (const s of Object.values(servers as Record<string, {env?: Record<string, unknown>}>)) if (s?.env) for (const [k, v] of Object.entries(s.env)) if (!(k in out)) out[k] = v;
-  return out;
-};
+const literal = (v: unknown): string | null => (typeof v === 'string' && v.trim() && !v.startsWith('${') ? v.trim() : null);
 
 let cached: FishEnv | null | undefined;
 
+/** 鍵が見つからないときの案内文（各所で同じ文にする） */
+export const NO_FISH_KEY = 'Fish Audio の API キーが未設定です。Settings の「音声生成」で入れるか、環境変数 FISH_API_KEY を設定してください';
+
 /**
- * FISH_API_KEY の在り処を順に探す。**値は決してログに出さない**
- * （ワークスペース規約：秘密は存在確認とキー名のみ）。
+ * FISH_API_KEY の在り処: 環境変数 → settings.json（Settings「音声生成」）。**値は決してログに出さない**
+ * （秘密は存在確認と在り処の名前のみ）。
  */
 export const fishEnv = (): FishEnv | null => {
   if (cached !== undefined) return cached;
-  const candidates: {file: string; label: string}[] = [
-    {file: path.join(studioConfig.repoRoot, '.claude', 'settings.local.json'), label: '.claude/settings.local.json'},
-    {file: path.join(studioConfig.repoRoot, '.mcp.json'), label: '.mcp.json'},
-    {file: path.join(process.env.USERPROFILE ?? process.env.HOME ?? '', '.claude', 'settings.json'), label: '~/.claude/settings.json'},
-  ];
-  let apiKey = literal(process.env.FISH_API_KEY);
-  let modelId = literal(process.env.FISH_MODEL_ID);
-  let source = apiKey ? '環境変数' : '';
-  for (const c of candidates) {
-    if (apiKey && modelId) break;
-    const env = envBlock(c.file);
-    if (!apiKey) {
-      const k = literal(env.FISH_API_KEY);
-      if (k) {
-        apiKey = k;
-        source = c.label;
-      }
-    }
-    if (!modelId) modelId = literal(env.FISH_MODEL_ID);
-  }
-  cached = apiKey ? {apiKey, modelId: modelId ?? DEFAULT_MODEL, source} : null;
+  const s = loadSettings();
+  const envKey = literal(process.env.FISH_API_KEY);
+  const apiKey = envKey ?? literal(s.tts.apiKey);
+  const modelId = literal(process.env.FISH_MODEL_ID) ?? literal(s.tts.modelId) ?? DEFAULT_MODEL;
+  cached = apiKey ? {apiKey, modelId, source: envKey ? '環境変数 FISH_API_KEY' : 'settings.json'} : null;
   return cached;
 };
 
@@ -140,7 +108,7 @@ type ModelListItem = {_id?: string; id?: string; title?: string; state?: string;
  */
 export const listVoices = async (opt: {signal?: AbortSignal} = {}): Promise<{voices: Voice[]; apiError?: string}> => {
   const byId = new Map<string, Voice>();
-  for (const p of Object.values(PERSONAS)) {
+  for (const p of listPersonas()) {
     if (!p.narration.voiceId) continue; // ボイス未定の人格は選択肢に出さない（空 id を選ばせない）
     const cur = byId.get(p.narration.voiceId);
     if (cur) cur.personas.push(p.id);
@@ -178,7 +146,7 @@ export const listVoices = async (opt: {signal?: AbortSignal} = {}): Promise<{voi
       apiError = e instanceof Error ? e.message : String(e);
     }
   } else {
-    apiError = 'FISH_API_KEY が見つかりません（人格のボイスだけ出しています）';
+    apiError = `${NO_FISH_KEY}（人格のボイスだけ出しています）`;
   }
 
   // personas.ts のボイスは他人の公開モデルのことがあり、消されていても気づけない。
@@ -197,7 +165,7 @@ export const listVoices = async (opt: {signal?: AbortSignal} = {}): Promise<{voi
   if (dead.length) apiError = [apiError, `${dead.join('・')} は Fish Audio に無いので一覧から外しました`].filter(Boolean).join(' / ');
 
   // 人格が使っているものを先に、その中は人格の並び順で
-  const order = Object.keys(PERSONAS);
+  const order = listPersonas().map((p) => p.id);
   const rank = (v: Voice) => (v.personas.length ? Math.min(...v.personas.map((x) => order.indexOf(x))) : v.source === 'extra' ? 50 : 99);
   const voices = [...byId.values()].sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, 'ja'));
   return {voices, apiError};
@@ -279,7 +247,7 @@ const synth = async (env: FishEnv, body: TtsBody, signal?: AbortSignal): Promise
     }
     const detail = (await res.text().catch(() => '')).slice(0, 300).replace(/\s+/g, ' ');
     lastErr = `HTTP ${res.status} ${detail}`;
-    if (res.status === 401 || res.status === 403) throw new Error(`Fish Audio の認証に失敗しました（${lastErr}）。FISH_API_KEY を確認してください`);
+    if (res.status === 401 || res.status === 403) throw new Error(`Fish Audio の認証に失敗しました（${lastErr}）。Settings の「音声生成」で API キーを確認してください`);
     if (!RETRY_STATUS.has(res.status) || attempt === 3) break;
     await sleep(attempt * 2000, signal);
   }
@@ -295,7 +263,7 @@ export const synthPreview = async (
   opt: {voice: string; speed?: number; latency?: string; signal?: AbortSignal},
 ): Promise<Buffer> => {
   const env = fishEnv();
-  if (!env) throw new Error('FISH_API_KEY が見つかりません');
+  if (!env) throw new Error(NO_FISH_KEY);
   const t = text.trim();
   if (!t) throw new Error('本文が空です');
   if (/[\r\n]/.test(t)) throw new Error('本文に改行があります（1 ブロック 1 文）');
@@ -315,7 +283,7 @@ export const synthOne = async (
   opt: {voice: string; speed?: number; latency?: string; out: string; signal?: AbortSignal},
 ): Promise<number> => {
   const env = fishEnv();
-  if (!env) throw new Error('FISH_API_KEY が見つかりません');
+  if (!env) throw new Error(NO_FISH_KEY);
   if (!text.trim()) throw new Error('本文が空です');
   if (/[\r\n]/.test(text)) throw new Error('本文に改行があります（1 ブロック 1 文）');
   if (!opt.voice) throw new Error('ボイスが未設定です');
@@ -346,7 +314,7 @@ export type TtsResult = {made: string[]; skipped: string[]; chars: number; voice
 export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Promise<TtsResult> => {
   const log = opt.onLine ?? (() => {});
   const env = fishEnv();
-  if (!env) throw new Error('FISH_API_KEY が見つかりません。.claude/settings.local.json の env か、環境変数に設定してください');
+  if (!env) throw new Error(NO_FISH_KEY);
   const narration = readNarration(projectDir);
   if (!narration) throw new Error('narration.json が無いので音声を作れません（先に「AI にナレーションを書いてもらう」）');
   if (!narration.segments.length) throw new Error('narration.json の segments が空です');
@@ -356,7 +324,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   const voice = narration.voice || persona?.narration.voiceId;
   if (!voice)
     throw new Error(
-      `ボイスが未設定です（人格 ${brief?.persona ?? '?'}）。Render の「ボイス」で選ぶか、shared/personas.ts の voiceId を入れてください`,
+      `ボイスが未設定です（人格 ${brief?.persona ?? '?'}）。Render の「ボイス」で選ぶか、Settings の「人格」でボイスを入れてください`,
     );
   if ((await voiceExists(voice, {signal: opt.signal})) === false)
     throw new Error(`このボイスは Fish Audio にありません（消された可能性）: ${narration.voiceTitle ?? voice}\n  Render の「ボイス」で選び直してください`);

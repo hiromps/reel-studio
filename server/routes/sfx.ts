@@ -1,4 +1,4 @@
-// 効果音ライブラリ（repoRoot/sfx/）の一覧・役割の更新・試聴。
+// 効果音ライブラリ（<dataRoot>/sfx/）の一覧・役割の更新・試聴。
 // 音源そのものは公開リポジトリに入らない（効果音ラボは再配布禁止）ので、ここから配信するのはローカルのファイル。
 import {Router} from 'express';
 import path from 'node:path';

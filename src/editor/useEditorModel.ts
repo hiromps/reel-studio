@@ -7,7 +7,7 @@ import {cutRanges, round3, snapSec, telopGroupsOf, totalSec} from '@shared/timel
 import {validateCuts, type Issue} from '@shared/validate';
 import {checkOrder, orderFromCuts} from '@shared/order';
 import {FORMAT_SPECS} from '@shared/format-specs';
-import {PERSONAS} from '@shared/personas';
+import {findPersona} from '@shared/personas';
 import {checkNarration, fixNarrationOverlaps} from '@shared/narration';
 import {SFX_DEFAULTS, checkSfx, type SfxLibrary} from '@shared/sfx';
 import {useUndo} from '../hooks/useUndo';
@@ -32,8 +32,8 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const [frame, setFrame] = useState(0);
   const history = useUndo<Snapshot>({resetKey: s.active});
 
-  const persona = brief ? PERSONAS[brief.persona] : undefined;
-  const spec = brief ? FORMAT_SPECS[brief.format ?? persona!.defaultFormat] : undefined;
+  const persona = brief ? findPersona(brief.persona) : undefined;
+  const spec = brief ? FORMAT_SPECS[brief.format ?? persona?.defaultFormat ?? 'F0'] : undefined;
   const fps = cuts?.fps ?? catalog?.dominantFps ?? 30;
   const maxCutSec = spec?.tempo.maxCutSec ?? DEFAULT_MAX_CUT_SEC;
   const cps = persona?.narration.charsPerSec ?? 11;

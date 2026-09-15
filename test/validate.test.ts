@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import path from 'node:path';
 import {validateCuts, formatValidation} from '@shared/validate';
 import {FORMAT_SPECS} from '@shared/format-specs';
-import {PERSONAS} from '@shared/personas';
+import {TEST_PERSONAS} from './helpers';
 import {fixtures, readJson, makeCatalog, makeClip, makeBrief} from './helpers';
 import type {ReelData} from '@shared/schema';
 
@@ -11,25 +11,25 @@ const codes = (issues: {code: string}[]) => issues.map((i) => i.code);
 
 describe('validateCuts — 既存の納品物は E ゼロ', () => {
   it('2050coffee（F7・hiro）', () => {
-    const r = validateCuts(load('2050coffee'), {spec: FORMAT_SPECS.F7, persona: PERSONAS.hiro});
+    const r = validateCuts(load('2050coffee'), {spec: FORMAT_SPECS.F7, persona: TEST_PERSONAS.standard});
     expect(r.errors, formatValidation(r)).toEqual([]);
     expect(r.summary.totalFrames).toBe(1641);
     expect(r.summary.cutCount).toBe(17);
   });
   it('musch-aki（F1・hiro・固定順）', () => {
-    const r = validateCuts(load('musch-aki'), {spec: FORMAT_SPECS.F1, persona: PERSONAS.hiro});
+    const r = validateCuts(load('musch-aki'), {spec: FORMAT_SPECS.F1, persona: TEST_PERSONAS.standard});
     expect(r.errors, formatValidation(r)).toEqual([]);
     expect(r.summary.groupCount).toBe(13);
     expect(codes(r.warnings)).toContain('THEME_MISMATCH'); // stylish（推奨 pop）
   });
   it('katsugyocenter-nagi（F7・nagi・alias 済み）', () => {
-    const r = validateCuts(load('katsugyocenter-nagi'), {spec: FORMAT_SPECS.F7, persona: PERSONAS.nagi});
+    const r = validateCuts(load('katsugyocenter-nagi'), {spec: FORMAT_SPECS.F7, persona: TEST_PERSONAS.discovery});
     expect(r.errors, formatValidation(r)).toEqual([]);
     expect(codes(r.errors)).not.toContain('SAME_SRC_NONCONSECUTIVE');
     expect(r.summary.revealPct).toBeUndefined(); // slot も catalog も無いので位置は判定しない
   });
   it('reunion-hiro（F7・hiro）', () => {
-    const r = validateCuts(load('reunion-hiro'), {spec: FORMAT_SPECS.F7, persona: PERSONAS.hiro});
+    const r = validateCuts(load('reunion-hiro'), {spec: FORMAT_SPECS.F7, persona: TEST_PERSONAS.standard});
     expect(r.errors, formatValidation(r)).toEqual([]);
     expect(codes(r.warnings)).toContain('TELOP_OVER_MAX_CHARS'); // 14 文字のフック
     expect(codes(r.warnings)).toContain('CTA_TEXT');
@@ -162,7 +162,7 @@ describe('validateCuts — 壊れた cuts を検出する', () => {
       makeClip({id: '01', slug: 'a', dur: 2.0, kind: 'sizzle'}),
       makeClip({id: '02', slug: 'b', dur: 2.0, kind: 'interior'}),
     ]);
-    const brief = makeBrief({persona: 'hiro', order: {mode: 'fixed', fixed: ['01', '02']}, hook: {clipId: '01'}});
+    const brief = makeBrief({persona: 'standard', order: {mode: 'fixed', fixed: ['01', '02']}, hook: {clipId: '01'}});
     const d = {fps: 60, cuts: [{src: 'uploads/02_b.mov', inSec: 0, outSec: 1.2, main: {text: '東大阪、9割'}}, {src: 'uploads/01_a.mov', inSec: 0, outSec: 1.2, main: {text: 'b'}}]};
     const r = validateCuts(d, {catalog, brief});
     // 自分で並べ替えた構成をレンダーできなくなるので E にはしない
@@ -176,7 +176,7 @@ describe('validateCuts — 壊れた cuts を検出する', () => {
       makeClip({id: '01', slug: 'a', dur: 4.0, kind: 'sizzle'}),
       makeClip({id: '02', slug: 'b', dur: 2.0, kind: 'interior'}),
     ]);
-    const brief = makeBrief({persona: 'hiro', order: {mode: 'fixed', fixed: ['01', '02', '01']}, hook: {clipId: '01'}});
+    const brief = makeBrief({persona: 'standard', order: {mode: 'fixed', fixed: ['01', '02', '01']}, hook: {clipId: '01'}});
     const d = {
       fps: 60,
       cuts: [
@@ -200,7 +200,7 @@ describe('フックのエリア名はバッジに出す', () => {
       ],
     }) as unknown as ReelData;
   const ctx = (cuts: ReelData) =>
-    validateCuts(cuts, {brief: makeBrief({persona: 'hiro', shop: {name: '焼肉たべる', area: '生野区', genre: '焼肉', pr: false}}), persona: PERSONAS.hiro});
+    validateCuts(cuts, {brief: makeBrief({persona: 'standard', shop: {name: '焼肉たべる', area: '生野区', genre: '焼肉', pr: false}}), persona: TEST_PERSONAS.standard});
 
   it('本文がエリア名で始まっていたら W（バッジへ移す）', () => {
     const r = ctx(hookCuts('生野区、9割が知らない'));

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {ReelDataSchema, NarrationSchema} from '@shared/schema';
 import {FORMAT_SPECS, FORMAT_IDS} from '@shared/format-specs';
-import {PERSONAS} from '@shared/personas';
+import {BUILTIN_PERSONAS, PersonasFileSchema} from '@shared/personas';
 import {studioConfig} from '../studio.config';
 
 const fixtures = path.resolve(__dirname, 'fixtures');
@@ -64,20 +64,24 @@ describe('format-specs', () => {
   });
 });
 
-describe('personas', () => {
-  it('4 人格の既定フォーマットが spec に存在する', () => {
-    for (const p of Object.values(PERSONAS)) expect(FORMAT_SPECS[p.defaultFormat]).toBeDefined();
-    expect(PERSONAS.nagi.defaultFormat).toBe('F7');
-    expect(PERSONAS.hiro.narration.charsPerSec).toBe(11.0);
+describe('personas（同梱のサンプル）', () => {
+  it('id が重複せず、既定フォーマットが spec に存在する', () => {
+    const ids = BUILTIN_PERSONAS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const p of BUILTIN_PERSONAS) expect(FORMAT_SPECS[p.defaultFormat]).toBeDefined();
+    expect(BUILTIN_PERSONAS.find((p) => p.id === 'discovery')?.defaultFormat).toBe('F7');
   });
 
-  it('voiceId は 32 桁の id か、空（ボイス未定）のどちらか', () => {
+  it('サンプルはボイス未設定で配る（利用者が自分の Fish Audio モデルを入れる）。空は許すが 32 桁以外は弾く', () => {
     // 空を許すのは、使っていたボイスが Fish Audio から消えたときに
     // **黙って別の声に差し替えない**ため（音声生成が「未設定です」で止まる）
-    for (const p of Object.values(PERSONAS)) expect(p.narration.voiceId, p.id).toMatch(/^(|[0-9a-f]{32})$/);
+    for (const p of BUILTIN_PERSONAS) expect(p.narration.voiceId, p.id).toBe('');
+    expect(PersonasFileSchema.safeParse({version: 1, personas: [{...BUILTIN_PERSONAS[0], narration: {...BUILTIN_PERSONAS[0].narration, voiceId: 'xyz'}}]}).success).toBe(false);
   });
 
-  it('ボイスが決まっている人格は id が入っている', () => {
-    for (const id of ['hiro', 'nagi', 'bonjiri'] as const) expect(PERSONAS[id].narration.voiceId, id).toMatch(/^[0-9a-f]{32}$/);
+  it('personas.json は id の重複と 0 件を弾く', () => {
+    expect(PersonasFileSchema.safeParse({version: 1, personas: []}).success).toBe(false);
+    expect(PersonasFileSchema.safeParse({version: 1, personas: [BUILTIN_PERSONAS[0], BUILTIN_PERSONAS[0]]}).success).toBe(false);
+    expect(PersonasFileSchema.safeParse({version: 1, personas: BUILTIN_PERSONAS}).success).toBe(true);
   });
 });

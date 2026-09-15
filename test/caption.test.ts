@@ -1,11 +1,12 @@
 import {describe, expect, it} from 'vitest';
 import {checkCaption, hashtagsOf} from '../shared/caption';
-import {PERSONAS} from '../shared/personas';
+import {TEST_PERSONAS} from './helpers';
 
-const hiro = PERSONAS.hiro;
-const sayuri = PERSONAS.sayuri;
+// standard = ハッシュタグ 3 個・600 文字・誘導なし ／ casual = 5 個・上限なし・@example_account への誘導あり
+const hiro = TEST_PERSONAS.standard;
+const sayuri = TEST_PERSONAS.casual;
 
-/** hiro の型（ハッシュタグ 3 個・自分アカウントへの誘導なし）を満たす最小のキャプション */
+/** standard の型（ハッシュタグ 3 個・自分アカウントへの誘導なし）を満たす最小のキャプション */
 const ok = ['梅田で見つけた炭火焼き🔥', '', '・備長炭でじっくり焼く', '', '#梅田グルメ #焼き鳥 #炭火焼き'].join('\n');
 
 describe('hashtagsOf', () => {
@@ -23,7 +24,7 @@ describe('checkCaption', () => {
     expect(checkCaption('   ', hiro)).toEqual([{severity: 'E', code: 'EMPTY', message: 'キャプションが空です'}]);
   });
 
-  it('ハッシュタグの本数は人格ごとに違う（hiro 3 / さゆり 5）', () => {
+  it('ハッシュタグの本数は人格ごとに違う（standard 3 / casual 5）', () => {
     expect(checkCaption(ok, hiro).some((i) => i.code === 'HASHTAG_COUNT')).toBe(false);
     expect(checkCaption(ok, sayuri).some((i) => i.code === 'HASHTAG_COUNT')).toBe(true);
   });
@@ -58,15 +59,15 @@ describe('checkCaption', () => {
     expect(checkCaption(`${ok}\n『炭火焼き 煙』pr`, hiro, {pr: false}).some((i) => i.code === 'PR_UNEXPECTED')).toBe(true);
   });
 
-  it('さゆりは自分のアカウントへの誘導行が要る', () => {
+  it('repostAccount のある人格は自分のアカウントへの誘導行が要る', () => {
     const five = ok.replace('#梅田グルメ #焼き鳥 #炭火焼き', '#a #b #c #d #e');
     expect(checkCaption(five, sayuri).some((i) => i.code === 'REPOST_ACCOUNT')).toBe(true);
-    expect(checkCaption(`${five}\n@gurupo_chan_`, sayuri).some((i) => i.code === 'REPOST_ACCOUNT')).toBe(false);
+    expect(checkCaption(`${five}\n@example_account`, sayuri).some((i) => i.code === 'REPOST_ACCOUNT')).toBe(false);
   });
 
-  it('hiro の長さの目安（600 文字）を超えたら指摘する', () => {
+  it('長さの目安（600 文字）を超えたら指摘する。maxChars 0 の人格は上限なし', () => {
     expect(checkCaption(`${'あ'.repeat(700)}\n#a #b #c`, hiro).some((i) => i.code === 'TOO_LONG')).toBe(true);
-    // さゆりは上限なし（メニューが多い店では長文化してよい）
-    expect(checkCaption(`${'あ'.repeat(700)}\n@gurupo_chan_\n#a #b #c #d #e`, sayuri).some((i) => i.code === 'TOO_LONG')).toBe(false);
+    // casual は上限なし（メニューが多い店では長文化してよい）
+    expect(checkCaption(`${'あ'.repeat(700)}\n@example_account\n#a #b #c #d #e`, sayuri).some((i) => i.code === 'TOO_LONG')).toBe(false);
   });
 });

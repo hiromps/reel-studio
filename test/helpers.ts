@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {BriefSchema, CatalogSchema, type Brief, type Catalog, type Clip, type ClipKind, type ClipTags} from '@shared/schema';
+import {BUILTIN_PERSONAS, PersonaSchema, type Persona} from '@shared/personas';
 
 export const fixtures = path.resolve(__dirname, 'fixtures');
 export const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -96,3 +97,13 @@ export const richClips = (): Clip[] => [
   makeClip({id: '21', slug: 'milk-pour', dur: 2.0, kind: 'sizzle', angle: 'close', sizzle: 4, subject: 'ミルク'}),
   makeClip({id: '22', slug: 'table-hand', dur: 2.9, kind: 'serving', angle: 'wide', sizzle: 3, subject: 'テーブル'}),
 ];
+
+// ── 人格 ──
+// 同梱のサンプル人格をベースに、テスト用にボイス id を入れたもの。id は 'standard' / 'discovery' / 'casual'
+export const makePersona = (over: Partial<Persona> & {id: string}): Persona => PersonaSchema.parse({...BUILTIN_PERSONAS[0], ...over});
+const builtin = (id: string): Persona => BUILTIN_PERSONAS.find((p) => p.id === id)!;
+export const TEST_PERSONAS = {
+  standard: makePersona({...builtin('standard'), narration: {...builtin('standard').narration, voiceId: '0'.repeat(32), voiceTitle: 'テスト男性'}}),
+  discovery: makePersona({...builtin('discovery'), narration: {...builtin('discovery').narration, voiceId: '1'.repeat(32), voiceTitle: 'テスト落ち着き'}}),
+  casual: makePersona({...builtin('casual'), narration: {...builtin('casual').narration, voiceId: '2'.repeat(32), voiceTitle: 'テスト女性'}, caption: {hashtags: 5, repostAccount: 'example_account', maxChars: 0}}),
+};

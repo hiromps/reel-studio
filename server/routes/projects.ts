@@ -1,6 +1,7 @@
 import {Router} from 'express';
 import fs from 'node:fs';
 import {PersonaIdSchema} from '../../shared/schema/brief';
+import {defaultPersonaId, findPersona} from '../../shared/personas';
 import {cloneProject, createProject, listProjects, projectInfo, resolveProjectDirStrict} from '../../core/project';
 import {jobs} from '../jobs';
 import {state} from '../state';
@@ -22,12 +23,12 @@ projectsRouter.post('/', (req, res) => {
     if (typeof from === 'string' && from.trim()) {
       // 同じ素材で別バージョン。素材はハードリンクで共有し、catalog（タグ付けの成果）は引き継ぐ
       const p = persona ? PersonaIdSchema.safeParse(persona) : undefined;
-      if (p && !p.success) return res.status(400).json({error: 'persona が不正'});
+      if (p && (!p.success || !findPersona(p.data))) return res.status(400).json({error: `人格が登録されていません: ${String(persona)}（Settings の「人格」で追加）`});
       const r = cloneProject(from.trim(), slug, {persona: p?.data, shopName, facts: facts !== false, onLine: (l) => lines.push(l)});
       dir = r.dir;
     } else {
-      const p = PersonaIdSchema.safeParse(persona ?? 'hiro');
-      if (!p.success) return res.status(400).json({error: 'persona が不正'});
+      const p = PersonaIdSchema.safeParse(persona ?? defaultPersonaId());
+      if (!p.success || !findPersona(p.data)) return res.status(400).json({error: `人格が登録されていません: ${String(persona ?? '')}（Settings の「人格」で追加）`});
       const r = createProject(slug, {persona: p.data, shopName});
       dir = r.dir;
       created = r.created;

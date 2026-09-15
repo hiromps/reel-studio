@@ -1,13 +1,13 @@
 import React, {useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
-import {PERSONAS} from '@shared/personas';
+import {defaultPersonaId, listPersonas} from '@shared/personas';
 import {localDateTime} from '@shared/time';
 
 export const ProjectsPage: React.FC = () => {
   const s = useStudio();
   const [slug, setSlug] = useState('');
-  const [persona, setPersona] = useState('hiro');
+  const [persona, setPersona] = useState(defaultPersonaId());
   const [shop, setShop] = useState('');
   const [busy, setBusy] = useState(false);
   // 「同じ素材で別バージョン」を作るとき、元になる案件（空＝まっさらな新規）
@@ -41,12 +41,12 @@ export const ProjectsPage: React.FC = () => {
         <h2>新規案件</h2>
         <div className="row">
           <label>
-            slug <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="例: reunion-hiro" />
+            slug <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="例: cafe-abc" />
           </label>
           <label>
             persona
             <select value={persona} onChange={(e) => setPersona(e.target.value)}>
-              {Object.values(PERSONAS).map((p) => (
+              {listPersonas().map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
                   {/* ボイスが決まっていない人格は、音声生成の段になって初めて気づくのを防ぐ */}

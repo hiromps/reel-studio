@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {exec, isWindows, type ExecOptions} from './exec';
+import {loadSettings} from './settings';
 import type {AgentEvent} from '../shared/agent-progress';
 
 export class AgentError extends Error {
@@ -22,28 +23,50 @@ export class AgentError extends Error {
   }
 }
 
-let cachedBin: string | null = null;
+export type ClaudeBinInfo = {bin: string; source: 'env' | 'settings' | 'path' | 'none'};
 
-/** claude 実行ファイルの場所。REEL_STUDIO_CLAUDE_BIN > PATH の順 */
-export const claudeBin = (): string => {
+let cachedBin: ClaudeBinInfo | null = null;
+
+/** claude 実行ファイルの場所。REEL_STUDIO_CLAUDE_BIN > Settings「AI」の claudeBin > PATH の順 */
+export const claudeBinInfo = (): ClaudeBinInfo => {
   if (cachedBin) return cachedBin;
-  const fromEnv = process.env.REEL_STUDIO_CLAUDE_BIN;
-  if (fromEnv && fs.existsSync(fromEnv)) return (cachedBin = fromEnv);
+  const fromEnv = process.env.REEL_STUDIO_CLAUDE_BIN?.trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return (cachedBin = {bin: fromEnv, source: 'env'});
+  const fromSettings = loadSettings().agent.claudeBin?.trim();
+  if (fromSettings && fs.existsSync(fromSettings)) return (cachedBin = {bin: fromSettings, source: 'settings'});
   const names = isWindows ? ['claude.exe', 'claude.cmd'] : ['claude'];
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue;
     for (const n of names) {
       const p = path.join(dir, n);
-      if (fs.existsSync(p)) return (cachedBin = p);
+      if (fs.existsSync(p)) return (cachedBin = {bin: p, source: 'path'});
     }
   }
   // 見つからなければ素の名前で spawn を試す（PATH 解決は OS に任せる）
-  return (cachedBin = names[0]);
+  return (cachedBin = {bin: names[0], source: 'none'});
+};
+
+export const claudeBin = (): string => claudeBinInfo().bin;
+
+/** 設定を変えたあとに探し直す */
+export const resetClaudeBin = (): void => {
+  cachedBin = null;
 };
 
 export const claudeAvailable = (): boolean => {
   const b = claudeBin();
   return path.isAbsolute(b) ? fs.existsSync(b) : false;
+};
+
+/** `claude --version` の 1 行目。動かなければ null（接続テストと Settings の表示用） */
+export const claudeVersion = async (bin = claudeBin()): Promise<string | null> => {
+  try {
+    const r = await exec(bin, ['--version'], {timeoutMs: 20_000});
+    if (r.code !== 0) return null;
+    return r.stdout.trim().split(/\r?\n/)[0] || null;
+  } catch {
+    return null;
+  }
 };
 
 export type AgentRun<T> = {

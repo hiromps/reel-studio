@@ -36,7 +36,7 @@ import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {planCuts, PlanError} from '../shared/plan';
 import {formatValidation} from '../shared/validate';
-import {PERSONAS} from '../shared/personas';
+import {defaultPersonaId, getPersona} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {PersonaIdSchema} from '../shared/schema/brief';
 import {telopGroupsOf, cutDurationSec, totalSec} from '../shared/timeline';
@@ -140,7 +140,7 @@ async function main() {
         });
         dir = r.dir;
       } else {
-        const persona = PersonaIdSchema.parse(str(flags, 'persona') ?? 'hiro');
+        const persona = PersonaIdSchema.parse(str(flags, 'persona') ?? defaultPersonaId());
         const r = createProject(slug, {persona, shopName: str(flags, 'shop')});
         dir = r.dir;
         created = r.created;
@@ -434,7 +434,7 @@ async function main() {
       if (bool(flags, 'json')) {
         out(JSON.stringify({cuts: r.cuts, aliases: r.aliases, warnings: r.warnings, table: r.table}, null, 2));
       } else {
-        const spec = FORMAT_SPECS[brief.format ?? PERSONAS[brief.persona].defaultFormat];
+        const spec = FORMAT_SPECS[brief.format ?? getPersona(brief.persona).defaultFormat];
         out(`# カット表（${spec.id} ${spec.name} / ${brief.persona} / ${r.cuts.cuts.length} カット / ${totalSec(r.cuts).toFixed(1)} 秒 / テロップ ${telopGroupsOf(r.cuts).length} グループ）`);
         out(r.markdown);
         if (r.aliases.length) out(`\nalias: ${r.aliases.map((a) => `${a.from} → ${a.to}`).join(', ')}`);

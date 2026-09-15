@@ -62,7 +62,7 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>
-          <b>slug</b> は案件のフォルダ名（例 <code>reunion-hiro</code>）。<b>persona</b> は誰の声・文体で作るか（hiro / 凪 / ぼんじり）です。
+          <b>slug</b> は案件のフォルダ名（例 <code>reunion-hiro</code>）。<b>persona</b> は誰の声・文体で作るかです（Settings の「人格」で追加・編集できます）。
         </p>
         <p className="hint">作成すると work/&lt;slug&gt;-reel/ にテンプレ一式がコピーされます。同じ素材で別バージョンを作るなら「同じ素材から作る」。</p>
       </>

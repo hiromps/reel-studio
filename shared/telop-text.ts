@@ -41,7 +41,7 @@ export const minDisplaySec = (text: string, opt: {secPerChar?: number; floorSec?
 export const ellipsisCount = (text: string): number => (text.match(/・・・|…/g) ?? []).length;
 
 /**
- * 「エリア名＋一桁数字」型のフックか（hiro-daihon 既定型）。
+ * 「エリア名＋一桁数字」型のフックか（persona.hookStyle = areaDigit の人格）。
  * エリア名をバッジに出すようになったので、**本文に一桁数字があれば型として満たす**
  * （「9割が知らない」だけでも、バッジに「生野区」が出ていれば「生野区の9割が知らない」と読める）。
  */

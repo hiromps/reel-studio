@@ -15,7 +15,7 @@ export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;
  * 効果音 1 個。ナレーションと同じ 1 本のタイムラインに乗せるので narration.json に置く
  * （narrationGainDb / ambientGain と同じ「音の設計」の一部）。
  * 音源ファイルそのものは公開リポジトリに入れない（効果音ラボは再配布禁止）ので、
- * file は効果音ライブラリ（repoRoot/sfx/）からの相対パスで持つ。
+ * file は効果音ライブラリ（<dataRoot>/sfx/）からの相対パスで持つ。
  */
 export const SfxSchema = z
   .object({

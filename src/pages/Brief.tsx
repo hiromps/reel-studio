@@ -7,7 +7,7 @@ import {EmptyState} from '../components/EmptyState';
 import {useAiModel} from '../hooks/useAiModel';
 import {BriefSchema, type Brief, type FormatId, type SavePriority} from '@shared/schema';
 import {FORMAT_SPECS, FORMAT_IDS} from '@shared/format-specs';
-import {PERSONAS} from '@shared/personas';
+import {findPersona, getPersona, listPersonas} from '@shared/personas';
 import {countChars} from '@shared/telop-text';
 
 const PRIORITIES: {id: SavePriority; label: string}[] = [
@@ -35,13 +35,13 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
   const [prompt, setPrompt] = useState('');
 
   const set = (patch: Partial<Brief>) => brief && s.setFile('brief', {...brief, ...patch});
-  const persona = brief ? PERSONAS[brief.persona] : null;
+  const persona = brief ? (findPersona(brief.persona) ?? null) : null;
   const spec = brief ? FORMAT_SPECS[brief.format ?? persona!.defaultFormat] : null;
   const clips = catalog?.clips ?? [];
   const hookClips = useMemo(() => [...clips].sort((a, b) => Number(b.user.hook) - Number(a.user.hook)), [clips]);
 
   const createBrief = (personaId: Brief['persona']) => {
-    const b = BriefSchema.parse({version: 1, persona: personaId, shop: {name: '', area: '', genre: '', pr: false}, materialMode: 'raw', format: PERSONAS[personaId].defaultFormat, savePriorities: ['access', 'hours', 'budget']});
+    const b = BriefSchema.parse({version: 1, persona: personaId, shop: {name: '', area: '', genre: '', pr: false}, materialMode: 'raw', format: getPersona(personaId).defaultFormat, savePriorities: ['access', 'hours', 'budget']});
     s.setFile('brief', b);
   };
 
@@ -77,7 +77,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
   const buildPrompt = () => {
     if (!brief) return;
     const lines = [
-      `${persona!.skillDir.split('/').pop()} スキルで、work/${s.active}/ の素材を Studio 連携モードで仕上げてください。`,
+      `人格「${persona!.label}」で、work/${s.active}/ の素材を Studio 連携モードで仕上げてください。`,
       `- brief.json は保存済み（persona=${brief.persona} / ${spec!.id} ${spec!.name} / 尺 ${brief.targetSec ?? spec!.targetSec[1]} 秒目安）`,
       `- 店名：${brief.shop.name}（${brief.shop.area}${brief.shop.genre ? '・' + brief.shop.genre : ''}）${brief.shop.pr ? '【PR案件】' : ''}`,
       brief.core ? `- 企画の核：${brief.core}` : '',
@@ -103,13 +103,13 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
             人格（persona）を選ぶと、文体・声・テロップの色・既定の構成の型がまとめて決まります。あとから変えられます。
           </p>
           <div className="row">
-            {(['hiro', 'nagi', 'sayuri', 'bonjiri'] as const).map((p) => (
-              <button key={p} className="primary" onClick={() => createBrief(p)} title={PERSONAS[p].narration.voiceId ? PERSONAS[p].tone : 'ナレーションのボイスが未設定です（音声生成で止まります）'}>
-                {PERSONAS[p].label} で作る{PERSONAS[p].narration.voiceId ? '' : '（ボイス未設定）'}
+            {listPersonas().map((p) => (
+              <button key={p.id} className="primary" onClick={() => createBrief(p.id)} title={p.narration.voiceId ? p.tone : 'ナレーションのボイスが未設定です（音声生成で止まります）'}>
+                {p.label} で作る{p.narration.voiceId ? '' : '（ボイス未設定）'}
               </button>
             ))}
           </div>
-          <p className="hint">{PERSONAS.hiro.label}＝本人／{PERSONAS.nagi.label}＝落ち着いた男性で正体を隠す型／{PERSONAS.bonjiri.label}。{PERSONAS.sayuri.label} はボイス未設定のため当面使いません</p>
+          <p className="hint">人格の追加・編集（文体・声・締めの文言・キャプションの型）は Settings の「人格」でできます</p>
         </section>
         {!catalog && (
           <EmptyState
@@ -141,8 +141,9 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
         <div className="form">
           <label>
             persona
-            <select value={brief.persona} onChange={(e) => set({persona: e.target.value as Brief['persona'], format: PERSONAS[e.target.value as Brief['persona']].defaultFormat})}>
-              {Object.values(PERSONAS).map((p) => (
+            <select value={brief.persona} onChange={(e) => set({persona: e.target.value, format: getPersona(e.target.value).defaultFormat})}>
+              {!findPersona(brief.persona) && <option value={brief.persona}>{brief.persona}（未登録の人格）</option>}
+              {listPersonas().map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}（既定 {p.defaultFormat}）
                 </option>

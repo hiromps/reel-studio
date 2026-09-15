@@ -43,10 +43,10 @@ export const backupFile = (file: string, backupDir: string): string | null => {
   return dest;
 };
 
-export const writeJsonAtomic = (file: string, data: unknown, opt: {backupDir?: string; indent?: number} = {}): void => {
+export const writeJsonAtomic = (file: string, data: unknown, opt: {backupDir?: string; indent?: number; /** 秘密を含むファイル用（POSIX のみ有効） */ mode?: number} = {}): void => {
   fs.mkdirSync(path.dirname(file), {recursive: true});
   if (opt.backupDir) backupFile(file, opt.backupDir);
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, opt.indent ?? 2) + '\n', 'utf8');
+  fs.writeFileSync(tmp, JSON.stringify(data, null, opt.indent ?? 2) + '\n', {encoding: 'utf8', mode: opt.mode});
   fs.renameSync(tmp, file);
 };

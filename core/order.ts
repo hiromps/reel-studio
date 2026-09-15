@@ -3,7 +3,7 @@
 // 尺・役割・テロップグループは planCuts が型どおりに決める。
 import path from 'node:path';
 import {FORMAT_SPECS} from '../shared/format-specs';
-import {PERSONAS, type Persona} from '../shared/personas';
+import {getPersona, type Persona} from '../shared/personas';
 import {planCuts, type PlanResult} from '../shared/plan';
 import {
   OrderProposalSchema,
@@ -36,7 +36,7 @@ export const loadOrderEnv = (dir: string): OrderEnv => {
   if (!catalog) throw new Error('catalog.json が無い（先に reel catalog）');
   const brief = readBrief(dir);
   if (!brief) throw new Error('brief.json が無い（reel new で雛形を作るか GUI の Brief で保存）');
-  const persona = PERSONAS[brief.persona];
+  const persona = getPersona(brief.persona);
   return {dir, slug: projectSlug(dir), catalog, brief, spec: FORMAT_SPECS[brief.format ?? persona.defaultFormat], persona};
 };
 

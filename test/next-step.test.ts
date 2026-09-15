@@ -36,7 +36,7 @@ const clip = (id: string, o: {tagged?: boolean; ng?: boolean} = {}): Clip =>
 const catalogOf = (clips: Clip[]): Catalog =>
   ({version: 1, slug: 's', materialsDir: 'd', dominantFps: 30, createdAt: '', updatedAt: '', facts: [], clips}) as Catalog;
 
-const briefOf = (): Brief => ({version: 1, persona: 'hiro', shop: {name: 'x', area: 'y', genre: '', pr: false}, materialMode: 'raw', format: 'F0', savePriorities: [], ngClipIds: []}) as unknown as Brief;
+const briefOf = (): Brief => ({version: 1, persona: 'standard', shop: {name: 'x', area: 'y', genre: '', pr: false}, materialMode: 'raw', format: 'F0', savePriorities: [], ngClipIds: []}) as unknown as Brief;
 
 const cutsOf = (texts: (string | undefined)[]): ReelData =>
   ({

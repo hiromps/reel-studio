@@ -23,7 +23,7 @@ beforeEach(() => {
     makeClip({id: '03', slug: 'c', dur: 4, kind: 'menu'}),
   ]);
   fs.writeFileSync(path.join(dir, 'catalog.json'), JSON.stringify(catalog));
-  fs.writeFileSync(path.join(dir, 'brief.json'), JSON.stringify(makeBrief({persona: 'hiro', order: {mode: 'fixed', fixed: ['01', '02', '03']}})));
+  fs.writeFileSync(path.join(dir, 'brief.json'), JSON.stringify(makeBrief({persona: 'standard', order: {mode: 'fixed', fixed: ['01', '02', '03']}})));
 });
 afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
 
@@ -44,7 +44,7 @@ describe('syncFixedOrder', () => {
   });
 
   it('固定順を使っていない案件では何もしない', () => {
-    fs.writeFileSync(path.join(dir, 'brief.json'), JSON.stringify(makeBrief({persona: 'hiro', order: {mode: 'auto'}})));
+    fs.writeFileSync(path.join(dir, 'brief.json'), JSON.stringify(makeBrief({persona: 'standard', order: {mode: 'auto'}})));
     expect(syncFixedOrder(dir, cutsOf(['uploads/03_c.mov']))).toBeNull();
     expect(read('brief.json').order.fixed).toBeUndefined();
   });

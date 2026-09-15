@@ -5,7 +5,7 @@ import type {Brief, SavePriority} from './schema/brief';
 import type {FormatSpec, SegmentRules} from './schema/format-spec';
 import type {AliasOp, Cut, Orientation, ReelData, Slot, SlotRole, TelopGroupMeta, TextStatus} from './schema/cuts';
 import {FORMAT_SPECS} from './format-specs';
-import {PERSONAS, type Persona} from './personas';
+import {getPersona, type Persona} from './personas';
 import {cutDurationSec, snapSec, round3} from './timeline';
 import {minDisplaySec} from './telop-text';
 import {stableHash} from './hash';
@@ -845,7 +845,7 @@ export const tableToMarkdown = (rows: CutTableRow[]): string => {
 
 export function planCuts(input: PlanInput): PlanResult {
   const {catalog, brief, existing} = input;
-  const persona = input.persona ?? PERSONAS[brief.persona];
+  const persona = input.persona ?? getPersona(brief.persona);
   const spec = input.spec ?? FORMAT_SPECS[brief.format ?? persona.defaultFormat];
   const warnings: PlanWarning[] = [];
   const fps = existing?.fps ?? catalog.dominantFps;

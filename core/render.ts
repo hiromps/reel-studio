@@ -6,7 +6,7 @@ import {studioConfig} from '../studio.config';
 import {calcTotalFrames, cutStartFrame} from '../shared/timeline';
 import {validateCuts, formatValidation, type ValidationResult} from '../shared/validate';
 import {FORMAT_SPECS} from '../shared/format-specs';
-import {PERSONAS} from '../shared/personas';
+import {findPersona} from '../shared/personas';
 import {fileStamp} from '../shared/time';
 import type {ReelData} from '../shared/schema/cuts';
 import {exec, type ExecResult} from './exec';
@@ -77,8 +77,9 @@ export const remotionCli = (projectDir: string) => path.join(projectDir, 'node_m
 export const validationContext = (projectDir: string, opt: {strictProxy?: boolean} = {}) => {
   const catalog = loadCatalog(projectDir) ?? undefined;
   const brief = readBrief(projectDir) ?? undefined;
-  const persona = brief ? PERSONAS[brief.persona] : undefined;
-  const spec = brief ? FORMAT_SPECS[brief.format ?? persona!.defaultFormat] : undefined;
+  // 人格が未登録でも検証は動かす（spec は brief.format か F0）。未登録は validate 側で気づける
+  const persona = brief ? findPersona(brief.persona) : undefined;
+  const spec = brief ? FORMAT_SPECS[brief.format ?? persona?.defaultFormat ?? 'F0'] : undefined;
   return {
     catalog,
     brief,

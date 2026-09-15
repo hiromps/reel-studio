@@ -9,6 +9,7 @@
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {runAgent} from './agent';
+import {agentAddDirs, captionGuideLabel, materializePersonaDocs, promptPath} from './persona-docs';
 import {agentProgress, captionExamples, type AiProgress} from './ai';
 import {loadOrderEnv} from './order';
 import {ensureCutFrame} from './cut-frames';
@@ -169,8 +170,8 @@ export async function aiHooks(
   const budgetChars = Math.max(8, Math.floor(budgetSec * cps * 0.85));
 
   const ids = (opt.fresh ? NEXT_IDS : NEXT_IDS.slice(1)).slice(0, opt.fresh ? count : count - 1);
-  const skill = path.join(studioConfig.repoRoot, persona.skillDir, 'SKILL.md');
-  const hashtagBank = path.join(studioConfig.repoRoot, persona.skillDir, 'references', 'hashtag-bank.md');
+  const docs = materializePersonaDocs(projectDir, persona);
+  const docsToRead = [captionGuideLabel(docs, projectDir), docs.hashtagBank ? promptPath(projectDir, docs.hashtagBank) : null].filter((x): x is string => !!x);
   const examples = common ? [] : captionExamples(brief.persona, projectDir, 1);
   const facts = [...catalog.facts, ...Object.entries(brief.facts).map(([k, v]) => `${k}: ${v}`)];
   const hookHidesShop = !currentTelops.some((t) => brief.shop.name && t.includes(brief.shop.name));
@@ -206,7 +207,7 @@ export async function aiHooks(
     '- 保存・いいね・シェア・コメントを促す文言は書かない',
     '- 隣り合うカットに同じ文言を繰り返して「1 文言 2 カット（2 秒以上）」にする。1 カット 1 文言だと速すぎて読めない',
     hookHidesShop ? '- 店名はフックに出さない（本編で明かす構成のため）' : '',
-    persona.id === 'hiro' || persona.id === 'nagi'
+    persona.hookStyle === 'areaDigit'
       ? `- エリア名は縦書きの本文に入れず、バッジ（badge）に出す。今のままなら badge は空文字。本文はエリア名が無くても意味が通る言い回しにする（◯「地元の9割が知らない」 ✕「${brief.shop.area || 'エリア名'}、9割が知らない」）`
       : '',
     `- 「・・・」による焦らしは 1 パターン 1 回まで`,
@@ -215,15 +216,15 @@ export async function aiHooks(
     'ナレーションで守ること:',
     `- 差し替え範囲ぶんを **1 文**で書く。実測話速 ${cps} 文字/秒で、**${budgetChars} 文字以内**（${budgetSec.toFixed(2)} 秒に収める）`,
     '- そのパターンのテロップの内容に沿う（一字一句同じにはせず、言い回しを変える・主語や理由を補う）',
-    persona.id === 'hiro' || persona.id === 'sayuri' ? '- 語尾に「〜わ」を使わない。「〜んや」「〜のや」で言い切らない' : '',
+    ...persona.narrationRules.map((r) => `- ${r}`),
     '- 固有名詞・数字＋単位・読みが割れる漢字はひらがな・カタカナに開く（TTS の誤読対策。「十三」→「じゅうそう」、「350g」→「350グラム」）',
     '- 金額を読み上げない',
     '',
     'キャプションで守ること:',
-    `- まず ${rel(projectDir, skill)} の「Step 4: キャプションの生成」と ${rel(projectDir, hashtagBank)} を Read する（型の正はそちら）`,
+    docsToRead.length ? `- まず ${docsToRead.join(' と ')} を Read する（型の正はそちら）` : '',
     common
       ? `- 下の「共通のキャプション」を元に、**パターンごとに文面を変えて**書く。事実（店名・住所・営業時間・価格・頂いたもの・Instagram）は一切変えない。変えるのは言い回し・冒頭の一文・語順・強調する点。冒頭の一文はそのパターンのフックに合わせる。同じ文面で複数投稿すると使い回しとして扱われるので、文の大半が違う状態にする`
-      : `- 共通のキャプションがまだ無いので、${examples.length ? `${examples.map((f) => rel(projectDir, f)).join(' / ')} を手本に` : 'SKILL.md の型で'}パターンごとに違う文面で書く。裏取りできない項目は ＿＿＿ にする`,
+      : `- 共通のキャプションがまだ無いので、${examples.length ? `${examples.map((f) => promptPath(projectDir, f)).join(' / ')} を手本に` : 'キャプションの型で'}パターンごとに違う文面で書く。裏取りできない項目は ＿＿＿ にする`,
     `- ハッシュタグはちょうど ${persona.caption.hashtags} 個（入れ替えは 1 個まで）。#PR は入れない`,
     '- 保存・いいね・シェア・コメント・フォローを促す文言は入れない（来店を促す一文は可）',
     '- 文末に句点「。」を付けない',
@@ -238,12 +239,13 @@ export async function aiHooks(
     .join('\n');
 
   log(`AI フック案: ${ids.length} パターン${opt.fresh ? '' : '（＋基準 A）'}／差し替え範囲 冒頭 ${idx.length} カット ${spanSec.toFixed(2)} 秒／ナレーション ${budgetChars} 文字以内（model=${opt.model ?? studioConfig.agent.model}）`);
-  const watch = [skill, hashtagBank, ...examples, ...frames.filter((f): f is string => !!f)];
+  const watch = [docs.captionGuide, docs.hashtagBank, ...examples, ...frames].filter((f): f is string => !!f);
   const {onEvent} = agentProgress({watch, onProgress: opt.onProgress, log, labels: {reading: '確認中', thinking: 'フックを考えています', writing: 'パターンを書き出しています'}});
   const run = await runAgent<HooksResponse>({
     cwd: projectDir,
     prompt,
     schema: HOOKS_SCHEMA,
+    addDirs: agentAddDirs(docs, projectDir, examples),
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,
@@ -369,7 +371,7 @@ export async function aiWinner(
   const lastSeg = narration?.segments.find((s) => s.id === lastId);
   const budget = narration ? tailNarrationBudget(narration, videoSec, persona.narration.charsPerSecMeasured) : 0;
   const telops = cuts.cuts.map((c) => c.main?.text ?? '').filter((t, i, a) => t && a.indexOf(t) === i);
-  const skill = path.join(studioConfig.repoRoot, persona.skillDir, 'SKILL.md');
+  const docs = materializePersonaDocs(projectDir, persona);
   const given = opt.given ?? {};
   const want = {telop: !given.tailTelop?.trim(), narration: !given.tailNarration?.trim() && !!lastSeg, caption: !given.caption?.trim()};
 
@@ -386,10 +388,10 @@ export async function aiWinner(
     '書くもの:',
     want.telop ? `- tailTelop: 新しい締めのテロップ。いまと違う言い回しで、来店を促す語族（${persona.cta.join('／')}、または ${persona.ctaPatterns.join('／')} を含む）。${spec.telop.maxChars} 文字以内・句点なし・絵文字と半角括弧なし・金額なし・保存やいいねの誘導なし。文体: ${persona.tone}` : `- tailTelop: 「${given.tailTelop?.trim()}」で決まっている。そのまま返す`,
     want.narration
-      ? `- tailNarration: 新しい締めのナレーション 1 文。tailTelop の内容に沿って言い換え、**${budget} 文字以内**（実測話速 ${persona.narration.charsPerSecMeasured} 文字/秒）。固有名詞・数字はひらがなに開く。${persona.id === 'hiro' || persona.id === 'sayuri' ? '「〜わ」「〜んや」の言い切りは使わない。' : ''}金額は読まない`
+      ? `- tailNarration: 新しい締めのナレーション 1 文。tailTelop の内容に沿って言い換え、**${budget} 文字以内**（実測話速 ${persona.narration.charsPerSecMeasured} 文字/秒）。固有名詞・数字はひらがなに開く。${persona.narrationRules.length ? `${persona.narrationRules.join('。')}。` : ''}金額は読まない`
       : `- tailNarration: ${lastSeg ? `「${given.tailNarration?.trim()}」で決まっている。そのまま返す` : 'ナレーションが無いので空文字'}`,
     want.caption
-      ? `- caption: 下の「元のキャプション」と同じ事実（店名・住所・営業時間・価格・頂いたもの・Instagram）で、**文面を全面的に書き換える**（冒頭の一文・語順・言い回し・強調する点）。同じ文面での再投稿は使い回しになるので、文の大半が違う状態にする。型は ${rel(projectDir, skill)} の「Step 4: キャプションの生成」を Read して守る。ハッシュタグはちょうど ${persona.caption.hashtags} 個（入れ替えは 1 個まで）・#PR なし・句点なし・保存やいいねの誘導なし${persona.caption.maxChars ? `・${persona.caption.maxChars} 文字程度まで` : ''}${persona.caption.repostAccount ? `・誘導は @${persona.caption.repostAccount} で固定` : ''}`
+      ? `- caption: 下の「元のキャプション」と同じ事実（店名・住所・営業時間・価格・頂いたもの・Instagram）で、**文面を全面的に書き換える**（冒頭の一文・語順・言い回し・強調する点）。同じ文面での再投稿は使い回しになるので、文の大半が違う状態にする。${docs.captionGuide ? `型は ${captionGuideLabel(docs, projectDir)} を Read して守る。` : ''}ハッシュタグはちょうど ${persona.caption.hashtags} 個（入れ替えは 1 個まで）・#PR なし・句点なし・保存やいいねの誘導なし${persona.caption.maxChars ? `・${persona.caption.maxChars} 文字程度まで` : ''}${persona.caption.repostAccount ? `・誘導は @${persona.caption.repostAccount} で固定` : ''}`
       : '- caption: 決まっているので空文字を返す',
     '',
     baseCaption ? `元のキャプション:\n${baseCaption}` : '元のキャプションは無い（caption.txt が無い）。',
@@ -399,11 +401,12 @@ export async function aiWinner(
     .join('\n');
 
   log(`AI 二次活用: ${hookLabel}／締め「${prevTelop}」を書き換え（model=${opt.model ?? studioConfig.agent.model}）`);
-  const {onEvent} = agentProgress({watch: want.caption ? [skill] : [], onProgress: opt.onProgress, log, labels: {reading: '確認中', thinking: '締めとキャプションを考えています', writing: '書き出しています'}});
+  const {onEvent} = agentProgress({watch: want.caption && docs.captionGuide ? [docs.captionGuide] : [], onProgress: opt.onProgress, log, labels: {reading: '確認中', thinking: '締めとキャプションを考えています', writing: '書き出しています'}});
   const run = await runAgent<WinnerResponse>({
     cwd: projectDir,
     prompt,
     schema: WINNER_SCHEMA,
+    addDirs: agentAddDirs(docs, projectDir),
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,

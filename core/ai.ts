@@ -19,6 +19,7 @@ import {ensureCutFrame} from './cut-frames';
 import {readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaption, writeCuts, writeNarration} from './project';
 import {validateProject} from './render';
 import {runAgent, type AgentEvent, type AgentRun} from './agent';
+import {agentAddDirs, captionGuideLabel, materializePersonaDocs, promptPath} from './persona-docs';
 import {activitySummary, createAgentTracker, fmtElapsed, progressView, type ProgressLabels} from '../shared/agent-progress';
 
 const enumOf = (v: readonly string[]) => ({type: 'string', enum: [...v]});
@@ -430,7 +431,7 @@ export async function aiTelop(
     '- 保存・いいね・シェア・コメントを促す文言は書かない',
     `- 「・・・」による焦らしは全体で ${rule.maxEllipsis} 回まで。山場の直前に絞る`,
     '- 同じ言い回し・同じ語尾を続けない',
-    persona.id === 'hiro' || persona.id === 'nagi'
+    persona.hookStyle === 'areaDigit'
       ? [
           '- 役割 hook は「エリア＋一桁数字」型。ただし **エリア名は縦書きの本文に入れず、バッジ（badge）に出す**',
           `  badge に「${brief.shop.area || 'エリア名'}」、本文はエリア名が無くても意味が通る言い回しにする`,
@@ -606,7 +607,7 @@ export async function aiNarration(
     '- ブロックは内容のまとまり（≒テロップの切れ目）で区切る。3〜5 は**下限**であって上限ではない',
     '- **無音を作らない。** テロップがあるのにナレーションが 2 秒以上途切れる箇所を作らない。短いつなぎカットは前後のブロックに含めてよい',
     `- 文体: ${persona.tone}`,
-    persona.id === 'hiro' || persona.id === 'sayuri' ? '- 語尾に「〜わ」を使わない。「〜んや」「〜のや」で言い切らない（「〜んやって」「〜んやった」と後ろへ接続するのは可）' : '',
+    ...persona.narrationRules.map((r) => `- ${r}`),
     '- 同じ語尾を続けない（「〜た」「〜た」「〜た」のような単調な連続を避ける）',
     '- **固有名詞・数字＋単位・読みが割れる漢字はひらがな・カタカナに開く**（TTS の誤読対策。「牛すじ」→「ぎゅうすじ」、「350g」→「350グラム」、「大盛り」→「おおもり」、読みが割れる店名は かな書き。テロップは漢字のままでよい）',
     '- 文中の句点（。）は 0.7 秒前後の間を生む。詰めたいときは読点（、）にする',
@@ -960,10 +961,15 @@ export async function aiCaption(
   const narration = readNarration(projectDir);
   const existing = readCaption(projectDir);
 
-  const skill = path.join(studioConfig.repoRoot, persona.skillDir, 'SKILL.md');
-  const hashtagBank = path.join(studioConfig.repoRoot, persona.skillDir, 'references', 'hashtag-bank.md');
+  // 人格の「型」の文書。skillDir があればそこ、無ければ persona の文字列を .studio/persona/ に書き出して読ませる
+  const docs = materializePersonaDocs(projectDir, persona);
   const examples = captionExamples(brief.persona, projectDir);
-  const rel = (p: string) => path.relative(projectDir, p).replace(/\\/g, '/');
+  const rel = (p: string) => promptPath(projectDir, p);
+  const readList = [
+    captionGuideLabel(docs, projectDir),
+    docs.hashtagBank ? `${rel(docs.hashtagBank)}（ハッシュタグはここから ${persona.caption.hashtags} 個ちょうど）` : null,
+    ...examples.map((f) => `${rel(f)}（同じ人格で過去に書いた実例。型を真似る。中身は流用しない）`),
+  ].filter((l): l is string => !!l);
 
   const telops = telopGroupsOf(cuts)
     .map((g) => g.def.text)
@@ -984,10 +990,8 @@ export async function aiCaption(
   const prompt = [
     `グルメのショート動画の Instagram キャプションを書いてほしい。動画はもう完成している。`,
     '',
-    '**まず次を Read すること（書き方の正はこちら。ここに書いていない型を作らない）:**',
-    `1. ${rel(skill)} の「Step 4: キャプションの生成」`,
-    `2. ${rel(hashtagBank)}（ハッシュタグはここから ${persona.caption.hashtags} 個ちょうど）`,
-    ...examples.map((f, i) => `${i + 3}. ${rel(f)}（同じ人格で過去に書いた実例。型を真似る。中身は流用しない）`),
+    readList.length ? '**まず次を Read すること（書き方の正はこちら。ここに書いていない型を作らない）:**' : '',
+    ...readList.map((l, i) => `${i + 1}. ${l}`),
     '',
     `店: ${brief.shop.name}（${brief.shop.area}${brief.shop.station ? `・${brief.shop.station}` : ''}・${brief.shop.genre}）／${brief.shop.pr ? 'PR 案件' : 'PR ではない'}／人格 ${persona.label}`,
     brief.core ? `企画の核: ${brief.core}` : '',
@@ -1015,12 +1019,13 @@ export async function aiCaption(
     .join('\n');
 
   log(`AI キャプション: ${brief.shop.name}／手本 ${examples.length} 件（model=${opt.model ?? studioConfig.agent.model}）`);
-  const watch = [skill, hashtagBank, ...examples, ...frames.filter((f): f is string => !!f)];
+  const watch = [docs.captionGuide, docs.hashtagBank, ...examples, ...frames].filter((f): f is string => !!f);
   const {onEvent} = agentProgress({watch, onProgress: opt.onProgress, log, labels: {reading: '確認中', thinking: '本文を考えています', writing: '本文を書き出しています'}});
   const run = await runAgent<CaptionResponse>({
     cwd: projectDir,
     prompt,
     schema: CAPTION_SCHEMA,
+    addDirs: agentAddDirs(docs, projectDir, examples),
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,
@@ -1163,7 +1168,7 @@ export async function aiEdit(
     `- テロップ: ${spec.telop.maxChars} 文字以内・文末に句点を付けない・半角括弧と絵文字は使わない・金額は書かない・保存やいいねを促さない`,
     `- テロップの文体: ${persona.tone}`,
     `- ナレーション: **そのブロックの区間に出ているテロップの内容に沿って書く**（一字一句同じにはせず、言い換え・主語や理由の補足・キャプションや裏取り済みの事実で肉付けする）。上の「目安 N 文字」を超えると次のブロックに食い込む。語尾を連続させない。固有名詞や数字の単位は TTS が誤読しないようひらがなに開く（「牛すじ」→「ぎゅうすじ」、「350g」→「350グラム」。テロップは漢字のままでよい）`,
-    persona.id === 'hiro' || persona.id === 'sayuri' ? '- ナレーションで「〜わ」の語尾は使わない' : '',
+    ...persona.narrationRules.map((r) => `- ナレーション: ${r}`),
     '- カットの尺は 3 秒を超えない（会話字幕のカットは例外）',
     '- 同じテロップ文言が続くカットは 1 グループ。group で指すと全部まとめて変わる',
     '',

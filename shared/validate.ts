@@ -357,7 +357,7 @@ export function validateCuts(input: unknown, ctx: ValidateContext = {}): Validat
         message: `フックの縦書き本文が「${area}」で始まっています。エリア名はバッジに出し、本文は「${area}」が無くても通る言い回しに（例「地元の${lead.rest}」）`,
       });
   }
-  if (persona && (persona.id === 'hiro' || persona.id === 'nagi') && groups.length && !looksLikeAreaDigitHook(hookText, areaInBadge))
+  if (persona?.hookStyle === 'areaDigit' && groups.length && !looksLikeAreaDigitHook(hookText, areaInBadge))
     W({code: 'HOOK_TEXT_PATTERN', groupId: 'g01', cutIndex: 0, message: `フックが「エリア名＋一桁数字」型でない: ${hookText}`});
   if (persona && groups.length) {
     const last = groups[groups.length - 1].def.text;

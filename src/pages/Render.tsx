@@ -12,7 +12,7 @@ import {IssueList} from '../components/IssueList';
 import {AI_JOB_LABEL, AiJobStatus} from '../components/AiJobStatus';
 import type {Job} from '../api';
 import type {Narration, NarrationSegment} from '@shared/schema';
-import {PERSONAS} from '@shared/personas';
+import {findPersona} from '@shared/personas';
 import {checkNarration} from '@shared/narration';
 import {localTime} from '@shared/time';
 import {api} from '../api';
@@ -43,8 +43,9 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline') => void}>
           ? '生成中です'
           : null;
   const canTts = !!narration && !ttsBlockedBy;
-  const cps = s.files.brief.data ? PERSONAS[s.files.brief.data.persona].narration.charsPerSec : 11;
-  const personaSpeed = s.files.brief.data ? PERSONAS[s.files.brief.data.persona].narration.speed : 1.6;
+  const briefPersona = s.files.brief.data ? findPersona(s.files.brief.data.persona) : undefined;
+  const cps = briefPersona?.narration.charsPerSec ?? 11;
+  const personaSpeed = briefPersona?.narration.speed ?? 1.6;
   const segSec = (seg: NarrationSegment) => seg.durSec ?? [...seg.text].length / cps;
   const setNarr = (next: Narration) => s.setFile('narration', next);
   const narrIssues = useMemo(() => (narration ? checkNarration(narration, {estimate: segSec, emptyText: true}) : []), [narration, cps]);

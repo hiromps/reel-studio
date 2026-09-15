@@ -2,14 +2,14 @@ import {describe, expect, it} from 'vitest';
 import {OrderProposalSchema, checkOrder, formatOrderCheck, longestUsableSec, orderFromCuts, orderPrinciples, recommendedCutCount} from '@shared/order';
 import {planCuts} from '@shared/plan';
 import {FORMAT_SPECS} from '@shared/format-specs';
-import {PERSONAS} from '@shared/personas';
+import {TEST_PERSONAS} from './helpers';
 import {makeBrief, makeCatalog, makeClip, richClips} from './helpers';
 
 const catalog = makeCatalog('reunion', richClips());
 const f7 = FORMAT_SPECS.F7;
 const f0 = FORMAT_SPECS.F0;
-const briefF7 = makeBrief({persona: 'hiro', format: 'F7', hook: {clipId: '11', text: '東大阪、9割が知らない'}, shop: {name: 'Cafe REUNION', area: '東大阪', genre: 'ティールーム', pr: false}});
-const ctxF7 = {catalog, brief: briefF7, spec: f7, persona: PERSONAS.hiro};
+const briefF7 = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '11', text: '東大阪、9割が知らない'}, shop: {name: 'Cafe REUNION', area: '東大阪', genre: 'ティールーム', pr: false}});
+const ctxF7 = {catalog, brief: briefF7, spec: f7, persona: TEST_PERSONAS.standard};
 
 const codes = (r: {findings: {code: string}[]}) => r.findings.map((f) => f.code);
 const errCodes = (r: {findings: {code: string; severity: string}[]}) => r.findings.filter((f) => f.severity === 'E').map((f) => f.code);
@@ -49,13 +49,13 @@ describe('checkOrder — 並び順そのものの構成チェック', () => {
   });
 
   it('先頭に看板クリップを置いたら E', () => {
-    const brief = makeBrief({persona: 'hiro', format: 'F7', hook: {clipId: '19'}});
+    const brief = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '19'}});
     const r = checkOrder(['19', '11', '12'], {...ctxF7, brief});
     expect(errCodes(r)).toContain('ORDER_HOOK_SIGNAGE');
   });
 
   it('先頭が料理でない（外観・店内）なら W', () => {
-    const brief = makeBrief({persona: 'hiro', format: 'F7', hook: {clipId: '01'}});
+    const brief = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '01'}});
     const r = checkOrder(['01', '11', '16', '19'], {...ctxF7, brief});
     expect(codes(r)).toContain('ORDER_OPENING_NOT_FOOD');
     expect(errCodes(r)).not.toContain('ORDER_OPENING_NOT_FOOD');
@@ -78,7 +78,7 @@ describe('checkOrder — 並び順そのものの構成チェック', () => {
     });
 
     it('F0：看板が 2〜5 番目に無ければ W（②証明の直後にリビール）', () => {
-      const brief = makeBrief({persona: 'hiro', format: 'F0', hook: {clipId: '11'}});
+      const brief = makeBrief({persona: 'standard', format: 'F0', hook: {clipId: '11'}});
       const late = checkOrder(['11', '16', '12', '18', '13', '15', '19'], {...ctxF7, brief, spec: f0});
       expect(codes(late)).toContain('ORDER_REVEAL_POSITION');
       const ok = checkOrder(['11', '16', '19', '12', '18', '13', '15'], {...ctxF7, brief, spec: f0});
@@ -138,7 +138,7 @@ describe('orderFromCuts — cuts.json から並びを読み戻す', () => {
 
   it('固定順で plan すると、指定した並びがそのまま cuts の並びになる', () => {
     const want = ['11', '16', '12', '18', '13', '15', '17', '21', '09', '10', '20', '02', '19', '01'];
-    const brief = makeBrief({persona: 'hiro', format: 'F7', hook: {clipId: '11'}, order: {mode: 'fixed', fixed: want}});
+    const brief = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '11'}, order: {mode: 'fixed', fixed: want}});
     const r = planCuts({catalog, brief, options: {now: '2026-09-09T00:00:00.000Z'}});
     expect(orderFromCuts(r.cuts, catalog)).toEqual(want);
   });
@@ -159,10 +159,10 @@ describe('OrderProposalSchema — Claude が返す形', () => {
 
 describe('orderPrinciples / longestUsableSec / formatOrderCheck', () => {
   it('F7 は看板の温存、F0 は 2〜5 番目のリビールを指示する', () => {
-    const a = orderPrinciples(f7, briefF7, PERSONAS.hiro).join('\n');
+    const a = orderPrinciples(f7, briefF7, TEST_PERSONAS.standard).join('\n');
     expect(a).toMatch(/最後の 2 カット/);
     expect(a).toMatch(/先頭は必ず 11/);
-    const b = orderPrinciples(f0, makeBrief({persona: 'hiro', format: 'F0'}), PERSONAS.hiro).join('\n');
+    const b = orderPrinciples(f0, makeBrief({persona: 'standard', format: 'F0'}), TEST_PERSONAS.standard).join('\n');
     expect(b).toMatch(/2〜5 番目/);
   });
 

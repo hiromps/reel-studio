@@ -39,7 +39,7 @@ const sameFile = (a: string, b: string): boolean => {
 
 /**
  * 「ナレーション付き」と名乗ってよいかを確かめる。
- * 過去に mix を忘れて素材の音だけの動画を納品し、保存率が 0.27% まで落ちた事故があるので、
+ * mix を忘れて素材の音だけの動画を「ナレーション付き」として納品する事故を防ぐため、
  * **名前を付ける前に必ずここを通す**。
  */
 export const narrationReady = (projectDir: string): {ok: boolean; reason?: string} => {
