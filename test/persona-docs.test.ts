@@ -48,16 +48,21 @@ describe('materializePersonaDocs', () => {
 });
 
 describe('promptPath / agentAddDirs', () => {
+  // OS ごとの絶対パスの形（C:\… と /…）で組み立てる。CI（Linux）でも同じテストが通るように
+  const project = path.resolve('/work/a-reel');
+  const inside = path.join(project, 'caption.txt');
+  const otherDir = path.resolve('/work/b-reel');
+  const outside = path.join(otherDir, 'caption.txt');
+  const skills = path.resolve('/skills/x');
+
   it('案件の中は相対、外は絶対（区切りは /）', () => {
-    const project = 'C:\\work\\a-reel';
-    expect(promptPath(project, 'C:\\work\\a-reel\\caption.txt')).toBe('caption.txt');
-    expect(promptPath(project, 'C:\\work\\b-reel\\caption.txt')).toBe('C:/work/b-reel/caption.txt');
+    expect(promptPath(project, inside)).toBe('caption.txt');
+    expect(promptPath(project, outside)).toBe(outside.replace(/\\/g, '/'));
   });
 
   it('手本が別の案件にあるときだけ、その案件フォルダを addDirs に足す（重複なし）', () => {
-    const project = 'C:\\work\\a-reel';
-    const docs = {captionGuide: null, hashtagBank: null, addDirs: ['C:\\skills\\x'], source: 'skillDir' as const};
-    expect(agentAddDirs(docs, project, ['C:\\work\\a-reel\\caption.txt'])).toEqual(['C:\\skills\\x']);
-    expect(agentAddDirs(docs, project, ['C:\\work\\b-reel\\caption.txt', 'C:\\work\\b-reel\\caption.md'])).toEqual(['C:\\skills\\x', 'C:\\work\\b-reel']);
+    const docs = {captionGuide: null, hashtagBank: null, addDirs: [skills], source: 'skillDir' as const};
+    expect(agentAddDirs(docs, project, [inside])).toEqual([skills]);
+    expect(agentAddDirs(docs, project, [outside, path.join(otherDir, 'caption.md')])).toEqual([skills, otherDir]);
   });
 });
