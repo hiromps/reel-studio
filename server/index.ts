@@ -24,12 +24,19 @@ import {framesRouter} from './routes/frames';
 import {buildRouter} from './routes/build';
 import {jobsRouter, eventsHandler} from './routes/jobs';
 import {mediaRouter} from './routes/media';
+import {settingsRouter} from './routes/settings';
+import {personasRouter} from './routes/personas';
+import {loadPersonasFromDisk, personasProblem} from '../core/personas-store';
+import {listPersonas} from '../shared/personas';
 import {state} from './state';
 import {watchProject} from './watch';
 import {resolveProjectDir} from '../core/project';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// 人格は起動時に 1 回読む（無ければ同梱のサンプルで seed）。以後は Settings の保存で更新される
+loadPersonasFromDisk();
 
 // ── 「起動後にコードが変わった」検知 ────────────────────────────
 // 画面（dist）はリクエストのたびに読み直されるのに対し、サーバーは起動時のコードで固まる。
@@ -92,6 +99,8 @@ app.get('/api/config', (_req, res) => {
     templateDir: studioConfig.templateDir,
     settingsDir: settingsDir(),
     settingsProblem: settingsProblem(),
+    personasProblem: personasProblem(),
+    personas: listPersonas().length,
     port: studioConfig.port,
     // 画面（dist）はリクエストのたびに読み直されるのに対し、この一覧は起動時に固まる。
     // 新しいボタンが出ているのにジョブが弾かれる＝サーバーが古いプロセス、を GUI 側で検知させる
@@ -133,6 +142,8 @@ app.use('/api/projects/:slug', framesRouter);
 app.use('/api/projects/:slug', buildRouter);
 app.use('/api/sfx', sfxRouter);
 app.use('/api/tts', ttsRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/personas', personasRouter);
 app.use('/api/jobs', jobsRouter);
 app.get('/events', eventsHandler);
 app.use(mediaRouter);

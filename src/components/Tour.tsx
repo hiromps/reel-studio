@@ -2,7 +2,7 @@
 // 以降は「? 使い方」からいつでも呼び直せる。対象が無いステップ（案件未オープン等）は自動で飛ばす。
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
-export type TourTab = 'projects' | 'materials' | 'brief' | 'timeline' | 'render';
+export type TourTab = 'projects' | 'materials' | 'brief' | 'timeline' | 'render' | 'settings';
 
 export type TourStep = {
   id: string;

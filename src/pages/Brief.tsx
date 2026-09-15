@@ -7,7 +7,7 @@ import {EmptyState} from '../components/EmptyState';
 import {useAiModel} from '../hooks/useAiModel';
 import {BriefSchema, type Brief, type FormatId, type SavePriority} from '@shared/schema';
 import {FORMAT_SPECS, FORMAT_IDS} from '@shared/format-specs';
-import {findPersona, getPersona, listPersonas} from '@shared/personas';
+import {findPersona, getPersona} from '@shared/personas';
 import {countChars} from '@shared/telop-text';
 
 const PRIORITIES: {id: SavePriority; label: string}[] = [
@@ -103,7 +103,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
             人格（persona）を選ぶと、文体・声・テロップの色・既定の構成の型がまとめて決まります。あとから変えられます。
           </p>
           <div className="row">
-            {listPersonas().map((p) => (
+            {s.personas.map((p) => (
               <button key={p.id} className="primary" onClick={() => createBrief(p.id)} title={p.narration.voiceId ? p.tone : 'ナレーションのボイスが未設定です（音声生成で止まります）'}>
                 {p.label} で作る{p.narration.voiceId ? '' : '（ボイス未設定）'}
               </button>
@@ -143,7 +143,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
             persona
             <select value={brief.persona} onChange={(e) => set({persona: e.target.value, format: getPersona(e.target.value).defaultFormat})}>
               {!findPersona(brief.persona) && <option value={brief.persona}>{brief.persona}（未登録の人格）</option>}
-              {listPersonas().map((p) => (
+              {s.personas.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}（既定 {p.defaultFormat}）
                 </option>

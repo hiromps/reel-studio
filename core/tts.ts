@@ -83,6 +83,20 @@ export const voiceExists = async (id: string, opt: {signal?: AbortSignal} = {}):
 };
 
 
+/** 鍵が Fish Audio に通るか（Settings の接続テスト）。鍵はログにも応答にも出さない */
+export const probeFishKey = async (apiKey: string, opt: {signal?: AbortSignal} = {}): Promise<{ok: boolean; status?: number; message: string}> => {
+  try {
+    const res = await fetch('https://api.fish.audio/model?self=true&page_size=1', {headers: {Authorization: `Bearer ${apiKey}`, 'developer-id': DEVELOPER_ID}, signal: opt.signal});
+    if (res.status === 401 || res.status === 403) return {ok: false, status: res.status, message: `鍵が拒否されました（HTTP ${res.status}）。Fish Audio の API キーを確認してください`};
+    if (!res.ok) return {ok: false, status: res.status, message: `Fish Audio が HTTP ${res.status} を返しました`};
+    const data = (await res.json()) as {total?: number; items?: unknown[]};
+    const n = typeof data.total === 'number' ? data.total : (data.items?.length ?? 0);
+    return {ok: true, status: res.status, message: `接続できました（自分の登録モデル ${n} 件）`};
+  } catch (e) {
+    return {ok: false, message: `接続できません: ${e instanceof Error ? e.message : String(e)}`};
+  }
+};
+
 export type Voice = {
   /** reference_id（narration.json の voice に入る値） */
   id: string;

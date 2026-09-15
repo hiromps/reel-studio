@@ -1,13 +1,16 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
-import {defaultPersonaId, listPersonas} from '@shared/personas';
 import {localDateTime} from '@shared/time';
 
 export const ProjectsPage: React.FC = () => {
   const s = useStudio();
   const [slug, setSlug] = useState('');
-  const [persona, setPersona] = useState(defaultPersonaId());
+  const [persona, setPersona] = useState('');
+  // 人格の一覧はサーバーから来る。届いたら先頭を既定にする
+  useEffect(() => {
+    if (!s.personas.some((p) => p.id === persona) && s.personas[0]) setPersona(s.personas[0].id);
+  }, [s.personas, persona]);
   const [shop, setShop] = useState('');
   const [busy, setBusy] = useState(false);
   // 「同じ素材で別バージョン」を作るとき、元になる案件（空＝まっさらな新規）
@@ -46,7 +49,7 @@ export const ProjectsPage: React.FC = () => {
           <label>
             persona
             <select value={persona} onChange={(e) => setPersona(e.target.value)}>
-              {listPersonas().map((p) => (
+              {s.personas.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
                   {/* ボイスが決まっていない人格は、音声生成の段になって初めて気づくのを防ぐ */}

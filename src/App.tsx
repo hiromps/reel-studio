@@ -5,6 +5,7 @@ import {MaterialsPage} from './pages/Materials';
 import {BriefPage} from './pages/Brief';
 import {EditorPage} from './editor/EditorPage';
 import {RenderPage} from './pages/Render';
+import {SettingsPage} from './pages/Settings';
 import {Tour, type TourTab} from './components/Tour';
 import {HelpPanel} from './components/HelpPanel';
 import {nextStepOf} from './components/nextStep';
@@ -17,6 +18,7 @@ const TABS: {id: TourTab; label: string; sub: string}[] = [
   {id: 'brief', label: 'Brief', sub: '企画'},
   {id: 'timeline', label: 'Timeline', sub: '編集'},
   {id: 'render', label: 'Render', sub: '書き出し'},
+  {id: 'settings', label: 'Settings', sub: '設定'},
 ];
 type Tab = TourTab;
 const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v);
@@ -44,7 +46,7 @@ export const App: React.FC = () => {
     setTourDone('1');
   };
 
-  // ? でヘルプ（入力中は邪魔しない）／数字キーでタブ移動（Ctrl+1〜5）
+  // ? でヘルプ（入力中は邪魔しない）／数字キーでタブ移動（Ctrl+1〜6）
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -54,7 +56,7 @@ export const App: React.FC = () => {
         setHelp((v) => !v);
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^[1-5]$/.test(e.key)) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^[1-6]$/.test(e.key)) {
         e.preventDefault();
         go(TABS[Number(e.key) - 1].id);
       }
@@ -146,6 +148,8 @@ export const App: React.FC = () => {
         {tab === 'brief' && <BriefPage key={s.active ?? ''} onGoTimeline={() => go('timeline')} onTab={go} />}
         {tab === 'timeline' && <EditorPage key={s.active ?? ''} onTab={go} />}
         {tab === 'render' && <RenderPage key={s.active ?? ''} onTab={go} />}
+        {/* Settings は案件に依存しないので key を付けない（案件を切り替えても入力中の値を捨てない） */}
+        {tab === 'settings' && <SettingsPage />}
       </main>
 
       <div className="toasts">

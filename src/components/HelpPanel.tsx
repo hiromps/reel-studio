@@ -9,6 +9,7 @@ const FLOW: {tab: TourTab; label: string; what: string}[] = [
   {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を自動生成する。台本があるなら貼って「台本から組み立てる」'},
   {tab: 'timeline', label: '④ Timeline', what: '映像・テロップ・ナレーション・効果音を 1 つのタイムラインで整えて検証する'},
   {tab: 'render', label: '⑤ Render', what: '「仕上げ」で原稿 → 音声 → レンダー → 合成 → 納品まで一気に。声の設定・効果音・キャプション・トライアルもここ'},
+  {tab: 'settings', label: '⑥ Settings', what: 'データフォルダ・Fish Audio の API キー・claude の場所と既定モデル・人格（文体・声・キャプションの型）。最初に一度だけ'},
 ];
 
 const KEYS: {k: string; what: string; where: string}[] = [
@@ -28,7 +29,7 @@ const KEYS: {k: string; what: string; where: string}[] = [
   {k: 'クリック', what: 'そのブロックを選んでその場面へ', where: '全部の段'},
   {k: 'Ctrl + ホイール', what: '拡大・縮小（ポインタの下の時刻を動かさない）', where: 'タイムライン'},
   {k: '← →（つまみ選択中）', what: '1 フレームずつ／Shift で 10 フレーム', where: 'インスペクタのフィルム帯'},
-  {k: 'Ctrl + 1〜5', what: 'タブを切り替える', where: '全体'},
+  {k: 'Ctrl + 1〜6', what: 'タブを切り替える', where: '全体'},
   {k: '?', what: 'このパネルを開く', where: '全体'},
 ];
 

@@ -19,7 +19,7 @@ import {api} from '../api';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 
-export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline') => void}> = ({onTab}) => {
+export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'settings') => void}> = ({onTab}) => {
   const s = useStudio();
   const [sel, setSel] = useState<string | null>(null);
   const [gl, setGl] = useState('swiftshader');
@@ -36,7 +36,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline') => void}>
   const ttsBlockedBy = !s.supportsJob('tts')
     ? 'サーバーが古いプロセスです。Reel Studio を再起動してください'
     : s.config?.tts === false
-      ? 'FISH_API_KEY が見つかりません（.claude/settings.local.json の env に設定）'
+      ? 'Fish Audio の API キーが未設定です（Settings の「音声生成」で設定）'
       : s.files.narration.dirty
         ? 'narration.json に未保存の変更があります。保存してから生成してください'
         : ttsBusy
@@ -421,6 +421,11 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline') => void}>
               全部作り直す（{narration.segments.length} ブロック）
             </button>
             <span className="hint">{ttsBlockedBy ?? `ボイス ${narration.voiceTitle ?? narration.voice} / speed ${narration.speed ?? personaSpeed} で narration/<id>.wav を作ります`}</span>
+            {s.config?.tts === false && (
+              <button className="small" onClick={() => onTab('settings')}>
+                Settings へ
+              </button>
+            )}
           </div>
         )}
         {narration && (

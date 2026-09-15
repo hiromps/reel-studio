@@ -31,6 +31,7 @@ export const api = {
         body: JSON.stringify(body),
       }),
     ),
+  del: async <T,>(path: string) => handle<T>(await fetch(path, {method: 'DELETE'})),
 };
 
 export type ProjectInfo = {

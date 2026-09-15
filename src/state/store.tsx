@@ -3,6 +3,7 @@ import React, {createContext, useCallback, useContext, useEffect, useMemo, useRe
 import {api, type ApiError, type Job, type ProjectInfo} from '../api';
 import type {Brief, Catalog, Narration, ReelData} from '@shared/schema';
 import type {CaptionIssue} from '@shared/caption';
+import {listPersonas, setPersonas, type Persona} from '@shared/personas';
 
 export type ContractName = 'catalog' | 'brief' | 'cuts' | 'narration';
 type ContractMap = {catalog: Catalog; brief: Brief; cuts: ReelData; narration: Narration};
@@ -24,7 +25,30 @@ type Store = {
   jobs: Job[];
   logs: Record<string, string[]>;
   toasts: Toast[];
-  config: {uploadsFolders: string[]; workDir: string; uploadsRoot: string; jobTypes?: string[]; stale?: boolean; startedAt?: string; tts?: boolean} | null;
+  config: {
+    uploadsFolders: string[];
+    workDir: string;
+    uploadsRoot: string;
+    dataRoot?: string;
+    outputsDir?: string;
+    sfxDir?: string;
+    settingsDir?: string;
+    jobTypes?: string[];
+    stale?: boolean;
+    startedAt?: string;
+    /** 音声生成（Fish Audio）の鍵があるか */
+    tts?: boolean;
+    /** 裏で走らせる claude が見つかっているか */
+    claude?: boolean;
+    settingsProblem?: string | null;
+    personasProblem?: string | null;
+  } | null;
+  /** 人格の一覧（GET /api/personas）。shared/personas.ts のレジストリにも同じものが入る */
+  personas: Persona[];
+  personasLoaded: boolean;
+  loadPersonas: () => Promise<void>;
+  /** Settings で保存したあとに /api/config を読み直す */
+  reloadConfig: () => Promise<void>;
   /** 起動中のサーバーがそのジョブを扱えるか（古いプロセスのまま新しいボタンを押すのを防ぐ） */
   supportsJob: (type: string) => boolean;
   refreshProjects: () => Promise<void>;
@@ -73,6 +97,8 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   const [logs, setLogs] = useState<Record<string, string[]>>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [config, setConfig] = useState<Store['config']>(null);
+  const [personas, setPersonasState] = useState<Persona[]>(() => listPersonas());
+  const [personasLoaded, setPersonasLoaded] = useState(false);
   const [light, setLightState] = useState<boolean>(() => {
     try {
       return sessionStorage.getItem('reel-studio.light') === '1';
@@ -106,6 +132,24 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   const refreshProjects = useCallback(async () => {
     const r = await api.get<ProjectInfo[]>('/api/projects');
     setProjects(r.data);
+  }, []);
+
+  const loadPersonas = useCallback(async () => {
+    try {
+      const r = await api.get<{personas: Persona[]}>('/api/personas');
+      setPersonas(r.data.personas);
+      setPersonasState(r.data.personas);
+    } catch {
+      // 古いサーバーには /api/personas が無い。同梱の人格で動かす
+      setPersonasState(listPersonas());
+    } finally {
+      setPersonasLoaded(true);
+    }
+  }, []);
+
+  const reloadConfig = useCallback(async () => {
+    const c = await api.get<Store['config']>('/api/config');
+    setConfig(c.data);
   }, []);
 
   const loadFile = useCallback(async <K extends ContractName>(name: K) => {
@@ -229,6 +273,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       try {
         const c = await api.get<Store['config']>('/api/config');
         setConfig(c.data);
+        await loadPersonas();
         await refreshProjects();
         const j = await api.get<Job[]>('/api/jobs');
         setJobs(j.data);
@@ -246,7 +291,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
         toast(`サーバーに接続できません: ${(e as Error).message}（npm run server で起動）`, 'error');
       }
     })();
-  }, [refreshProjects, loadFile, loadCaption, toast]);
+  }, [refreshProjects, loadPersonas, loadFile, loadCaption, toast]);
 
   // SSE
   useEffect(() => {
@@ -313,8 +358,8 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   }, [loadFile, loadCaption, refreshProjects, toast]);
 
   const value = useMemo<Store>(
-    () => ({projects, active, files, caption, jobs, logs, toasts, config, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
-    [projects, active, files, caption, jobs, logs, toasts, config, light, setLight, supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
+    () => ({projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
+    [projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
   );
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;
 };
