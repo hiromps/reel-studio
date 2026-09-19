@@ -2537,3 +2537,26 @@ a.btn-like:hover {
 .upload-materials code {
   color: var(--accent);
 }
+
+/* 選別モードで映像が読めなかったとき（クラウドでは軽量プレビュー未作成が主因） */
+.triage-stage {
+  position: relative;
+}
+.triage-noplay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(18, 20, 23, 0.92);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.triage-noplay b {
+  color: var(--warn);
+}

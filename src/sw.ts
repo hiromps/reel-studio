@@ -2,16 +2,16 @@
 //
 // 受け持つのは 3 つだけ:
 //   1. 画面の枠（HTML / JS / CSS）を先読みして、電波が細い場所でもすぐ開く
-//   2. 一度見たメディア（サムネ・軽量プロキシ・完成動画）とフォントを取り置く
+//   2. 一度見た静止画（サムネ・ストリップ）とフォントを取り置く
 //   3. レンダーなどが終わったときの通知を出す
 // **API とジョブは必ずネットワークに出す**（古い案件情報を掴ませない）。
+// **動画・音声は取り置かない**（別オリジンへの転送になるため。下の registerRoute の注記を参照）。
 /// <reference lib="webworker" />
 import {cleanupOutdatedCaches, precacheAndRoute} from 'workbox-precaching';
 import {registerRoute} from 'workbox-routing';
 import {CacheFirst} from 'workbox-strategies';
 import {CacheableResponsePlugin} from 'workbox-cacheable-response';
 import {ExpirationPlugin} from 'workbox-expiration';
-import {RangeRequestsPlugin} from 'workbox-range-requests';
 
 declare const self: ServiceWorkerGlobalScope & {__WB_MANIFEST: {url: string; revision: string | null}[]};
 
@@ -27,16 +27,18 @@ registerRoute(
   }),
 );
 
-// サムネイル・軽量プロキシ・完成動画。動画のシーク（Range 要求）も扱えるようにする
+/**
+ * サムネイル・ストリップ・コンタクトシート（静止画）。素材一覧や絵コンテで何度も出るので取り置く。
+ *
+ * **動画と音声はここで扱わない。** 実体は別オリジン（Blob）に 307 で飛ばしており、
+ * 返ってくるのは中身を読めない不透明レスポンスになる。それを取り置いて Range 要求
+ * （シーク・部分再生）に答えようとすると再生が止まる。動画はブラウザと CDN に任せる。
+ */
 registerRoute(
-  ({url}) => /^\/p\/.*\/(studio|uploads|out|qc|narration)\//.test(url.pathname),
+  ({url}) => /^\/p\/.*\/(studio|uploads|out|qc)\//.test(url.pathname) && /\.(jpe?g|png|webp|gif)$/i.test(url.pathname),
   new CacheFirst({
-    cacheName: 'reel-media',
-    plugins: [
-      new CacheableResponsePlugin({statuses: [0, 200]}),
-      new ExpirationPlugin({maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 14, purgeOnQuotaError: true}),
-      new RangeRequestsPlugin(),
-    ],
+    cacheName: 'reel-images',
+    plugins: [new CacheableResponsePlugin({statuses: [0, 200]}), new ExpirationPlugin({maxEntries: 800, maxAgeSeconds: 60 * 60 * 24 * 14, purgeOnQuotaError: true})],
   }),
 );
 

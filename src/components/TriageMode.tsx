@@ -3,6 +3,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import type {Clip} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
+import {useStudio} from '../state/store';
 
 type Props = {
   clips: Clip[];
@@ -12,7 +13,10 @@ type Props = {
 };
 
 export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onClose}) => {
+  const s = useStudio();
   const [i, setI] = useState(0);
+  /** 映像を読めなかったクリップ（クラウドでは軽量プレビュー未作成が原因のことが多い） */
+  const [failed, setFailed] = useState<string | null>(null);
   const clip = clips[i] as Clip | undefined;
   const done = i >= clips.length;
   const {kept, dropped} = useMemo(() => {
@@ -92,7 +96,35 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onClose
           ) : (
             <>
               <div className="triage-stage">
-                <video key={clip.id} src={mediaBase ? `${mediaBase}/${clip.src}` : undefined} autoPlay loop muted controls preload="metadata" />
+                {/* iOS は playsInline が無いと**インライン再生そのものができず autoPlay も効かない**。
+                    muted と両方そろって初めて自動で流れる */}
+                <video
+                  key={clip.id}
+                  src={mediaBase ? `${mediaBase}/${clip.src}` : undefined}
+                  autoPlay
+                  loop
+                  muted
+                  controls
+                  playsInline
+                  preload="metadata"
+                  onError={() => setFailed(clip.id)}
+                  onLoadedData={() => setFailed((f) => (f === clip.id ? null : f))}
+                />
+                {failed === clip.id && (
+                  <div className="triage-noplay">
+                    <b>この素材の映像が読めません</b>
+                    {s.isCloud ? (
+                      <>
+                        <span>クラウドには原本を置かないので、スマホで再生できるのは PC が作った軽量プレビューだけです。この案件ではまだ作られていません。</span>
+                        <button className="small primary" onClick={() => void s.addJob('preview-proxy')} disabled={s.jobs.some((j) => j.type === 'preview-proxy' && (j.status === 'running' || j.status === 'queued'))}>
+                          軽量プレビューを作る（PC で実行）
+                        </button>
+                      </>
+                    ) : (
+                      <span>素材ファイルが案件フォルダにあるか確認してください（{clip.src}）。</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="triage-meta">
                 <div className="row" style={{alignItems: 'center'}}>

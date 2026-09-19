@@ -10,6 +10,7 @@ import {usageBySrc} from '../components/track';
 import {TriageMode} from '../components/TriageMode';
 import {MosaicCard, MosaicClipSection, mediaVersion, useMosaicForm} from '../components/MosaicPanel';
 import {UploadMaterials} from '../components/UploadMaterials';
+import {PreviewReady} from '../components/PreviewReady';
 import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
@@ -273,6 +274,8 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
               </button>
             </div>
             <p className="hint">クリックすると右側で編集できます（← → で前後のクリップ）。★＝つかみに使いたい画、NG＝使わない画。並べるのは Timeline 画面の素材ビンから。</p>
+            {/* クラウドでは軽量プレビューが無いと映像が再生できない（選別モード・クリップ確認の両方） */}
+            <PreviewReady />
             <div
               className="clip-grid"
               data-tour="clip-grid"
@@ -324,7 +327,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 <h2>
                   {clip.id} {clip.original} → {clip.src.replace('uploads/', '')}
                 </h2>
-                <video ref={videoRef} src={`${s.mediaBase}/${clip.src}${mediaVersion(clip)}`} controls preload="metadata" />
+                <video ref={videoRef} src={`${s.mediaBase}/${clip.src}${mediaVersion(clip)}`} controls playsInline preload="metadata" />
                 <div className="strip">
                   {clip.thumbs.strip.map((p, i) => (
                     <img
