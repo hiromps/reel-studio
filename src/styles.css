@@ -1098,6 +1098,9 @@ pre.md {
   position: relative;
   width: min(100%, calc(var(--crop-h, 44vh) * 9 / 16));
   aspect-ratio: 9 / 16;
+  /* 縦の flex に入ったときに縮められない（overflow: hidden があるぶん最小の高さが 0 になり、
+     放っておくと 9:16 が崩れてレンダー結果と食い違う） */
+  flex: none;
   margin: 0 auto;
   background: #000;
   border-radius: 6px;
@@ -2837,6 +2840,13 @@ a.btn-like:hover {
     border-bottom: none;
     box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
     padding: 0 10px;
+  }
+  /* 中身は縮めない。**シートは縦に伸びてスクロールさせる**のが正しい振る舞い。
+     既定（flex-shrink: 1）のままだと、高さの足りないぶんを子が分け合って縮む。
+     このとき `overflow` を持つ子は「最小の高さが 0」扱いなので、そこだけが全部を
+     引き受けて潰れる —— コマ送り（.strip は overflow-x: auto）が消えたのはこれ */
+  .card.detail.open > * {
+    flex: none;
   }
   /* 何のクリップを見ているか＋閉じる。シートの上端に貼り付ける */
   .detail-bar {
