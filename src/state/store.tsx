@@ -315,9 +315,14 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   // SSE
   useEffect(() => {
     const es = new EventSource('/events');
-    // 接続（再接続）時：切断中に取りこぼしたジョブ更新を取り直す
+    // 接続（再接続）時：切断中に取りこぼしたジョブ更新を取り直す。
+    // **案件の一覧も取り直す。** クラウドでは SSE が一定時間で切れて繋ぎ直すが、
+    // その繋ぎ目に終わったジョブの job:update は届かない（新しい接続は「いまの状態」を
+    // 配るだけで、過去の変化は流さない）。ジョブだけ取り直していたので、
+    // 「mix は done なのに out/final_narration.mp4 が無いと言われる」が起きていた
     es.addEventListener('hello', () => {
       void api.get<Job[]>('/api/jobs').then((r) => setJobs(r.data)).catch(() => {});
+      void refreshProjects().catch(() => {});
     });
     es.addEventListener('job:update', (ev) => {
       const j = JSON.parse((ev as MessageEvent).data) as Job;

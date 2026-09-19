@@ -5,6 +5,7 @@
 // 実体は Blob にあるので 307 で飛ばす（Range 要求はリダイレクト先がそのまま扱う）。
 // 原本 4K は上げていないので、mode=full が無ければ light（540x960 の軽量プロキシ）に落とす。
 import {Router} from 'express';
+import {getDownloadUrl} from '@vercel/blob';
 import {isAssetKind, isAssetMode} from '../blob';
 import {findAsset} from '../store';
 import {normalizeSlug} from '../../shared/project';
@@ -29,5 +30,7 @@ mediaRouter.get('/p/:slug/:mode/:kind/*', async (req, res) => {
   if (!asset) return res.status(404).end();
   // Blob の URL は差し替えのたびに変わるので、ここは短く持たせて毎回引き直させる
   res.setHeader('Cache-Control', 'private, max-age=30');
-  res.redirect(307, asset.url);
+  // `?download=1` は「再生ではなく保存」。飛ばした先（Blob）に添付として返させる
+  // —— 別オリジンなので <a download> は効かず、Content-Disposition でしか保存にできない
+  res.redirect(307, req.query.download ? getDownloadUrl(asset.url) : asset.url);
 });

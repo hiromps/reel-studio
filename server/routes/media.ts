@@ -11,17 +11,25 @@ import {resolveProjectDirStrict} from '../../core/project';
 
 export const mediaRouter = Router();
 
-const serve = (res: Response, abs: string | null, cache: string) => {
+const serve = (res: Response, abs: string | null, cache: string, downloadAs?: string) => {
   if (!abs) return res.status(404).end();
   const headers: Record<string, string> = {'Cache-Control': cache};
   const ext = path.extname(abs).toLowerCase();
   if (ext === '.mov' || ext === '.mp4' || ext === '.m4v') headers['Content-Type'] = 'video/mp4';
   if (ext === '.ttf') headers['Content-Type'] = 'font/ttf';
   if (ext === '.wav') headers['Content-Type'] = 'audio/wav';
+  // 再生ではなく保存させる。案件名に日本語が入るので RFC 5987 の形で書く
+  if (downloadAs) headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(downloadAs)}`;
   res.sendFile(abs, {headers, acceptRanges: true, etag: true, lastModified: true});
 };
 
 const rel = (req: Request) => (req.params as Record<string, string>)[0] ?? '';
+/** `?download=1` が付いていたら保存名を返す（スマホから完成品を持ち出すため） */
+const downloadAs = (req: Request): string | undefined => {
+  if (!req.query.download) return undefined;
+  const slug = (req.params as Record<string, string>).slug ?? 'reel';
+  return `${slug}_${path.basename(rel(req))}`;
+};
 const dirOf = (req: Request): string | null => {
   try {
     return resolveProjectDirStrict((req.params as Record<string, string>).slug);
@@ -35,7 +43,7 @@ const isLight = (req: Request) => (req.params as Record<string, string>).mode ==
 mediaRouter.get('/p/:slug/:mode/uploads/*', (req, res) => serve(res, resolvePublic(dirOf(req), `uploads/${rel(req)}`, isLight(req)), 'no-cache'));
 mediaRouter.get('/p/:slug/:mode/fonts/*', (req, res) => serve(res, resolvePublic(dirOf(req), `fonts/${rel(req)}`), 'public, max-age=31536000, immutable'));
 mediaRouter.get('/p/:slug/:mode/studio/*', (req, res) => serve(res, resolveStudio(dirOf(req), rel(req)), 'no-cache'));
-mediaRouter.get('/p/:slug/:mode/out/*', (req, res) => serve(res, resolveInProject(dirOf(req), 'out', rel(req)), 'no-cache'));
+mediaRouter.get('/p/:slug/:mode/out/*', (req, res) => serve(res, resolveInProject(dirOf(req), 'out', rel(req)), 'no-cache', downloadAs(req)));
 mediaRouter.get('/p/:slug/:mode/qc/*', (req, res) => serve(res, resolveInProject(dirOf(req), 'qc', rel(req)), 'no-cache'));
 // 生成済みのナレーション音声（GUI の試聴ボタン）
 mediaRouter.get('/p/:slug/:mode/narration/*', (req, res) => serve(res, resolveInProject(dirOf(req), 'narration', rel(req)), 'no-cache'));

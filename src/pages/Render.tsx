@@ -7,6 +7,7 @@ import {CaptionCard} from '../components/CaptionCard';
 import {SfxCard} from '../components/SfxCard';
 import {TrialCard} from '../components/TrialCard';
 import {BuildCard} from '../components/BuildCard';
+import {FinishedVideo} from '../components/FinishedVideo';
 import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {IssueList} from '../components/IssueList';
 import {AI_JOB_LABEL, AiJobStatus} from '../components/AiJobStatus';
@@ -68,6 +69,13 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
       })
       .catch((e) => setVoiceErr((e as Error).message));
   }, []);
+  // out/ の有無（レンダー済みか・合成済みか）は PC 側が書いた案件情報から読む。
+  // この画面を開いた時点の値を使いたいので、毎回取り直す（古い値だと
+  // 「mix は done なのに out/final_narration.mp4 が無い」と出てしまう）
+  useEffect(() => {
+    void s.refreshProjects().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.active]);
   /** すでにある wav を全部使えなくする（ボイス・速度を変えたとき） */
   const invalidateAll = (patch: Partial<Narration>) => {
     if (!narration) return;
@@ -486,6 +494,13 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
 
       <section className="card" data-tour="deliver">
         <h2>合成と納品（手動）</h2>
+        {/* できあがっていれば、まずここで確認して端末に持ち出せるようにする */}
+        {outFiles?.narration && (
+          <>
+            <h3>完成品（ナレーション入り）</h3>
+            <FinishedVideo />
+          </>
+        )}
         {(mixBlockedBy || deliverBlockedBy) && (
           <p className="hint" style={{color: 'var(--warn)'}}>
             {mixBlockedBy ?? deliverBlockedBy}
