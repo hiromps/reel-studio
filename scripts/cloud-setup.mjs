@@ -49,13 +49,23 @@ const askSecret = (q) =>
   });
 const yes = async (q, def = true) => /^(y|yes|はい|)$/i.test(await ask(`${q} [${def ? 'Y/n' : 'y/N'}]`, def ? 'y' : 'n'));
 
+/**
+ * vercel CLI を呼ぶ。
+ * Windows では `npx.cmd` を直接 spawn できない（Node 20 以降は .cmd の起動を塞いでいる）ので、
+ * node で npx-cli.js を直に叩く。shell: true は使わない —— URL に ? や & が入るため。
+ */
+const npxCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 const vercel = (args, opt = {}) => {
-  const r = spawnSync(isWin ? 'npx.cmd' : 'npx', ['vercel', ...args], {
+  const [cmd, argv] = fs.existsSync(npxCli)
+    ? [process.execPath, [npxCli, '--yes', 'vercel', ...args]]
+    : [isWin ? 'npx.cmd' : 'npx', ['vercel', ...args]];
+  const r = spawnSync(cmd, argv, {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
     stdio: opt.inherit ? 'inherit' : 'pipe',
     input: opt.input,
+    shell: !fs.existsSync(npxCli) && isWin,
   });
   return {code: r.status ?? 1, out: (r.stdout ?? '').trim(), err: (r.stderr ?? '').trim()};
 };
@@ -97,10 +107,18 @@ const main = async () => {
     ok(`プロジェクト: ${name}`);
   }
   const project = JSON.parse(fs.readFileSync(linkFile, 'utf8'));
+  const teamQ0 = project.orgId?.startsWith('team_') ? `?teamId=${project.orgId}` : '';
+
+  // ── GitHub との自動連携を切る
+  // vercel link は git remote を見て勝手に連携する。繋がったままだと、公開リポジトリへ
+  // push したときに「クラウド層の入っていない版」が本番に上書きされ、画面は出るのに
+  // API が全部 404 になる（実際に一度やった）。出すのは npm run cloud:deploy からだけにする。
+  const unlink = vercel(['api', `/v9/projects/${project.projectId}/link${teamQ0}`, '-X', 'DELETE', '--dangerously-skip-permissions']);
+  if (unlink.code === 0) ok('GitHub の自動連携を切りました（本番に出すのは npm run cloud:deploy から）');
 
   // ── 3. デプロイ保護を外す（付いたままだとスマホも PC も Vercel のログイン画面で弾かれる）
   step(3, TOTAL, 'デプロイ保護を外す');
-  const teamQ = project.orgId?.startsWith('team_') ? `?teamId=${project.orgId}` : '';
+  const teamQ = teamQ0;
   const body = path.join(os.tmpdir(), `reel-sso-${process.pid}.json`);
   fs.writeFileSync(body, JSON.stringify({ssoProtection: null}));
   const sso = vercel(['api', `/v9/projects/${project.projectId}${teamQ}`, '-X', 'PATCH', '--input', body]);

@@ -27,6 +27,7 @@
     "server": "tsx server/index.ts",
     "worker": "tsx worker/index.ts",
     "cloud:setup": "node scripts/cloud-setup.mjs",
+    "cloud:deploy": "node scripts/cloud-deploy.mjs",
     "dev": "vite",
     "build": "node scripts/prepare-public.mjs && node scripts/build-api.mjs && vite build",
     "start": "node scripts/launch.mjs",

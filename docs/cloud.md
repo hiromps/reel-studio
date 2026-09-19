@@ -135,6 +135,17 @@ npx vercel api "/v1/storage/stores/<storeId>/connections?teamId=<teamId>" -X POS
 **デプロイ保護（SSO）は切ってください。** 有効なままだと、スマホからも PC のワーカーからも
 Vercel のログイン画面に弾かれます。
 
+**GitHub との自動連携は切ってください。** `vercel link` は git remote を見て勝手に連携します。
+繋がったままだと、**公開リポジトリへ push したときに「クラウド層の入っていない版」が本番に
+上書きされ、画面は出るのに API が全部 404 になります**（「サーバーに接続できません」）。
+`npm run cloud:setup` は自動で切ります。手で切るなら:
+
+```bash
+npx vercel api "/v9/projects/<prj_…>/link?teamId=<team_…>" -X DELETE
+```
+
+本番に出すのは `npm run cloud:deploy` からだけにしてください（公開版のまま出そうとすると止まります）。
+
 ### 3. 環境変数（Vercel）
 
 | 変数 | 作り方 |
@@ -241,6 +252,7 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 | 「PC のワーカーがまだ繋がっていません」 | `npm run worker` のログ。`WORKER_TOKEN` の食い違いなら 401 が出る |
 | ジョブが「ワーカーとの通信が途切れました」で失敗 | PC がスリープした。押し直せば再実行される |
 | デプロイした関数が 500 | `npx vercel logs <url>`。`api/_app.cjs` が生成されているか（`npm run build`） |
+| 画面は出るが「サーバーに接続できません」（`NOT_FOUND`） | **公開版が本番に乗っています。** GitHub の自動連携で push が本番を上書きしたか、公開版のブランチからデプロイしたかのどちらか。連携を切って `npm run cloud:deploy` で出し直す |
 | 通知が来ない | iPhone はホーム画面から開いているか。Settings の「テスト送信」で `sent` が 1 以上か |
 | 見覚えのない案件が出る | 他の人と同じデプロイに繋いでいます。環境を分けてください（上の「何人で使えるか」） |
 | 自分の PC が知らないジョブを実行している | 同上。`WORKER_TOKEN` を共有していないか確認してください |
