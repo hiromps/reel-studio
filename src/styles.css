@@ -1112,8 +1112,18 @@ pre.md {
 .cropbox-stage.dragging {
   cursor: grabbing;
 }
+/* 映像は枠いっぱいに敷く。**絶対配置で枠に貼り付ける**のが要点。
+   cropStyle（エンジンと共通）の height: 100% だけに頼ると、枠の高さが aspect-ratio 由来の
+   ときに割合が解決されないブラウザ（iOS Safari）があり、そこでは height が auto に落ちて
+   映像だけが素材の比率のまま縦に縮む＝下に黒帯が出る。
+   絶対配置なら枠の高さを参照しないので、どのブラウザでも必ず埋まる。
+   （枠が高さを持つのは aspect-ratio だけになる＝映像が中身として高さを押し上げることもない） */
 .cropbox-stage video {
   display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 /* 三分割の目安線。寄せる位置を決めるときだけ出す */
 .cropbox-guides {
