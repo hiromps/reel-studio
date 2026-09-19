@@ -2899,3 +2899,37 @@ a.btn-like:hover {
 .insp-crop .cropbox-stage {
   --crop-h: 32vh;
 }
+
+/* 版と更新（Settings） */
+.update-log > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 6px;
+}
+.update-log ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.update-result {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ok);
+  border-radius: 6px;
+  background: #16231c;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.update-result.err {
+  border-color: var(--err);
+  background: #2a1d1d;
+}
+.update-result p {
+  margin: 6px 0 0;
+}
+.update-result .log {
+  margin-top: 6px;
+  max-height: 160px;
+}

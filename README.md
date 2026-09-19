@@ -75,6 +75,27 @@ Windows なら `Reel Studio.cmd` をダブルクリックしても同じです�
 開発時は `npm run server`（API :4310）と `npm run dev`（Vite :5173、HMR）を別々に起動します。
 テストは `npm test`、型検査は `npm run typecheck`。
 
+## 更新のしかた
+
+新しい機能や修正は GitHub に置いています。**案件データ・設定・人格はリポジトリの外**
+（`~/.reel-studio/` とデータフォルダ）にあるので、更新で失われることはありません。
+
+```bash
+npm run update      # git pull → 依存の導入 → 画面のビルド をまとめて行う
+```
+
+そのあと **Reel Studio を起動し直してください**（起動中なら一度閉じる）。
+
+画面からも更新できます。**Settings（Ctrl+6）の「版と更新」**に、更新の有無と入る変更が出ます。
+「更新する」を押すと `git pull` まで行うので、あとは再起動するだけです。
+
+- 手元でコードを直している場合は、先に `git stash` で退避するか、コミットしてください
+  （勝手にマージせず、その旨を表示して止まります）
+- zip で展開した場合は更新コマンドが使えません。`git clone` で入れ直してください
+  （設定と案件データはフォルダの外なので引き継がれます）
+- エンジン（テロップ描画）が変わった更新のあとは、各案件は次のレンダーで自動的に揃います
+- 何が変わったかは [CHANGELOG.md](CHANGELOG.md) にあります
+
 ## 初期設定（Settings タブ・Ctrl+6）
 
 最初に一度だけ。設定は `~/.reel-studio/settings.json` と `~/.reel-studio/personas.json` に保存されます
@@ -160,6 +181,7 @@ npm run worker
 
 ## ドキュメント
 
+- [CHANGELOG.md](CHANGELOG.md) — 版ごとの変更（更新したときはここを見る）
 - [docs/guide.md](docs/guide.md) — 画面と CLI の詳細、AI ジョブ、台本からの組み立て、トライアル、契約ファイル、設計とセキュリティ
 - [docs/cloud.md](docs/cloud.md) — クラウドモード（Vercel + PWA + 自宅 PC ワーカー）の構成と運用
 - [engine/README.md](engine/README.md) — Remotion エンジン（案件に複製されるテンプレート）
@@ -167,6 +189,7 @@ npm run worker
 ## 開発
 
 ```bash
+npm run update      # 更新（git pull + 依存 + ビルド）
 npm run server      # API サーバー（tsx）
 npm run dev         # Vite dev server（HMR）
 npm test            # vitest
