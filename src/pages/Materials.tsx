@@ -319,11 +319,21 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
             </div>
           </section>
 
-          <section className="card detail">
+          {/* 狭い画面では、選んだ瞬間に手元（画面下）へせり上がるシートになる。
+              一覧の下の方を見ているときに、いちいち上へ戻らなくて済むようにするため */}
+          <section className={`card detail${clip ? ' open' : ''}`}>
             {!clip ? (
               <p className="hint">クリップを選択</p>
             ) : (
               <>
+                <div className="detail-bar">
+                  <b>{clip.id}</b>
+                  <span className="hint detail-bar-desc">{clip.tags?.description ?? clip.slug}</span>
+                  <span style={{flex: 1}} />
+                  <button className="small" onClick={() => setSelected(null)} aria-label="閉じる">
+                    閉じる
+                  </button>
+                </div>
                 <h2>
                   {clip.id} {clip.original} → {clip.src.replace('uploads/', '')}
                 </h2>
@@ -494,6 +504,19 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                     リネームして適用
                   </button>
                   <span className="hint">英数字・ハイフン。public/uploads のファイルも一緒にリネームされる（catalog 保存後に実行）</span>
+                </div>
+
+                {/* 狭い画面用。よく押すものだけをシートの下端に固定して、中をスクロールしなくても届くようにする */}
+                <div className="detail-actions">
+                  <button className={clip.user.ng ? 'danger' : ''} onClick={() => setUser(clip.id, {ng: !clip.user.ng})}>
+                    {clip.user.ng ? 'NG 解除' : '✕ NG'}
+                  </button>
+                  <button className={clip.user.hook ? 'primary' : ''} onClick={() => setUser(clip.id, {hook: !clip.user.hook})}>
+                    ★ フック候補
+                  </button>
+                  <button onClick={() => moveSel(1)} disabled={shown.findIndex((c) => c.id === clip.id) >= shown.length - 1}>
+                    次へ →
+                  </button>
                 </div>
               </>
             )}

@@ -25,6 +25,11 @@ import {useMixPreview} from './useMixPreview';
 import {pendingNarration} from './mixPreview';
 import {GROUP_COLORS} from './labels';
 import {PreviewReady} from '../components/PreviewReady';
+import type {Selection} from './selection';
+
+/** 狭い画面のシートの見出し（いま何を触っているか） */
+const selectionLabel = (sel: NonNullable<Selection>): string =>
+  sel.kind === 'cut' ? `カット ${sel.index + 1}` : sel.kind === 'telop' ? `テロップ ${sel.group + 1}` : sel.kind === 'narr' ? `ナレーション ${sel.index + 1}` : `効果音 ${sel.index + 1}`;
 
 type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean};
 const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true};
@@ -398,7 +403,18 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             />
           )}
         </div>
-        <div className="ed-inspector" data-tour="inspector">
+        {/* 狭い画面では、何かを選んでいる間だけ手元（画面下）へせり上がるシートになる。
+            タイムラインの下の方を触っているときに、上へ戻らなくても直せるようにするため */}
+        <div className={`ed-inspector${sel ? ' sel' : ''}`} data-tour="inspector">
+          {sel && (
+            <div className="detail-bar">
+              <b>{selectionLabel(sel)}</b>
+              <span style={{flex: 1}} />
+              <button className="small" onClick={() => setSelection(null)} aria-label="選択を解除して閉じる">
+                閉じる
+              </button>
+            </div>
+          )}
           {sel?.kind === 'cut' && <CutInspector m={m} index={sel.index} onSeekCut={seekCut} focusTelop={focusTelop} />}
           {sel?.kind === 'telop' && <TelopInspector m={m} group={sel.group} onSeekCut={seekCut} />}
           {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} ttsBlockedBy={ttsBlockedBy} />}

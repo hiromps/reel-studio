@@ -2463,6 +2463,22 @@ a.btn-like:hover {
     max-height: none;
     overflow: visible;
   }
+  /* 何かを選んでいる間は、詳細パネルと同じく手元へせり上げる
+     （タイムラインの下の方を触っていても、上へ戻らずに直せる） */
+  .ed-inspector.sel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 46;
+    max-height: 72vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+  }
   .ed-bin {
     order: 5;
     max-height: 62vh;
@@ -2489,7 +2505,161 @@ a.btn-like:hover {
     right: 8px !important;
     width: auto !important;
     max-width: none !important;
+  
+  /* ── 素材（Materials）の詳細パネル ── */
+  /* PC と同じ 2 カラム（1fr 420px）のままだと、詳細が行の先頭に居座って
+     一覧の下の方を見ているときに「上へ戻らないとボタンが押せない」状態になる。
+     1 カラムに畳んだうえで、選択中は手元（画面下）にせり上げる */
+  .materials {
+    grid-template-columns: 1fr;
   }
+  .card.detail {
+    display: none;
+  }
+  .card.detail.open {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* 下部ナビより手前に出す（開いている間はナビを覆う） */
+    z-index: 46;
+    max-height: 84vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+    padding: 0 10px;
+  }
+  /* 何のクリップを見ているか＋閉じる。シートの上端に貼り付ける */
+  .detail-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0 -10px;
+    padding: 8px 10px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .detail-bar-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 45vw;
+  }
+  /* h2 のファイル名はシートでは冗長（上の帯に id が出ている） */
+  .card.detail.open > h2 {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 400;
+    margin: 6px 0 4px;
+    word-break: break-all;
+  }
+  /* 縦 9:16 の素材は放っておくと画面を埋めてしまう。操作ボタンが入る高さに抑える */
+  .detail video {
+    max-height: 38vh;
+  }
+  /* よく押すものはシートの下端に固定して、中をスクロールしなくても届くようにする */
+  .detail-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 8px;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 10px -10px 0;
+    padding: 8px 10px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+  .detail-actions button {
+    min-height: 44px;
+  }
+
+}
+
+  /* ── 素材（Materials）の詳細パネル ── */
+  /* PC と同じ 2 カラム（1fr 420px）のままだと、詳細が行の先頭に居座って
+     一覧の下の方を見ているときに「上へ戻らないとボタンが押せない」状態になる。
+     1 カラムに畳んだうえで、選択中は手元（画面下）にせり上げる */
+  .materials {
+    grid-template-columns: 1fr;
+  }
+  .card.detail {
+    display: none;
+  }
+  .card.detail.open {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* 下部ナビより手前に出す（開いている間はナビを覆う） */
+    z-index: 46;
+    max-height: 84vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+    padding: 0 10px;
+  }
+  /* 何のクリップを見ているか＋閉じる。シートの上端に貼り付ける */
+  .detail-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0 -10px;
+    padding: 8px 10px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .detail-bar-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 45vw;
+  }
+  /* h2 のファイル名はシートでは冗長（上の帯に id が出ている） */
+  .card.detail.open > h2 {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 400;
+    margin: 6px 0 4px;
+    word-break: break-all;
+  }
+  /* 縦 9:16 の素材は放っておくと画面を埋めてしまう。操作ボタンが入る高さに抑える */
+  .detail video {
+    max-height: 38vh;
+  }
+  /* よく押すものはシートの下端に固定して、中をスクロールしなくても届くようにする */
+  .detail-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 8px;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 10px -10px 0;
+    padding: 8px 10px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+  .detail-actions button {
+    min-height: 44px;
+  }
+
 }
 
 /* 指で触る操作のときだけ、掴む場所を大きくする（マウスの見た目は変えない）。
@@ -2507,6 +2677,13 @@ a.btn-like:hover {
   .tl-ruler {
     touch-action: pan-y;
   }
+}
+
+/* 素材の詳細パネル：狭い画面でだけ「下からせり上がるシート」になる。
+   PC ではこの 2 つは使わない（右カラムに全部見えているため） */
+.detail-bar,
+.detail-actions {
+  display: none;
 }
 
 /* クラウド版：スマホで映像が見られるか（軽量プレビューの作成状況）の知らせ */
