@@ -6,6 +6,8 @@ import {countChars, isPlaceholder} from '@shared/telop-text';
 import {applyReadingHints, ttsReadingHints} from '@shared/narration';
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
+import {CropBox} from '../components/CropBox';
+import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
 import {fallbackDuration} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
 import type {EditorModel} from './useEditorModel';
@@ -187,6 +189,36 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
           onStart={pushHistory}
           onChange={(r) => setCuts({...cuts, cuts: cuts.cuts.map((x, k) => (k === index ? {...x, ...r} : x))})}
         />
+
+        {/* 画面内の切り出し（アスペクト比は変えない）。カットごとに決められる。
+            素材側（Materials・選別モード）で決めた値は、構成を組んだときにここへ引き継がれている */}
+        <details className="insp-crop" open={!isDefaultCrop(c.crop)}>
+          <summary>
+            切り出し（拡大・位置）{isDefaultCrop(c.crop) ? '' : ` ${(c.crop?.zoom ?? 1).toFixed(2)}×`}
+          </summary>
+          <CropBox
+            src={s.mediaBase ? `${s.mediaBase}/${c.src}` : null}
+            crop={c.crop ?? DEFAULT_CROP}
+            onChange={(crop) => {
+              pushHistory();
+              patchCut(index, {crop: isDefaultCrop(crop) ? undefined : crop});
+            }}
+            probe={clip?.probe}
+          />
+          {clip && !isDefaultCrop(clip.crop) && (
+            <button
+              className="small"
+              onClick={() => {
+                pushHistory();
+                patchCut(index, {crop: {...clip.crop!}});
+              }}
+              disabled={JSON.stringify(c.crop ?? null) === JSON.stringify(clip.crop)}
+              title="Materials・選別モードでこの素材に付けた切り出しを、このカットに取り込む"
+            >
+              素材の切り出しを取り込む（{(clip.crop?.zoom ?? 1).toFixed(2)}×）
+            </button>
+          )}
+        </details>
         <div className="row">
           <label>
             IN

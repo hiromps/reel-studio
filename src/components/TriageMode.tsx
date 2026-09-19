@@ -12,6 +12,8 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Clip, ClipKind, UsableRange} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
 import {TrimBar} from './TrimBar';
+import {CropBox} from './CropBox';
+import {DEFAULT_CROP, type Crop} from '@shared/schema/cuts';
 import {primaryRangeIndex, rangeForBar, withRange, withRangeLabel, withTags, withoutPrimaryRange} from './triage';
 import {useStudio} from '../state/store';
 
@@ -73,6 +75,12 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onUpdat
   const setTags = (patch: Partial<NonNullable<Clip['tags']>>) => {
     if (!clip) return;
     onUpdate(clip.id, (c) => withTags(c, patch));
+  };
+
+  /** 画面内の切り出し（アスペクト比は変えない）。素材側に覚えるので、構成に組むとカットへ引き継がれる */
+  const setCrop = (crop: Crop) => {
+    if (!clip) return;
+    onUpdate(clip.id, (c) => ({...c, crop}));
   };
 
   // ── 判定と移動 ────────────────────────────────────────────
@@ -161,8 +169,8 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onUpdat
             必要 {kept}・不要 {dropped}
           </span>
           {!done && (
-            <button className="small" onClick={() => setZoom((v) => !v)} title="動画だけを大きく（Z）">
-              {zoom ? '縮小' : '拡大'}
+            <button className="small" onClick={() => setZoom((v) => !v)} title="編集する枠を大きくする（Z）。切り出しは枠の中でピンチ・ドラッグ">
+              {zoom ? '枠を小さく' : '枠を大きく'}
             </button>
           )}
           <button className="small" onClick={onClose}>
@@ -187,41 +195,37 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onUpdat
             </div>
           ) : (
             <>
+              {/* 9:16 の枠の中で「どこを、どれだけ寄って見せるか」を決める。比率は変わらない */}
               <div className="triage-stage">
-                {/* iOS は playsInline が無いとインライン再生できず autoPlay も効かない */}
-                <video
-                  ref={videoRef}
+                <CropBox
                   key={clip.id}
-                  src={mediaBase ? `${mediaBase}/${clip.src}` : undefined}
-                  autoPlay
-                  loop
-                  muted
-                  controls
-                  playsInline
-                  preload="metadata"
-                  onLoadedMetadata={() => range && seekIn(inSec)}
+                  src={mediaBase ? `${mediaBase}/${clip.src}` : null}
+                  crop={clip.crop ?? DEFAULT_CROP}
+                  onChange={setCrop}
+                  probe={clip.probe}
+                  videoRef={videoRef}
                   onError={() => setFailed(clip.id)}
-                  onLoadedData={() => setFailed((f) => (f === clip.id ? null : f))}
-                />
-                {failed === clip.id && (
-                  <div className="triage-noplay">
-                    <b>この素材の映像が読めません</b>
-                    {s.isCloud ? (
-                      <>
-                        <span>クラウドには原本を置かないので、スマホで再生できるのは PC が作った軽量プレビューだけです。この案件ではまだ作られていません。</span>
-                        <button
-                          className="small primary"
-                          onClick={() => void s.addJob('preview-proxy')}
-                          disabled={s.jobs.some((j) => j.type === 'preview-proxy' && (j.status === 'running' || j.status === 'queued'))}
-                        >
-                          軽量プレビューを作る（PC で実行）
-                        </button>
-                      </>
-                    ) : (
-                      <span>素材ファイルが案件フォルダにあるか確認してください（{clip.src}）。</span>
-                    )}
-                  </div>
-                )}
+                >
+                  {failed === clip.id && (
+                    <div className="triage-noplay">
+                      <b>この素材の映像が読めません</b>
+                      {s.isCloud ? (
+                        <>
+                          <span>クラウドには原本を置かないので、スマホで再生できるのは PC が作った軽量プレビューだけです。この案件ではまだ作られていません。</span>
+                          <button
+                            className="small primary"
+                            onClick={() => void s.addJob('preview-proxy')}
+                            disabled={s.jobs.some((j) => j.type === 'preview-proxy' && (j.status === 'running' || j.status === 'queued'))}
+                          >
+                            軽量プレビューを作る（PC で実行）
+                          </button>
+                        </>
+                      ) : (
+                        <span>素材ファイルが案件フォルダにあるか確認してください（{clip.src}）。</span>
+                      )}
+                    </div>
+                  )}
+                </CropBox>
               </div>
 
               {/* 使える区間（トリミング）。帯を掴むとその場で区間ができる */}
@@ -320,7 +324,7 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onUpdat
                 </button>
                 <ul className="insp-keys triage-keys">
                   <li>
-                    <code>→</code>/<code>K</code> 必要　<code>←</code>/<code>X</code> 不要　<code>H</code> フック候補　<code>I</code>/<code>O</code> 区間の頭／尻　<code>Z</code> 拡大　<code>Backspace</code> 戻る　<code>Esc</code> 終了
+                    <code>→</code>/<code>K</code> 必要　<code>←</code>/<code>X</code> 不要　<code>H</code> フック候補　<code>I</code>/<code>O</code> 区間の頭／尻　<code>Z</code> 枠を大きく　<code>Backspace</code> 戻る　<code>Esc</code> 終了　／　画の上でホイール・ピンチ＝寄り、ドラッグ＝位置
                   </li>
                 </ul>
               </div>

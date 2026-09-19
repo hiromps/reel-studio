@@ -4,7 +4,7 @@
 // 台本の書式は決め打ちにしない（人が書いたものをそのまま貼れることが大事）。
 // 代わりに **時間の範囲だけ緩く読み取って**、AI が返してきた組み立てが台本の尺どおりかを検算する。
 import {z} from 'zod';
-import {ReelDataSchema, type Cut, type ReelData} from './schema/cuts';
+import {isDefaultCrop, ReelDataSchema, type Cut, type ReelData} from './schema/cuts';
 import type {Catalog} from './schema/catalog';
 import type {Narration} from './schema/narration';
 import {stableHash} from './hash';
@@ -202,12 +202,15 @@ const cutIdOf = (i: number) => `c${String(i + 1).padStart(2, '0')}`;
 export const scriptPlanToCuts = (plan: ScriptPlan, ctx: ScriptBuildContext): ReelData => {
   const byId = new Map(ctx.catalog.clips.map((c) => [c.id, c]));
   const cuts: Cut[] = plan.cuts.map((c, i) => {
+    const clip = byId.get(c.clipId);
     const cut: Cut = {
       id: cutIdOf(i),
-      src: byId.get(c.clipId)?.src ?? c.clipId,
+      src: clip?.src ?? c.clipId,
       inSec: Math.max(0, Math.round(c.inSec * 1000) / 1000),
       outSec: Math.round(c.outSec * 1000) / 1000,
     };
+    // 素材側で決めた「ここを見せる」（切り出し）を引き継ぐ
+    if (!isDefaultCrop(clip?.crop)) cut.crop = {...clip!.crop!};
     if (c.telop.trim()) cut.main = {text: c.telop.trim(), ...(c.orientation === 'horizontal' ? {orientation: 'horizontal' as const} : {})};
     if (c.badge?.trim()) cut.badge = c.badge.trim();
     return cut;

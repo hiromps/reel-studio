@@ -17,6 +17,45 @@ export type PriceTelopDef = {
   side?: 'left' | 'right' | 'center';
 };
 
+/**
+ * 画面内の切り出し（アスペクト比は変えない）。
+ * 映像は常に 9:16 の画面いっぱいに出る（objectFit: cover）。ここで決めるのは
+ * **その中のどこを、どれだけ寄って見せるか**だけなので、比率は崩れない。
+ *   zoom … 1 = そのまま。2 なら 2 倍に寄る（画の面積は 1/4 になる）
+ *   x, y … 寄る中心。0〜1 の割合（0.5, 0.5 = 真ん中）。この点が動かないまま拡大する
+ * 省略時は zoom 1・中央＝これまでとまったく同じ見え方。
+ */
+export type Crop = {
+  zoom?: number;
+  x?: number;
+  y?: number;
+};
+
+const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5);
+
+/** 切り出しの上限。素材より大きく引き伸ばすと目に見えて粗くなる */
+export const MAX_CROP_ZOOM = 3;
+
+/**
+ * 切り出しを映像に当てるスタイル。**エンジン（レンダー）と画面（プレビュー・編集）で
+ * 同じ関数を使う**ので、編集中に見えているものがそのまま書き出される。
+ */
+export const cropStyle = (crop?: Crop): React.CSSProperties => {
+  const zoom = Math.max(1, Math.min(MAX_CROP_ZOOM, Number.isFinite(crop?.zoom) ? (crop?.zoom as number) : 1));
+  const x = clamp01(crop?.x ?? 0.5);
+  const y = clamp01(crop?.y ?? 0.5);
+  return {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    // 素材の比率が 9:16 と違うとき、どこを残すか
+    objectPosition: `${(x * 100).toFixed(3)}% ${(y * 100).toFixed(3)}%`,
+    // 寄る。指定した点を動かさないまま拡大する
+    transform: zoom === 1 ? undefined : `scale(${zoom.toFixed(4)})`,
+    transformOrigin: `${(x * 100).toFixed(3)}% ${(y * 100).toFixed(3)}%`,
+  };
+};
+
 // 会話クリップ用の発話同期字幕。startSec/endSecは素材内の絶対秒（inSecと同じ時間軸）
 export type SubDef = MainTelopDef & {
   startSec: number;
@@ -28,6 +67,7 @@ export type Cut = {
   inSec: number;
   outSec: number;
   playbackRate?: number; // 会話クリップでは使わない（声のピッチが変わる）
+  crop?: Crop; // 画面内の切り出し（省略時は中央・そのまま）
   main?: MainTelopDef;
   price?: PriceTelopDef;
   badge?: string; // ランキング・まとめ型用（例: "第3位", "①幸楽"）。カット頭にポップイン
@@ -63,12 +103,15 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
     from += dur;
     return (
       <Sequence key={i} from={cutFrom} durationInFrames={dur} name={`cut${String(i + 1).padStart(2, '0')}`}>
-        <OffthreadVideo
-          src={staticFile(cut.src)}
-          startFrom={Math.round(cut.inSec * data.fps)}
-          playbackRate={cut.playbackRate ?? 1}
-          style={{width: '100%', height: '100%', objectFit: 'cover'}}
-        />
+        {/* 寄った映像が画面の外へはみ出さないよう、映像だけを切り抜き枠に入れる（テロップは外） */}
+        <AbsoluteFill style={{overflow: 'hidden'}}>
+          <OffthreadVideo
+            src={staticFile(cut.src)}
+            startFrom={Math.round(cut.inSec * data.fps)}
+            playbackRate={cut.playbackRate ?? 1}
+            style={cropStyle(cut.crop)}
+          />
+        </AbsoluteFill>
         {/* 会話クリップ：発話に同期して字幕を切り替える（絶対秒→カット内フレームに変換） */}
         {cut.subs?.map((s, j) => {
           const rate = cut.playbackRate ?? 1;

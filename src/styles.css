@@ -1004,16 +1004,90 @@ pre.md {
   align-items: stretch;
 }
 .triage-stage {
+  position: relative;
+}
+
+/* ── 画面内の切り出し（アスペクト比は変えない） ──
+   枠は常に 9:16。中の画をピンチ／ドラッグ／スライダーで動かす作りなので、比率が崩れない。
+   高さの上限は --crop-h（「枠を大きく」で広がる）。幅はそこから比率で決まる */
+.cropbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cropbox-stage {
+  position: relative;
+  width: min(100%, calc(var(--crop-h, 44vh) * 9 / 16));
+  aspect-ratio: 9 / 16;
+  margin: 0 auto;
   background: #000;
   border-radius: 6px;
   overflow: hidden;
+  /* ピンチ・ドラッグをブラウザのスクロールに取られない */
+  touch-action: none;
+  user-select: none;
 }
-.triage-stage video {
-  width: 100%;
-  /* 下に「使える区間」の帯とタグと判定ボタンが入るので、その分は空けておく。
-     細部を見たいときは「拡大」（Z）で 78vh まで広げる */
-  max-height: 44vh;
+.cropbox-stage.pannable {
+  cursor: grab;
+}
+.cropbox-stage.dragging {
+  cursor: grabbing;
+}
+.cropbox-stage video {
   display: block;
+}
+/* 三分割の目安線。寄せる位置を決めるときだけ出す */
+.cropbox-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.cropbox-stage:hover .cropbox-guides,
+.cropbox-stage.pannable .cropbox-guides {
+  opacity: 1;
+}
+.cropbox-guides::before,
+.cropbox-guides::after {
+  content: '';
+  position: absolute;
+  border-color: rgba(255, 255, 255, 0.28);
+  border-style: solid;
+}
+.cropbox-guides::before {
+  left: 33.333%;
+  right: 33.333%;
+  top: 0;
+  bottom: 0;
+  border-width: 0 1px;
+}
+.cropbox-guides::after {
+  top: 33.333%;
+  bottom: 33.333%;
+  left: 0;
+  right: 0;
+  border-width: 1px 0;
+}
+.cropbox-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cropbox-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cropbox-zoom input[type='range'] {
+  width: 160px;
+}
+.cropbox-zoom b {
+  color: var(--fg);
+  min-width: 46px;
 }
 .triage-meta .badge {
   margin-left: 6px;
@@ -1064,12 +1138,10 @@ pre.md {
   align-items: center;
 }
 
-/* 拡大：動画だけを大きくして、編集用の帯とタグは畳む（細部の確認に使う） */
-.modal.triage.zoom {
-  width: min(1100px, 100%);
-}
-.modal.triage.zoom .triage-stage video {
-  max-height: 78vh;
+/* 「枠を大きく」：切り出しの枠を広げて、細かい位置合わせをしやすくする。
+   区間の帯とタグは畳む（判定ボタンは残す） */
+.modal.triage.zoom .triage-stage {
+  --crop-h: 74vh;
 }
 .modal.triage.zoom .triage-trim,
 .modal.triage.zoom .triage-tags,
@@ -2570,12 +2642,15 @@ a.btn-like:hover {
   }
 
   /* ── 選別モード ── */
-  /* 画面が狭いので、動画を控えめにして「区間・タグ・判定」が同時に見える高さにする */
-  .triage-stage video {
-    max-height: 32vh;
+  /* 画面が狭いので、切り出し枠を控えめにして「区間・タグ・判定」が同時に見える高さにする */
+  .triage-stage {
+    --crop-h: 34vh;
   }
-  .modal.triage.zoom .triage-stage video {
-    max-height: 72vh;
+  .modal.triage.zoom .triage-stage {
+    --crop-h: 66vh;
+  }
+  .cropbox-zoom input[type='range'] {
+    width: 120px;
   }
   .triage-tags label.grow {
     flex: 1 1 100%;
@@ -2805,4 +2880,22 @@ a.btn-like:hover {
 }
 .triage-noplay b {
   color: var(--warn);
+}
+
+/* カットの切り出し（Inspector）。既定のままのときは畳んでおく */
+.insp-crop {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.insp-crop > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent);
+}
+.insp-crop[open] > summary {
+  margin-bottom: 6px;
+}
+.insp-crop .cropbox-stage {
+  --crop-h: 32vh;
 }

@@ -12,6 +12,8 @@ import {MosaicCard, MosaicClipSection, mediaVersion, useMosaicForm} from '../com
 import {UploadMaterials} from '../components/UploadMaterials';
 import {PreviewReady} from '../components/PreviewReady';
 import {TrimBar} from '../components/TrimBar';
+import {CropBox} from '../components/CropBox';
+import {DEFAULT_CROP} from '@shared/schema/cuts';
 import {rangeForBar, withRange} from '../components/triage';
 import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
@@ -339,7 +341,15 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 <h2>
                   {clip.id} {clip.original} → {clip.src.replace('uploads/', '')}
                 </h2>
-                <video ref={videoRef} src={`${s.mediaBase}/${clip.src}${mediaVersion(clip)}`} controls playsInline preload="metadata" />
+                {/* 9:16 の枠の中で「どこを、どれだけ寄って見せるか」を決める（比率は変わらない） */}
+                <CropBox
+                  key={clip.id}
+                  src={s.mediaBase ? `${s.mediaBase}/${clip.src}${mediaVersion(clip)}` : null}
+                  crop={clip.crop ?? DEFAULT_CROP}
+                  onChange={(crop) => updateClip(clip.id, (c) => ({...c, crop}))}
+                  probe={clip.probe}
+                  videoRef={videoRef}
+                />
                 <div className="strip">
                   {clip.thumbs.strip.map((p, i) => (
                     <img
