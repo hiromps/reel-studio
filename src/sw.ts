@@ -44,7 +44,21 @@ registerRoute(
 
 // 新しい版が来たらすぐ入れ替える（古い画面のまま使い続けない）
 self.addEventListener('install', () => void self.skipWaiting());
-self.addEventListener('activate', () => void self.clients.claim());
+
+/**
+ * 前の版が動画まで取り置いていた置き場（reel-media）を消す。
+ * 別オリジンの不透明レスポンスが入っていて、残っていると直したあとも再生できないため。
+ */
+const RETIRED_CACHES = ['reel-media'];
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      await self.clients.claim();
+      await Promise.all(RETIRED_CACHES.map((n) => caches.delete(n)));
+    })(),
+  );
+});
 
 // ───────────────────────── 通知 ─────────────────────────
 
