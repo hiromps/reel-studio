@@ -2,8 +2,20 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: ホーム画面から開いたときにノッチの下まで描く（余白は CSS の env() で取る） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Reel Studio</title>
+    <meta name="description" content="素材動画から縦型ショート動画を仕上げる" />
+    <meta name="theme-color" content="#12141a" />
+    <!-- iOS はホーム画面に追加したときだけアプリとして開く。以下はその見た目の指定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Reel Studio" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <!-- 入力欄をタップしても画面が拡大されないように（iOS は 16px 未満だと拡大する） -->
+    <meta name="format-detection" content="telephone=no" />
   </head>
   <body>
     <div id="root"></div>

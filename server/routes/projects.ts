@@ -14,7 +14,7 @@ projectsRouter.get('/', (_req, res) => {
 });
 
 projectsRouter.post('/', (req, res) => {
-  const {slug, persona, shopName, install, from, facts} = req.body ?? {};
+  const {slug, persona, shopName, install, from, facts, carryTimeline} = req.body ?? {};
   if (!slug || typeof slug !== 'string') return res.status(400).json({error: 'slug が必要'});
   const lines: string[] = [];
   let dir: string;
@@ -24,7 +24,7 @@ projectsRouter.post('/', (req, res) => {
       // 同じ素材で別バージョン。素材はハードリンクで共有し、catalog（タグ付けの成果）は引き継ぐ
       const p = persona ? PersonaIdSchema.safeParse(persona) : undefined;
       if (p && (!p.success || !findPersona(p.data))) return res.status(400).json({error: `人格が登録されていません: ${String(persona)}（Settings の「人格」で追加）`});
-      const r = cloneProject(from.trim(), slug, {persona: p?.data, shopName, facts: facts !== false, onLine: (l) => lines.push(l)});
+      const r = cloneProject(from.trim(), slug, {persona: p?.data, shopName, facts: facts !== false, carryTimeline: !!carryTimeline, onLine: (l) => lines.push(l)});
       dir = r.dir;
     } else {
       const p = PersonaIdSchema.safeParse(persona ?? defaultPersonaId());

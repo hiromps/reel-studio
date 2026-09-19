@@ -989,6 +989,53 @@ pre.md {
   margin: 0 0 2px;
 }
 
+/* ── 選別モード（必要／不要をすばやく判定） ── */
+.triage-root {
+  padding: 24px 16px;
+  align-items: center;
+}
+.modal.triage {
+  width: min(720px, 100%);
+}
+.triage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+.triage-stage {
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.triage-stage video {
+  width: 100%;
+  max-height: 60vh;
+  display: block;
+}
+.triage-meta .badge {
+  margin-left: 6px;
+}
+.triage-actions {
+  display: flex;
+  gap: 8px;
+}
+.triage-actions button {
+  flex: 1;
+  padding: 12px;
+  font-size: 14px;
+}
+.triage-keys {
+  text-align: center;
+}
+.triage-done {
+  text-align: center;
+  padding: 24px 0;
+}
+.triage-done .row {
+  justify-content: center;
+}
+
 /* ── カットのトリミング（頭と尻を掴んで尺を決める） ── */
 .trim {
   width: 100%;
@@ -2124,4 +2171,369 @@ a.btn-like:hover {
 .tl-sfx-text {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 顔モザイク（deface） */
+.badge.mosaic {
+  background: #5b4b8a;
+  color: #fff;
+}
+.mosaic-card summary {
+  cursor: pointer;
+}
+.mosaic-card summary h2 {
+  margin: 0;
+}
+
+/* 台本からの組み立て：割り当ての結果（承認待ち） */
+.script-proposal {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.script-proposal .issues {
+  margin: 6px 0;
+}
+.script-proposal-lines {
+  max-height: 260px;
+  overflow: auto;
+  margin: 6px 0;
+  font-size: 12px;
+  white-space: pre;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   クラウド版（PWA）で足りるもの：ログイン・PC オフラインの知らせ・
+   ホーム画面への追加案内・スマホ用の下部ナビ。
+   下部ナビは既定で隠し、狭い画面のときだけ出す（PC の見た目は変えない）。
+   ═══════════════════════════════════════════════════════════════ */
+
+.boot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: var(--muted);
+}
+
+.login-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+.login {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--accent);
+}
+.login p.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.login label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.login input {
+  /* iOS は 16px 未満の入力欄をタップすると画面を拡大する */
+  font-size: 16px;
+  padding: 10px;
+}
+.login button.primary {
+  padding: 12px;
+  font-size: 15px;
+}
+.login-error {
+  color: var(--err);
+  font-size: 12px;
+}
+
+/* PC（ワーカー）が繋がっていないとき。ジョブは消えず待つ、と明記する */
+.offlinebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #2a1d1d;
+  border-bottom: 1px solid var(--err);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.installhint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.installhint b {
+  color: var(--accent);
+}
+
+/* スマホ用の下部ナビ（狭い画面でだけ出す） */
+.bottomnav {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   スマホ・タブレット（〜860px）。
+   タッチ操作そのものは元から Pointer Events なので動く。ここで直すのは
+   「置き場所（レイアウト）」と「指で押せる大きさ」。
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 860px) {
+  :root {
+    font-size: 14px;
+  }
+  /* 入力欄は 16px。これより小さいと iOS がタップのたびに画面を拡大する */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  button {
+    min-height: 40px;
+  }
+  button.small {
+    min-height: 32px;
+  }
+
+  .app {
+    /* 下部ナビのぶんだけ空ける */
+    padding-bottom: calc(58px + env(safe-area-inset-bottom));
+  }
+
+  /* 上部：タブは下に移したので隠し、案件の選択と状態だけ残す */
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+    padding-top: max(6px, env(safe-area-inset-top));
+  }
+  .topbar .tabs,
+  .topbar .help-btn {
+    display: none;
+  }
+  .status {
+    margin-left: auto;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 6px;
+  }
+  .status select {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .main {
+    padding: 8px;
+  }
+  .card {
+    padding: 10px;
+  }
+  .row {
+    gap: 8px;
+  }
+  /* 横並びの入力群は縦に積む（画面外に出さない） */
+  .row > label,
+  .row > .field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .nextbar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .nextbar-text {
+    flex: 1 1 100%;
+  }
+
+  .toasts {
+    right: 8px;
+    left: 8px;
+    bottom: calc(66px + env(safe-area-inset-bottom));
+  }
+  .toast {
+    max-width: none;
+  }
+
+  /* 表は横スクロールさせる（列を潰さない） */
+  .table-wrap,
+  .card > .table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* ── 下部ナビ ── */
+  .bottomnav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .bottomnav .bn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 54px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: var(--muted);
+    padding: 4px 2px;
+  }
+  .bottomnav .bn.active {
+    color: var(--accent);
+    background: var(--panel2);
+  }
+  .bn-icon {
+    font-size: 17px;
+    line-height: 1;
+  }
+  .bn-label {
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* ── Timeline 画面（編集）── */
+  /* 3 カラムを縦に積む。ed-main を display:contents にして、
+     プレビュー → タイムライン → インスペクタ → 素材 の順に並べ替える */
+  .main-editor {
+    overflow: visible;
+    padding: 8px;
+  }
+  .editor {
+    height: auto !important;
+    min-height: 0;
+    gap: 8px;
+  }
+  .ed-main {
+    display: contents;
+  }
+  .ed-toolbar {
+    order: 0;
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    gap: 6px;
+  }
+  .ed-center {
+    order: 1;
+    min-height: 46vh;
+  }
+  .ed-timeline {
+    order: 2;
+    /* 横スクロールは中の .tl-scroll が受け持つ */
+    padding: 4px 6px 6px;
+  }
+  .ed-storyboard {
+    order: 3;
+  }
+  .ed-inspector {
+    order: 4;
+    max-height: none;
+    overflow: visible;
+  }
+  .ed-bin {
+    order: 5;
+    max-height: 62vh;
+  }
+  .bin-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+  .ed-storyboard .sb-body {
+    max-height: 140px;
+  }
+
+  /* ── Materials（素材）── */
+  .clip-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  /* ヘルプ（モーダル）とツアーの吹き出しは画面いっぱいに */
+  .modal {
+    width: 100%;
+    max-height: 92vh;
+  }
+  .tour-card {
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
+
+/* 指で触る操作のときだけ、掴む場所を大きくする（マウスの見た目は変えない）。
+   トリムの端は 10〜14px だと指では掴めない */
+@media (pointer: coarse) {
+  .ctl-handle {
+    width: 20px;
+  }
+  .trim-handle {
+    width: 22px;
+    margin-left: -11px;
+  }
+  /* ルーラーとトラックは縦スクロールを妨げない範囲でだけ触りを取る */
+  .tl-row,
+  .tl-ruler {
+    touch-action: pan-y;
+  }
+}
+
+/* クラウド版：スマホで映像が見られるか（軽量プレビューの作成状況）の知らせ */
+.preview-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: #2a2519;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* スマホからの素材アップロード（Materials） */
+.upload-materials {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.upload-materials code {
+  color: var(--accent);
 }

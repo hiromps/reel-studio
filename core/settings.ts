@@ -76,6 +76,8 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     paths: {...cur.paths},
     tts: {...cur.tts, voices: [...cur.tts.voices]},
     agent: {...cur.agent},
+    mosaic: {...cur.mosaic},
+    cloud: {...cur.cloud},
   };
   const setOrClear = (obj: Record<string, unknown>, key: string, v: unknown) => {
     if (v === undefined) return;
@@ -95,6 +97,13 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(agent, 'claudeBin', patch.agent.claudeBin);
     setOrClear(agent, 'model', patch.agent.model);
     for (const k of ['tagBatchSize', 'tagConcurrency', 'timeoutMin'] as const) if (patch.agent[k] !== undefined) agent[k] = patch.agent[k];
+  }
+  if (patch.mosaic) setOrClear(next.mosaic as Record<string, unknown>, 'python', patch.mosaic.python);
+  if (patch.cloud) {
+    const cloud = next.cloud as Record<string, unknown>;
+    setOrClear(cloud, 'url', patch.cloud.url);
+    setOrClear(cloud, 'token', patch.cloud.token);
+    if (patch.cloud.enabled !== undefined) cloud.enabled = patch.cloud.enabled;
   }
   return SettingsSchema.parse(next);
 };
@@ -166,12 +175,23 @@ export const fishKeyView = (): SecretView => {
   return {present: false, masked: '', source: null};
 };
 
+/** クラウド接続のトークンの在り処（値は返さない） */
+export const cloudTokenView = (): SecretView => {
+  const env = process.env.REEL_WORKER_TOKEN?.trim();
+  if (env && !env.startsWith('${')) return {present: true, masked: maskSecret(env), source: 'env'};
+  const conf = loadSettings().cloud.token?.trim();
+  if (conf) return {present: true, masked: maskSecret(conf), source: 'settings'};
+  return {present: false, masked: '', source: null};
+};
+
 /** GET /api/settings の本体。claude の情報は呼び出し側（core/agent.ts を知っている層）が足す */
 export const settingsView = (claude: SettingsView['claude'], templateDir: string): SettingsView => {
   const s = loadSettings();
   const {paths, sources} = resolveAll(s);
   const {apiKey: _omit, ...ttsRest} = s.tts;
   void _omit;
+  const {token: _omitToken, ...cloudRest} = s.cloud;
+  void _omitToken;
   const pathsView = {} as SettingsView['paths'];
   for (const k of PATH_KEYS) pathsView[k] = {value: paths[k], source: sources[k], exists: fs.existsSync(paths[k])};
   pathsView.templateDir = templateDir;
@@ -180,13 +200,16 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
     file: settingsFile(),
     exists: fs.existsSync(settingsFile()),
     problem: settingsProblem(),
-    settings: {...s, tts: {...ttsRest, apiKey: fishKeyView()}},
+    settings: {...s, tts: {...ttsRest, apiKey: fishKeyView()}, cloud: {...cloudRest, token: cloudTokenView()}},
     paths: pathsView,
     env: {
       fishApiKey: !!process.env.FISH_API_KEY?.trim(),
       fishModelId: !!process.env.FISH_MODEL_ID?.trim(),
       claudeBin: !!process.env.REEL_STUDIO_CLAUDE_BIN?.trim(),
       agentModel: !!process.env.REEL_STUDIO_AGENT_MODEL?.trim(),
+      mosaicPython: !!process.env.REEL_STUDIO_MOSAIC_PYTHON?.trim(),
+      cloudUrl: !!process.env.REEL_CLOUD_URL?.trim(),
+      cloudToken: !!process.env.REEL_WORKER_TOKEN?.trim(),
     },
     claude,
   };

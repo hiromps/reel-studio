@@ -8,6 +8,7 @@ import {RenderPage} from './pages/Render';
 import {SettingsPage} from './pages/Settings';
 import {Tour, type TourTab} from './components/Tour';
 import {HelpPanel} from './components/HelpPanel';
+import {InstallHint} from './components/InstallHint';
 import {nextStepOf} from './components/nextStep';
 import {useStringPref} from './hooks/usePref';
 import {AI_JOB_LABEL} from './components/AiJobStatus';
@@ -20,6 +21,9 @@ const TABS: {id: TourTab; label: string; sub: string}[] = [
   {id: 'render', label: 'Render', sub: '書き出し'},
   {id: 'settings', label: 'Settings', sub: '設定'},
 ];
+
+/** スマホの下部ナビに出す記号（画像を増やさずに済ませる） */
+const TAB_ICON: Record<TourTab, string> = {projects: '◰', materials: '▤', brief: '✎', timeline: '⟷', render: '▶', settings: '⚙'};
 type Tab = TourTab;
 const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v);
 
@@ -127,6 +131,18 @@ export const App: React.FC = () => {
         </div>
       </header>
 
+      {/* クラウド版で PC が落ちているとき。ジョブは消えず、PC が起きたら順に実行される */}
+      {s.isCloud && s.config?.worker && !s.config.worker.online && (
+        <div className="offlinebar">
+          <span className="pill err">PC オフライン</span>
+          <span>
+            重い処理（素材のカタログ化・AI・レンダー）は自宅の PC が行います。いま PC が繋がっていないので、押したジョブは待機のまま残り、PC を起動すると順に実行されます。
+            {s.config.worker.lastSeen && <> 最後の応答: {new Date(s.config.worker.lastSeen).toLocaleString('ja-JP')}</>}
+          </span>
+        </div>
+      )}
+      <InstallHint />
+
       {!nextBarHidden && (
         <div className={`nextbar${next.ready ? ' ready' : ''}`} data-tour="next">
           <span className="nextbar-tag">次にやること</span>
@@ -151,6 +167,18 @@ export const App: React.FC = () => {
         {/* Settings は案件に依存しないので key を付けない（案件を切り替えても入力中の値を捨てない） */}
         {tab === 'settings' && <SettingsPage />}
       </main>
+
+      {/* スマホ用の下部ナビ。desktop では CSS で隠れる（上のタブがそのまま使われる） */}
+      <nav className="bottomnav">
+        {TABS.map(({id, label, sub}) => (
+          <button key={id} className={tab === id ? 'bn active' : 'bn'} onClick={() => go(id)} aria-label={`${label}（${sub}）`}>
+            <span className="bn-icon" aria-hidden="true">
+              {TAB_ICON[id]}
+            </span>
+            <span className="bn-label">{sub}</span>
+          </button>
+        ))}
+      </nav>
 
       <div className="toasts">
         {s.toasts.map((t) => (

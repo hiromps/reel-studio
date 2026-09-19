@@ -4,7 +4,10 @@
 // 台本の書式は決め打ちにしない（人が書いたものをそのまま貼れることが大事）。
 // 代わりに **時間の範囲だけ緩く読み取って**、AI が返してきた組み立てが台本の尺どおりかを検算する。
 import {z} from 'zod';
-import type {ReelData} from './schema/cuts';
+import {ReelDataSchema, type Cut, type ReelData} from './schema/cuts';
+import type {Catalog} from './schema/catalog';
+import type {Narration} from './schema/narration';
+import {stableHash} from './hash';
 import {cutRanges, totalSec} from './timeline';
 
 /** 台本から読み取った 1 区間（【0〜3秒】フック のような見出し） */
@@ -179,4 +182,117 @@ export const formatScriptPlan = (plan: ScriptPlan, sections: readonly ScriptSect
   });
   if (cuts) lines.push(`合計 ${totalSec(cuts).toFixed(2)} 秒 / ${plan.cuts.length} カット`);
   return lines;
+};
+
+// ───────────────────────── 組み立て結果 → 契約ファイル ─────────────────────────
+
+export type ScriptBuildContext = {
+  catalog: Pick<Catalog, 'clips' | 'dominantFps'>;
+  theme: ReelData['theme'];
+  specId: string;
+  briefHash: string;
+  catalogHash: string;
+  /** meta.generated.at（テストで固定する） */
+  at?: string;
+};
+
+const cutIdOf = (i: number) => `c${String(i + 1).padStart(2, '0')}`;
+
+/** AI の組み立て（clipId と素材内の秒）を cuts.json にする。src は**いまの** catalog から引く（slug を変えていても合う） */
+export const scriptPlanToCuts = (plan: ScriptPlan, ctx: ScriptBuildContext): ReelData => {
+  const byId = new Map(ctx.catalog.clips.map((c) => [c.id, c]));
+  const cuts: Cut[] = plan.cuts.map((c, i) => {
+    const cut: Cut = {
+      id: cutIdOf(i),
+      src: byId.get(c.clipId)?.src ?? c.clipId,
+      inSec: Math.max(0, Math.round(c.inSec * 1000) / 1000),
+      outSec: Math.round(c.outSec * 1000) / 1000,
+    };
+    if (c.telop.trim()) cut.main = {text: c.telop.trim(), ...(c.orientation === 'horizontal' ? {orientation: 'horizontal' as const} : {})};
+    if (c.badge?.trim()) cut.badge = c.badge.trim();
+    return cut;
+  });
+  return ReelDataSchema.parse({
+    fps: ctx.catalog.dominantFps,
+    theme: ctx.theme,
+    cuts,
+    meta: {
+      slots: plan.cuts.map((c, i) => ({cutId: cutIdOf(i), segment: c.section, role: 'info', clipId: c.clipId, textStatus: 'draft', locked: false, qc: []})),
+      generated: {tool: 'reel-studio/script', at: ctx.at ?? new Date().toISOString(), briefHash: ctx.briefHash, catalogHash: ctx.catalogHash, specId: ctx.specId},
+    },
+  });
+};
+
+/** カットの合計尺（倍速は使わないので単純な和） */
+export const scriptPlanTotalSec = (plan: ScriptPlan): number => Math.round(plan.cuts.reduce((n, c) => n + Math.max(0, c.outSec - c.inSec), 0) * 1000) / 1000;
+
+/** ナレーションを narration.json にする（音声はまだ無いので全ブロック要生成）。ブロックが無ければ null */
+export const scriptPlanToNarration = (plan: ScriptPlan, voice: {voiceId: string; voiceTitle: string; speed: number}): Narration | null =>
+  plan.narration.length
+    ? {
+        voice: voice.voiceId,
+        voiceTitle: voice.voiceTitle,
+        latency: 'normal',
+        speed: voice.speed,
+        videoSec: scriptPlanTotalSec(plan),
+        note: plan.notes,
+        segments: plan.narration.map((n) => ({id: n.id, at: Math.round(n.at * 1000) / 1000, text: n.text.trim(), needsTts: true})),
+      }
+    : null;
+
+// ───────────────────────── 割り当ての案（見てから書き込む） ─────────────────────────
+
+/**
+ * AI が返した組み立ての保存形（.studio/script-plan.json）。
+ * 「割り当てを見るだけ」で作り、**ユーザーが承認したらこれをそのまま書き込む**（AI をもう一度走らせない。
+ * 1 回 5〜7 分・課金があるため）。
+ */
+export const ScriptProposalSchema = z.object({
+  version: z.literal(1),
+  createdAt: z.string(),
+  /** 作ったときの script.md のハッシュ。台本を直したら、この案は使えない */
+  scriptHash: z.string(),
+  model: z.string().default(''),
+  costUsd: z.number().default(0),
+  plan: ScriptPlanSchema,
+  /** 書き込んだ日時（「台本から組み立てる」でそのまま書いたときと、承認して書いたとき） */
+  appliedAt: z.string().optional(),
+});
+export type ScriptProposal = z.infer<typeof ScriptProposalSchema>;
+
+export const scriptTextHash = (text: string): string => stableHash(text);
+
+export type ScriptProposalReview = {
+  /** 承認すれば書き込める */
+  canApply: boolean;
+  /** 書き込めない理由（台本が変わった・E がある） */
+  blockers: string[];
+  /** **いまの** catalog・台本で検算し直した結果（作ったあとに素材を NG にした等も拾う） */
+  issues: ScriptIssue[];
+  lines: string[];
+  totalSec: number;
+  cutCount: number;
+  narrationCount: number;
+};
+
+/** 保存してある案を、いまの台本・素材で見直す（純粋。書き込む直前と画面表示の両方で使う） */
+export const reviewScriptProposal = (
+  proposal: ScriptProposal,
+  now: {scriptText: string | null; check: ScriptCheckContext; cuts: ReelData},
+): ScriptProposalReview => {
+  const blockers: string[] = [];
+  if (!now.scriptText?.trim()) blockers.push('script.md がありません');
+  else if (scriptTextHash(now.scriptText) !== proposal.scriptHash) blockers.push('この案を作ったあとに台本（script.md）が変わっています。「割り当てを見るだけ」をやり直してください');
+  const issues = checkScriptPlan(proposal.plan, now.check);
+  const errors = issues.filter((i) => i.severity === 'E');
+  if (errors.length) blockers.push(`検算の E が ${errors.length} 件あります（${errors.map((e) => e.code).join(', ')}）`);
+  return {
+    canApply: blockers.length === 0,
+    blockers,
+    issues,
+    lines: formatScriptPlan(proposal.plan, now.check.sections, now.cuts),
+    totalSec: scriptPlanTotalSec(proposal.plan),
+    cutCount: proposal.plan.cuts.length,
+    narrationCount: proposal.plan.narration.length,
+  };
 };

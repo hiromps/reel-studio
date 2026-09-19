@@ -4,7 +4,7 @@
 //   reel personas list [--json]                                          （人格の一覧。編集は GUI の Settings）
 //   reel projects
 //   reel new <slug> --persona <人格id> [--shop 店名]
-//   reel new <slug> --from <既存slug> [--shop 別ブランド名] [--persona p] [--no-facts]   （同じ素材で別バージョン。素材はリンク共有）
+//   reel new <slug> --from <既存slug> [--shop 別ブランド名] [--persona p] [--no-facts] [--carry-timeline]   （同じ素材で別バージョン。素材はリンク共有。--carry-timeline で cuts・narration もそのまま引き継ぐ＝ボイスやフックの一部だけ変えたい版用）
 //   reel catalog <materialsDir> --project <slug|dir> [--no-proxy] [--no-thumbs] [--scenes] [--speech] [--force]
 //   reel tag --project P --export [out.json] | --import <file>
 //   reel order --project P [--check] | --export [out.json] | --import <file> [--write] [--no-copy] [--force]
@@ -13,7 +13,8 @@
 //   reel ai telop --project P [--force] [--model m]                              （同じく {{gNN:intent}} を埋める）
 //   reel ai narration --project P [--model m]                                    （テロップを見てナレーション原稿を書く）
 //   reel ai edit --project P "<直したいこと>" [--model m]                         （自由指示で cuts/narration を修正）
-//   reel ai script --project P [--model m] [--force] [--dry]                     （script.md の台本から cuts+narration を組み立て）
+//   reel ai script --project P [--model m] [--force] [--dry]                     （script.md の台本から cuts+narration を組み立て。--dry は書かずに割り当ての案だけ残す）
+//   reel ai script --project P --apply                                            （--dry で残した案を承認して書き込む。AI は走らせない）
 //   reel ai facts --project P [--force] [--model m]                              （店舗情報をWebで裏取り→brief.facts。Instagram優先）
 //   reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]      （裏取り→caption.txt）
 //   reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]  （トライアル用のフック案＋パターン別キャプション→hooks.json）
@@ -33,6 +34,11 @@
 //   reel build --project P [--plan] [--steps caption,narration,tts,render,mix,deliver] [--model m] [--force-errors] [--label 修正版]  （仕上げ：残っている工程を順に走らせる）
 //   reel deliver --project P [--label 修正版] [--allow-silent] [--overwrite]      （完成品だけ outputs/ へ）
 //   reel install --project P
+//   reel mosaic status [--refresh]                                                （顔モザイク：deface が使えるか）
+//   reel mosaic setup [--gpu] [--python <venvを作るpython>]                         （~/.reel-studio/deface-venv に deface を入れる。--gpu は Windows なら DirectML 版）
+//   reel mosaic list --project P                                                   （クリップごとのモザイクの状態）
+//   reel mosaic apply --project P (--ids 01,02 | --all | --kinds person,interior) [--threshold 0.6] [--cells 8] [--mask-scale 1.3] [--detect-short 720] [--detect-every 1] [--hold-sec 0.1]
+//   reel mosaic revert --project P (--ids 01,02 | --all)                           （元のファイルに戻す）
 import fs from 'node:fs';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
@@ -51,7 +57,8 @@ import {telopGroupsOf, cutDurationSec, totalSec} from '../shared/timeline';
 import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatalog} from '../core/catalog';
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
-import {aiScript} from '../core/script';
+import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
+import {localDate} from '../shared/time';
 import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
 import {autoPlaceSfx, readLibrary, scanLibrary, writeLibrary} from '../core/sfx';
@@ -67,6 +74,9 @@ import {cloneProject, createProject, engineDiff, listProjects, npmInstall, readB
 import {applyAliases, pendingAliases} from '../core/alias';
 import {renderProject, renderStill, validateProject, PreflightError} from '../core/render';
 import {readJsonLoose} from '../core/json-io';
+import {applyMosaic, mosaicStatus, revertMosaic, setupMosaic} from '../core/mosaic';
+import {mosaicLabel, spansText} from '../shared/mosaic';
+import {ClipKindSchema} from '../shared/schema/catalog';
 
 type Flags = Record<string, string | boolean>;
 const parseArgs = (argv: string[]): {cmd: string; pos: string[]; flags: Flags} => {
@@ -152,6 +162,14 @@ async function main() {
       out(`Fish Audio   ${key.present ? `鍵あり ${key.masked}（${key.source === 'env' ? '環境変数' : '設定ファイル'}）` : '鍵なし'} / model ${v.settings.tts.modelId} / 追加ボイス ${v.settings.tts.voices.length} 件`);
       out(`claude       ${v.claude.bin}（${v.claude.source}${v.claude.available ? '' : '・見つからない'}）/ 既定モデル ${v.settings.agent.model}`);
       out(`人格         ${listPersonas().map((p) => p.id).join(', ')} ← ${personasFile()}`);
+      const cloud = v.settings.cloud;
+      out(
+        `クラウド     ${
+          cloud.url
+            ? `${cloud.url}${cloud.enabled === false ? '（繋がない設定）' : ''} / トークン ${cloud.token.present ? `あり ${cloud.token.masked}（${cloud.token.source === 'env' ? '環境変数' : '設定ファイル'}）` : 'なし'}`
+            : '未設定（ローカル専用）'
+        }`,
+      );
       return;
     }
 
@@ -186,6 +204,7 @@ async function main() {
           persona: str(flags, 'persona') ? PersonaIdSchema.parse(str(flags, 'persona')) : undefined,
           shopName: str(flags, 'shop'),
           facts: bool(flags, 'facts', true),
+          carryTimeline: bool(flags, 'carry-timeline', false),
           onLine: (l) => out(l),
         });
         dir = r.dir;
@@ -201,7 +220,13 @@ async function main() {
         const ok = await npmInstall(dir, (l) => err(`  ${l}`));
         out(ok ? 'npm install 完了' : 'npm install に失敗（手動で実行してください）');
       }
-      out(from ? `次: Brief でフックのクリップを選んで「プラン生成」（catalog は引き継いでいます）` : `次: reel catalog <素材フォルダ> --project ${slug}`);
+      out(
+        from
+          ? bool(flags, 'carry-timeline', false)
+            ? `次: Timeline で確認 → Render でボイス（と必要ならフック文言）を変えて音声を作り直す（catalog・cuts・narration を引き継いでいます）`
+            : `次: Brief でフックのクリップを選んで「プラン生成」（catalog は引き継いでいます）`
+          : `次: reel catalog <素材フォルダ> --project ${slug}`,
+      );
       return;
     }
 
@@ -268,7 +293,7 @@ async function main() {
 
       if (sub === 'tag') {
         const r = await aiTag(dir, {force: bool(flags, 'force'), batchSize: num(flags, 'batch'), concurrency: num(flags, 'concurrency'), model, onLine: (l) => err(l)});
-        out(`AI タグ付け: ${r.tagged.length} 本（${r.batches} 回 / $${r.costUsd.toFixed(3)}）${r.skipped.length ? ` / lock で除外 ${r.skipped.length} 本` : ''}`);
+        out(`AI タグ付け: ${r.tagged.length} 本（${r.batches} 回 / $${r.costUsd.toFixed(3)}）${r.skipped.length ? ` / lock・NG で除外 ${r.skipped.length} 本` : ''}`);
         if (r.facts.length) {
           out('読み取れた事実:');
           for (const f of r.facts) out(`  - ${f}`);
@@ -324,12 +349,21 @@ async function main() {
       }
 
       if (sub === 'script') {
+        if (bool(flags, 'apply')) {
+          const view = scriptProposalView(dir);
+          if (!view) throw new Error('書き込む割り当ての案がありません（先に reel ai script --dry）');
+          for (const l of view.lines) out(l);
+          for (const i of view.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
+          const r = applyScriptProposal(dir, {onLine: (l) => err(l)});
+          out(`書き込みました: ${r.cuts} カット / ${r.totalSec.toFixed(2)} 秒 / ナレーション ${r.narration} ブロック（${localDate(view.createdAt)} の案）`);
+          return;
+        }
         const r = await aiScript(dir, {model, write: !bool(flags, 'dry'), force: bool(flags, 'force'), onLine: (l) => err(l)});
         out(`台本から ${r.plan.cuts.length} カット / ${r.totalSec.toFixed(2)} 秒 / ナレーション ${r.plan.narration.length} ブロック（$${r.costUsd.toFixed(3)}）`);
         for (const l of r.lines) out(l);
         for (const i of r.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
         for (const u of r.plan.unmatched) out(`  ? 素材が無い: ${u}`);
-        if (!r.written) out('（書いていません）');
+        if (!r.written) out(bool(flags, 'dry') ? '（書いていません。この案で書き込むなら reel ai script --project P --apply）' : '（書いていません）');
         return;
       }
 
@@ -768,6 +802,59 @@ async function main() {
       const dir = projectFromFlags(flags);
       const r = await renderStill(dir, {cut: num(flags, 'cut'), frame: num(flags, 'frame'), offsetSec: num(flags, 'offset'), out: str(flags, 'out'), gl: str(flags, 'gl'), onLine: (l) => err(l)});
       out(`OK ${r.out} (frame ${r.frame})`);
+      return;
+    }
+
+    // 顔モザイク（deface）
+    case 'mosaic': {
+      const sub = pos[0] ?? 'status';
+      if (sub === 'status') {
+        const st = await mosaicStatus({refresh: true});
+        out(`python   ${st.python}（${st.source}）${st.pythonVersion ? ` / Python ${st.pythonVersion}` : ''}`);
+        out(`deface   ${st.deface ?? '未導入'}${st.onnxruntime ? ` / onnxruntime ${st.onnxruntime}（${st.providers.join(', ')}）` : ''}`);
+        out(`状態     ${st.ok ? 'OK' : 'NG'} — ${st.message}`);
+        out(`venv     ${st.venvDir}`);
+        if (!st.ok) process.exitCode = 1;
+        return;
+      }
+      if (sub === 'setup') {
+        const r = await setupMosaic({gpu: bool(flags, 'gpu'), basePython: str(flags, 'python'), onLine: (l) => err(l)});
+        out(`OK ${r.venvDir} — ${r.status.message}`);
+        return;
+      }
+      const dir = projectFromFlags(flags);
+      const catalog = loadCatalog(dir);
+      if (!catalog) throw new Error('catalog.json が無い（先に reel catalog）');
+      if (sub === 'list') {
+        for (const c of catalog.clips) {
+          const m = c.mosaic;
+          out(`${c.id}	${c.tags?.kind ?? '未タグ'}	${mosaicLabel(m)}${m?.applied ? `	${spansText(m.spans)}` : ''}	${c.original}`);
+        }
+        return;
+      }
+      const idsArg = str(flags, 'ids');
+      const kindsArg = str(flags, 'kinds');
+      let ids: string[];
+      if (idsArg) ids = idsArg.split(',').map((x) => x.trim()).filter(Boolean);
+      else if (kindsArg) {
+        const kinds = kindsArg.split(',').map((k) => ClipKindSchema.parse(k.trim()));
+        ids = catalog.clips.filter((c) => c.tags && kinds.includes(c.tags.kind)).map((c) => c.id);
+      } else if (bool(flags, 'all')) ids = catalog.clips.filter((c) => sub !== 'revert' || c.mosaic).map((c) => c.id);
+      else throw new Error('--ids 01,02 / --kinds person,interior / --all のどれかで対象を指定してください');
+      if (!ids.length) throw new Error('対象のクリップがありません');
+      if (sub === 'revert') {
+        const r = await revertMosaic(dir, {ids, onLine: (l) => err(l)});
+        for (const it of r.items) out(`${it.id}	${it.result}${it.message ? `	${it.message}` : ''}`);
+        return;
+      }
+      if (sub !== 'apply') throw new Error(`不明なサブコマンド: mosaic ${sub}（status / setup / list / apply / revert）`);
+      const r = await applyMosaic(dir, {
+        ids,
+        params: {threshold: num(flags, 'threshold'), cells: num(flags, 'cells'), maskScale: num(flags, 'mask-scale'), detectShort: num(flags, 'detect-short'), detectEvery: num(flags, 'detect-every'), holdSec: num(flags, 'hold-sec')},
+        onLine: (l) => err(l),
+      });
+      for (const it of r.items) out(`${it.id}	${it.result}${it.faceSec !== undefined ? `	顔 ${it.faceSec} 秒・最大 ${it.maxFaces} 人` : ''}${it.message ? `	${it.message}` : ''}`);
+      if (r.items.some((i) => i.result === 'failed')) process.exitCode = 1;
       return;
     }
 

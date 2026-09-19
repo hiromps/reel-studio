@@ -43,6 +43,14 @@ describe('planBuild', () => {
     expect(defaultBuildSelection(planBuild(f))).toEqual(['render', 'mix', 'deliver']);
   });
 
+  it('素材の中身を差し替えた（顔モザイク）ら、cuts.json が同じでもレンダーし直す', () => {
+    const f = facts({hasNarration: true, segments: 10, hasFinal: true, finalStale: true, finalStaleBy: 'media', hasMixed: true, hasCaption: true});
+    const render = planBuild(f).find((s) => s.id === 'render');
+    expect(render?.status).toBe('todo');
+    expect(render?.detail).toContain('顔モザイク');
+    expect(defaultBuildSelection(planBuild(f))).toEqual(['render', 'mix', 'deliver']);
+  });
+
   it('原稿を直して音声が古ければ tts と mix', () => {
     const f = facts({hasNarration: true, segments: 10, needsTts: 2, hasFinal: true, hasMixed: true, hasCaption: true, mixStaleReason: '音声を作り直したあと mix していない'});
     expect(defaultBuildSelection(planBuild(f))).toEqual(['tts', 'mix', 'deliver']);

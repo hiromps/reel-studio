@@ -7,6 +7,9 @@ import {EmptyState} from '../components/EmptyState';
 import {AiJobStatus} from '../components/AiJobStatus';
 import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {usageBySrc} from '../components/track';
+import {TriageMode} from '../components/TriageMode';
+import {MosaicCard, MosaicClipSection, mediaVersion, useMosaicForm} from '../components/MosaicPanel';
+import {UploadMaterials} from '../components/UploadMaterials';
 import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
@@ -28,22 +31,26 @@ const defaultTags = (clip: Clip): ClipTags => ({
   taggedAt: new Date().toISOString(),
 });
 
-type Filter = 'all' | 'untagged' | 'hook' | 'ng' | 'unused';
+type Filter = 'all' | 'untagged' | 'hook' | 'ng' | 'unused' | 'mosaic';
 
-export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timeline') => void}> = ({onTab}) => {
+export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timeline' | 'settings') => void}> = ({onTab}) => {
   const s = useStudio();
   const catalog = s.files.catalog.data;
   const cuts = s.files.cuts.data;
   const [selected, setSelected] = useState<string | null>(null);
   const [materialsDir, setMaterialsDir] = useState('');
+  /** クラウド版で、スマホから上げた動画を置く uploads 配下のフォルダ名 */
+  const [uploadFolder, setUploadFolder] = useState('');
   const [picking, setPicking] = useState(false);
   const [slugDraft, setSlugDraft] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
+  const [triageIds, setTriageIds] = useState<string[] | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const clip = useMemo(() => catalog?.clips.find((c) => c.id === selected) ?? null, [catalog, selected]);
   const untagged = catalog?.clips.filter((c) => !c.tags && !c.user.ng).length ?? 0;
   const [aiModel, setAiModel] = useAiModel();
+  const [mosaicForm, setMosaicForm] = useMosaicForm();
   const aiJob = s.jobs.find((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'ai-tag' && j.slug === s.active);
   const aiBusy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type.startsWith('ai-') && j.slug === s.active);
   const staleTag = !s.supportsJob('ai-tag');
@@ -109,11 +116,19 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
       if (filter === 'hook' && !c.user.hook) return false;
       if (filter === 'ng' && !c.user.ng) return false;
       if (filter === 'unused' && ((usage.get(c.src) ?? 0) > 0 || c.user.ng)) return false;
+      if (filter === 'mosaic' && !c.mosaic?.applied) return false;
       if (!words.length) return true;
       const hay = [c.id, c.slug, c.original, c.tags?.description ?? '', c.tags?.subject ?? '', c.tags ? KIND_LABEL[c.tags.kind] : '未タグ'].join(' ').toLowerCase();
       return words.every((w) => hay.includes(w));
     });
   }, [catalog, filter, q, usage]);
+
+  // 選別モード用キュー：開いた時点の順序を固定し、中身（タグ・判定）は catalog の最新値を都度引く
+  const triageClips = useMemo(() => {
+    if (!triageIds || !catalog) return null;
+    const byId = new Map(catalog.clips.map((c) => [c.id, c]));
+    return triageIds.map((id) => byId.get(id)).filter((c): c is Clip => !!c);
+  }, [triageIds, catalog]);
 
   // 選択中のクリップの前後へ（キーボードで 1 本ずつ確認する用）
   const moveSel = (d: number) => {
@@ -139,10 +154,15 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
       <section className="card" data-tour="materials-folder">
         <h2>素材フォルダ</h2>
         <p className="hint">撮った動画が入っているフォルダを選びます。中の動画をすべて読み込み、長さ・解像度を調べて案件フォルダにコピーします（元のフォルダは変更しません）。</p>
+        {/* クラウド版：スマホから動画を上げる（PC のフォルダは直接見えないため） */}
+        {s.isCloud && <UploadMaterials folder={uploadFolder} onFolder={setUploadFolder} />}
         <div className="row">
-          <button onClick={browse} disabled={picking}>
-            {picking ? '選択中…' : '📂 参照…（エクスプローラー）'}
-          </button>
+          {/* フォルダ選択ダイアログは PC 上でしか開けない */}
+          {!s.isCloud && (
+            <button onClick={browse} disabled={picking}>
+              {picking ? '選択中…' : '📂 参照…（エクスプローラー）'}
+            </button>
+          )}
           <label>
             uploads 配下から選ぶ
             <select value={uploadsRoot && effectiveDir.startsWith(uploadsRoot) ? folderName : ''} onChange={(e) => e.target.value && setMaterialsDir(`${uploadsRoot}${sep}${e.target.value}`)}>
@@ -210,7 +230,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
             <button className="primary" onClick={() => s.addJob('ai-tag', {model: aiModel})} disabled={aiBusy || staleTag || untagged === 0} title={staleTag ? RESTART_HINT : '裏で Claude を起動し、サムネイルを 1 枚ずつ見て kind / 画角 / 被写体などを書き込みます'}>
               {aiBusy ? 'AI が作業中…' : `AI にタグ付けしてもらう（未タグ ${untagged} 本）`}
             </button>
-            <button onClick={() => s.addJob('ai-tag', {model: aiModel, force: true})} disabled={aiBusy || staleTag} title={staleTag ? RESTART_HINT : 'タグ済みも含めて全部付け直す（lock したクリップは除く）'}>
+            <button onClick={() => s.addJob('ai-tag', {model: aiModel, force: true})} disabled={aiBusy || staleTag} title={staleTag ? RESTART_HINT : 'タグ済みも含めて全部付け直す（lock・NG のクリップは除く）'}>
               全部付け直す
             </button>
             <AiModelSelect value={aiModel} onChange={setAiModel} />
@@ -228,6 +248,8 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
         />
       )}
 
+      {catalog && <MosaicCard clips={catalog.clips} shown={shown} form={mosaicForm} setForm={setMosaicForm} onSettings={() => onTab('settings')} />}
+
       {catalog && (
         <div className="materials">
           <section className="card">
@@ -240,8 +262,12 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 <option value="hook">★フック候補</option>
                 <option value="unused">タイムライン未使用</option>
                 <option value="ng">NG</option>
+                <option value="mosaic">顔モザイク済み</option>
               </select>
               <span style={{flex: 1}} />
+              <button className="small" onClick={() => setTriageIds(shown.map((c) => c.id))} disabled={!shown.length} title="今の絞り込み結果を 1 本ずつ大きく見て、必要／不要をすばやく判定します">
+                🔍 選別モードで判定 →
+              </button>
               <button className="small primary" onClick={() => onTab('timeline')} title="素材を並べて尺・テロップ・ナレーションを整える">
                 Timeline で並べる →
               </button>
@@ -260,7 +286,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 const used = usage.get(c.src) ?? 0;
                 return (
                   <div key={c.id} className={`clip-card${c.id === selected ? ' selected' : ''}${c.user.ng ? ' ng' : ''}`} onClick={() => setSelected(c.id)}>
-                    {c.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${c.thumbs.sheet}`} alt={c.slug} loading="lazy" draggable={false} /> : <div style={{height: 90}} />}
+                    {c.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${c.thumbs.sheet}${mediaVersion(c)}`} alt={c.slug} loading="lazy" draggable={false} /> : <div style={{height: 90}} />}
                     <div className="meta">
                       <span>
                         <b>{c.id}</b> {c.probe.durationSec.toFixed(1)}s
@@ -280,6 +306,8 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                         <span className="badge untagged">未タグ</span>
                       )}
                       {c.user.lock && <span className="badge">lock</span>}
+                      {c.mosaic?.applied && <span className="badge mosaic">モザイク</span>}
+                      {c.mosaic && !c.mosaic.applied && <span className="badge">顔なし</span>}
                       {used > 0 && <span className="badge used">使用中{used > 1 ? ` ×${used}` : ''}</span>}
                     </div>
                   </div>
@@ -296,12 +324,12 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 <h2>
                   {clip.id} {clip.original} → {clip.src.replace('uploads/', '')}
                 </h2>
-                <video ref={videoRef} src={`${s.mediaBase}/${clip.src}`} controls preload="metadata" />
+                <video ref={videoRef} src={`${s.mediaBase}/${clip.src}${mediaVersion(clip)}`} controls preload="metadata" />
                 <div className="strip">
                   {clip.thumbs.strip.map((p, i) => (
                     <img
                       key={p}
-                      src={`${s.mediaBase}/studio/${p}`}
+                      src={`${s.mediaBase}/studio/${p}${mediaVersion(clip)}`}
                       alt=""
                       title={`${i}s`}
                       onClick={() => {
@@ -339,6 +367,16 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                     <input value={clip.user.note ?? ''} onChange={(e) => setUser(clip.id, {note: e.target.value})} />
                   </label>
                 </div>
+
+                <MosaicClipSection
+                  clip={clip}
+                  form={mosaicForm}
+                  onSeek={(sec) => {
+                    if (!videoRef.current) return;
+                    videoRef.current.currentTime = sec;
+                    void videoRef.current.play().catch(() => {});
+                  }}
+                />
 
                 <h3>
                   タグ{' '}
@@ -459,6 +497,8 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
           </section>
         </div>
       )}
+
+      {triageClips && <TriageMode clips={triageClips} mediaBase={s.mediaBase} onDecide={(id, patch) => setUser(id, patch)} onClose={() => setTriageIds(null)} />}
     </div>
   );
 };

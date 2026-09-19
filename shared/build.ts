@@ -21,8 +21,10 @@ export type BuildFacts = {
   needsTts: number;
   /** out/final.mp4 がある */
   hasFinal: boolean;
-  /** cuts.json の方が out/final.mp4 より新しい（レンダーし直しが要る） */
+  /** cuts.json か使っている素材の方が out/final.mp4 より新しい（レンダーし直しが要る） */
   finalStale: boolean;
+  /** 古い理由。cuts = cuts.json を直した / media = 素材の中身が変わった（顔モザイク等） */
+  finalStaleBy?: 'cuts' | 'media';
   /** out/final_narration.mp4 がある */
   hasMixed: boolean;
   /** mix のやり直しが要る理由（core/deliver.ts の narrationReady）。無ければ最新 */
@@ -122,7 +124,9 @@ export const planBuild = (f: BuildFacts): BuildStep[] => {
         : f.fatalErrors > 0
           ? `素材が無い等、レンダーできない指摘が ${f.fatalErrors} 件あります`
           : f.hasFinal
-            ? 'cuts.json を直したあとレンダーしていません'
+            ? f.finalStaleBy === 'media'
+              ? '素材を差し替えた（顔モザイク等）あとレンダーしていません'
+              : 'cuts.json を直したあとレンダーしていません'
             : f.placeholders > 0
               ? `テロップが ${f.placeholders} 件未記入です（そのまま出すか、先に埋めてください）`
               : f.validationErrors > 0

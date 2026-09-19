@@ -46,6 +46,10 @@ export type CatalogOptions = {
 export const catalogPath = (projectDir: string) => path.join(projectDir, 'catalog.json');
 export const studioDir = (projectDir: string) => path.join(projectDir, studioConfig.studioDirName);
 
+/** 顔モザイクをかけたクリップの、退避してある元のファイル（かけていなければ null）。存在は確かめない */
+export const mosaicOriginalAbs = (projectDir: string, clip: Pick<Clip, 'mosaic'> | undefined): string | null =>
+  clip?.mosaic?.applied && clip.mosaic.original ? path.join(studioDir(projectDir), clip.mosaic.original) : null;
+
 export const loadCatalog = (projectDir: string): Catalog | null => {
   const p = catalogPath(projectDir);
   return fs.existsSync(p) ? readJsonFile(p, CatalogSchema) : null;
@@ -118,21 +122,36 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
         changed.push(rel);
       }
     }
+    // 顔モザイク済みのクリップは、src がモザイク版。元の素材から作るもの（コピー・プロキシ）は退避先に作り、
+    // src は触らない（ここで元の素材を上書きすると、黙ってモザイクが外れる）
+    const stashed = mosaicOriginalAbs(opt.projectDir, prev);
+    const baseAbs = stashed ?? dest;
+    const baseRel = stashed ? path.relative(opt.projectDir, stashed).replace(/\\/g, '/') : rel;
+    let rebuiltBase = false;
+    if (stashed) fs.mkdirSync(path.dirname(stashed), {recursive: true});
     if (proxy.needed) {
-      if (opt.force || !fs.existsSync(dest)) {
-        log(`  proxy (${proxy.reason}) → ${rel}`);
-        await makeProxy(src, dest, srcProbe, {onLine: (l) => log(`    ${l}`)});
+      if (opt.force || !fs.existsSync(baseAbs)) {
+        log(`  proxy (${proxy.reason}) → ${baseRel}`);
+        await makeProxy(src, baseAbs, srcProbe, {onLine: (l) => log(`    ${l}`)});
         changed.push(rel);
+        rebuiltBase = true;
       }
     } else {
-      const same = fs.existsSync(dest) && fs.statSync(dest).size === fs.statSync(src).size;
+      const same = fs.existsSync(baseAbs) && fs.statSync(baseAbs).size === fs.statSync(src).size;
       if (opt.force || !same) {
-        fs.copyFileSync(src, dest);
-        log(`  copy → ${rel}`);
+        fs.copyFileSync(src, baseAbs);
+        log(`  copy → ${baseRel}`);
         changed.push(rel);
+        rebuiltBase = true;
       }
     }
-    const probe = proxy.needed ? await ffprobe(dest) : srcProbe;
+    if (stashed && rebuiltBase) {
+      const w = `[${id}] ${file}: 元の素材を作り直しました。顔モザイクは前の元素材から作ったものなので、Materials でかけ直してください`;
+      warnings.push(w);
+      log(`  ! ${w}`);
+    }
+    // モザイク版は回転を反映した実寸で書き出してあるので、元の素材の probe ではなく src を測る
+    const probe = proxy.needed || stashed ? await ffprobe(dest) : srcProbe;
 
     // 1 本の解析失敗で全体を落とさない（84 本のうち 1 本だけ壊れている、等）
     const attempt = async <T>(what: string, fn: () => Promise<T>): Promise<T | undefined> => {
@@ -179,6 +198,7 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
       speech,
       scenes,
       user: prev?.user ?? {hook: false, ng: false, orderHint: null, lock: false},
+      mosaic: prev?.mosaic,
     });
   }
   opt.onProgress?.(files.length, files.length, 'done');

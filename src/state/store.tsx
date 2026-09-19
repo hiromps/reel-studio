@@ -42,7 +42,16 @@ type Store = {
     claude?: boolean;
     settingsProblem?: string | null;
     personasProblem?: string | null;
+    /**
+     * cloud = Vercel 上で動いていて、重い処理は自宅 PC のワーカーが行う。
+     * 未指定（ローカルのサーバー）は今までどおり全部この PC で動く。
+     */
+    mode?: 'cloud';
+    /** クラウド版のみ。PC のワーカーが繋がっているか */
+    worker?: {online: boolean; lastSeen: string | null; node: string | null; ffmpeg: string | null; ffprobe: string | null; host: string | null};
   } | null;
+  /** クラウド版か（ローカル専用の UI を隠すのに使う） */
+  isCloud: boolean;
   /** 人格の一覧（GET /api/personas）。shared/personas.ts のレジストリにも同じものが入る */
   personas: Persona[];
   personasLoaded: boolean;
@@ -73,6 +82,9 @@ type Store = {
 const StudioContext = createContext<Store | null>(null);
 
 const emptyFile = <T,>(): FileState<T> => ({data: null, etag: null, dirty: false, loading: false});
+
+/** ジョブ投入直後のレスポンスで、SSE 経由の新しい状態を巻き戻さないための順序 */
+const JOB_STATUS_RANK: Record<Job['status'], number> = {queued: 0, running: 1, done: 2, failed: 2, cancelled: 2};
 
 // 「いま編集している案件」はタブごとに持つ（URL の ?p=）。サーバーに 1 つだけ持たせていた頃は、
 // タブを複製して片方の案件を変えるともう片方まで同じ案件に変わってしまった。
@@ -245,7 +257,14 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       }
       try {
         const r = await api.post<Job>('/api/jobs', {type, slug: slug ?? activeRef.current, params});
-        setJobs((j) => [r.data, ...j.filter((x) => x.id !== r.data.id)]);
+        // このレスポンスはジョブ投入直後のスナップショット（queued/running）。preflight 失敗のように
+        // 一瞬で終わるジョブだと、SSE の job:update が先に「失敗」を届けたあとにこれが遅れて届き、
+        // そのまま上書きすると失敗が消えて見える。既存の方が進んだ状態ならそちらを残す
+        setJobs((j) => {
+          const existing = j.find((x) => x.id === r.data.id);
+          if (existing && JOB_STATUS_RANK[existing.status] > JOB_STATUS_RANK[r.data.status]) return j;
+          return [r.data, ...j.filter((x) => x.id !== r.data.id)];
+        });
         toast(`ジョブ ${type} を投入`);
         return r.data;
       } catch (e) {
@@ -315,14 +334,14 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       }
       // out/ の中身が変わるジョブ。ボタンの活性（mix を押せるか等）が projects の out を見ているので取り直す
       if (j.status === 'done' && ['render', 'draft', 'mix', 'deliver'].includes(j.type)) void refreshProjects();
-      if (j.status === 'done' && ['catalog', 'thumbs', 'proxy', 'aliases', 'sync-engine', 'ai-tag', 'ai-order', 'ai-telop', 'ai-edit', 'ai-narration'].includes(j.type)) {
+      if (j.status === 'done' && ['catalog', 'thumbs', 'proxy', 'aliases', 'sync-engine', 'ai-tag', 'ai-order', 'ai-telop', 'ai-edit', 'ai-narration', 'mosaic', 'mosaic-revert'].includes(j.type)) {
         // 未保存の編集があるときは黙って上書きしない（file:changed と同じ扱いにする）
         const reload = (name: ContractName) => {
           if (!filesRef.current[name].dirty) return void loadFile(name);
           setFiles((f) => ({...f, [name]: {...f[name], external: 'changed'}}));
           toast(`${name}.json をジョブが書き換えました（未保存の編集あり。「読み直す」か「上書き」を選んでください）`, 'error');
         };
-        if (['catalog', 'thumbs', 'proxy', 'ai-tag'].includes(j.type)) reload('catalog');
+        if (['catalog', 'thumbs', 'proxy', 'ai-tag', 'mosaic', 'mosaic-revert'].includes(j.type)) reload('catalog');
         if (j.type === 'aliases' || j.type === 'ai-telop') reload('cuts');
         if (j.type === 'ai-narration') reload('narration');
         if (j.type === 'ai-edit') {
@@ -358,7 +377,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   }, [loadFile, loadCaption, refreshProjects, toast]);
 
   const value = useMemo<Store>(
-    () => ({projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
+    () => ({projects, active, files, caption, jobs, logs, toasts, config, isCloud: config?.mode === 'cloud', personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
     [projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
   );
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;

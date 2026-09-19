@@ -36,7 +36,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const spec = brief ? FORMAT_SPECS[brief.format ?? persona?.defaultFormat ?? 'F0'] : undefined;
   const fps = cuts?.fps ?? catalog?.dominantFps ?? 30;
   const maxCutSec = spec?.tempo.maxCutSec ?? DEFAULT_MAX_CUT_SEC;
-  const cps = persona?.narration.charsPerSec ?? 11;
+  const cps = persona?.narration.charsPerSec ?? 8.2;
   const estimateSec = useCallback((seg: NarrationSegment) => (seg.durSec && seg.durSec > 0 ? seg.durSec : [...seg.text].length / cps), [cps]);
 
   // ---- 参照の解決 ----

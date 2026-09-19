@@ -1,0 +1,4 @@
+{
+  "//": "この関数は CommonJS（api/_app.cjs を require するだけ）。リポジトリ全体は ESM なので、ここだけ上書きする。",
+  "type": "commonjs"
+}

@@ -1,11 +1,44 @@
 // 自然言語の台本から構成を組み立てる。型（F0/F7…）に流し込む「プラン生成」の代わりに使う。
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
-import type {ScriptSection} from '@shared/script';
+import type {ScriptIssue, ScriptSection} from '@shared/script';
+import {localDate} from '@shared/time';
 import {AiModelSelect} from '../hooks/useAiModel';
 
 type ScriptRes = {etag: string | null; data: string | null; sections: ScriptSection[]; totalSec: number | null};
+
+/** GET /script/plan（core/script.ts の ScriptProposalView） */
+type Proposal = {
+  canApply: boolean;
+  blockers: string[];
+  issues: ScriptIssue[];
+  lines: string[];
+  totalSec: number;
+  cutCount: number;
+  narrationCount: number;
+  createdAt: string;
+  model: string;
+  costUsd: number;
+  appliedAt?: string;
+  unmatched: string[];
+  notes: string;
+  current: {cuts: number | null; narration: number | null; sfx: number};
+};
+
+/** 承認の確認文。何を置き換えるかを具体的に出す */
+const approvalText = (p: Proposal): string => {
+  const w = p.issues.filter((i) => i.severity === 'W').length;
+  const items = [
+    `・cuts.json: ${p.cutCount} カット / ${p.totalSec.toFixed(1)} 秒${p.current.cuts !== null ? `（いまの ${p.current.cuts} カットを置き換え）` : '（新規）'}`,
+    p.narrationCount
+      ? `・narration.json: ${p.narrationCount} ブロック${p.current.narration !== null ? `（いまの ${p.current.narration} ブロック${p.current.sfx ? `・効果音 ${p.current.sfx} 個` : ''}・声と音量の設定を置き換え）` : '（新規）'}`
+      : '・narration.json: 台本にナレーションが無いので書きません',
+    w ? `・W（注意）が ${w} 件あります` : null,
+    p.unmatched.length ? `・素材が無かった区間が ${p.unmatched.length} 件あります（撮り足しが要ります）` : null,
+  ].filter((l): l is string => !!l);
+  return ['この割り当てで書き込みますか？（AI はもう走らせません）', '', ...items, '', '旧版は .studio/backups/ に残ります。音声は作り直しになります。'].join('\n');
+};
 
 const PLACEHOLDER = `【0〜3秒】フック
 映像： 盛り合わせの全体を一気に見せる。肉のアップ
@@ -45,11 +78,52 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
     void load();
   }, [load]);
 
-  // 組み立てが終わったら cuts / narration が変わっているので読み直す
-  const done = s.jobs.find((j) => j.type === 'ai-script' && j.status === 'done')?.id;
+  // 「割り当てを見るだけ」の結果（保存してある案）
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [applying, setApplying] = useState(false);
+  const loadProposal = useCallback(async () => {
+    if (!slug) return;
+    try {
+      const r = await api.get<{data: Proposal | null}>(`/api/projects/${encodeURIComponent(slug)}/script/plan`);
+      setProposal(r.data.data);
+    } catch {
+      setProposal(null); // 古いサーバーには /script/plan が無い
+    }
+  }, [slug]);
   useEffect(() => {
-    if (done) void load();
-  }, [done, load]);
+    void loadProposal();
+  }, [loadProposal]);
+
+  // 組み立てが終わったら（E で書けなかったときも）結果を取り直す。
+  // 台本は編集中なら読み直さない（走っている間に書いた変更を消さないように）
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const finished = s.jobs.find((j) => j.type === 'ai-script' && j.slug === slug && (j.status === 'done' || j.status === 'failed'));
+  useEffect(() => {
+    if (!finished) return;
+    if (!dirtyRef.current) void load();
+    void loadProposal();
+  }, [finished?.id, finished?.status, load, loadProposal]);
+
+  const approve = async () => {
+    if (!slug || !proposal) return;
+    if (s.files.cuts.dirty || s.files.narration.dirty) return s.toast('Timeline に未保存の変更があります。保存するか読み直してから書き込んでください', 'error');
+    if (dirty) return s.toast('script.md に未保存の変更があります。この案は保存済みの台本から作ったものです', 'error');
+    if (!window.confirm(approvalText(proposal))) return;
+    setApplying(true);
+    try {
+      const r = await api.post<{cuts: number; narration: number; totalSec: number; view: Proposal | null}>(`/api/projects/${encodeURIComponent(slug)}/script/plan/apply`);
+      setProposal(r.data.view);
+      await Promise.all([s.loadFile('cuts'), s.loadFile('narration')]);
+      s.toast(`書き込みました: ${r.data.cuts} カット / ${r.data.totalSec.toFixed(1)} 秒・ナレーション ${r.data.narration} ブロック`, 'ok');
+    } catch (e) {
+      const view = ((e as {body?: {view?: Proposal | null}}).body?.view) ?? undefined;
+      if (view !== undefined) setProposal(view);
+      s.toast((e as Error).message, 'error');
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const save = async () => {
     if (!slug) return;
@@ -85,13 +159,98 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
         >
           {busy ? '組み立て中…' : '台本から組み立てる（cuts + ナレーション）'}
         </button>
-        <button onClick={() => s.addJob('ai-script', {model: aiModel, write: false})} disabled={busy || unsupported || dirty || !text.trim() || !catalog} title="書き込まずに割り当てだけ見る">
+        <button
+          onClick={() => s.addJob('ai-script', {model: aiModel, write: false})}
+          disabled={busy || unsupported || dirty || !text.trim() || !catalog}
+          title="書き込まずに割り当てだけ作ります。結果を見て「この割り当てで書き込む」で承認すると、そのまま cuts.json と narration.json に入ります（AI をもう一度走らせません）"
+        >
           割り当てを見るだけ
         </button>
         <AiModelSelect value={aiModel} onChange={onModel} />
         {untagged > 0 && <span className="pill warn">タグの無い素材が {untagged} 本（先にタグ付けすると当たりが良くなります）</span>}
         {unsupported && <span className="pill warn">サーバーが古いプロセスです。再起動してください</span>}
       </div>
+
+      {proposal && (
+        <div className="script-proposal">
+          <div className="summary">
+            <span>
+              <b>割り当ての結果</b>
+            </span>
+            <span>
+              {proposal.cutCount} カット / {proposal.totalSec.toFixed(1)} 秒・ナレーション {proposal.narrationCount} ブロック
+            </span>
+            {proposal.appliedAt ? (
+              <span className="pill">書き込み済み（{localDate(proposal.appliedAt)}）</span>
+            ) : proposal.canApply ? (
+              <span className="pill warn">未反映（承認待ち）</span>
+            ) : (
+              <span className="pill err">書き込めません</span>
+            )}
+            <span className="hint">
+              {localDate(proposal.createdAt)} 作成{proposal.model ? ` / ${proposal.model}` : ''}
+              {proposal.costUsd ? ` / $${proposal.costUsd.toFixed(2)}` : ''}
+            </span>
+          </div>
+
+          {proposal.blockers.length > 0 && (
+            <div className="issues">
+              {proposal.blockers.map((b, i) => (
+                <div key={i} className="issue E">
+                  <span className="code">書き込めない理由</span>
+                  <span>{b}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {proposal.lines.length > 0 && (
+            <pre className="script-proposal-lines">{proposal.lines.join('\n')}</pre>
+          )}
+
+          {(proposal.issues.length > 0 || proposal.unmatched.length > 0) && (
+            <div className="issues">
+              {proposal.issues.map((x, i) => (
+                <div key={`i${i}`} className={`issue ${x.severity}`}>
+                  <span className="code">
+                    {x.severity} {x.code}
+                  </span>
+                  <span>{x.message}</span>
+                </div>
+              ))}
+              {proposal.unmatched.map((u, i) => (
+                <div key={`u${i}`} className="issue W">
+                  <span className="code">素材が無い</span>
+                  <span>{u}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {proposal.notes && <p className="hint">意図: {proposal.notes}</p>}
+
+          <div className="row">
+            <button
+              className="primary"
+              onClick={() => void approve()}
+              disabled={!proposal.canApply || applying || busy || dirty}
+              title={
+                !proposal.canApply
+                  ? proposal.blockers.join(' / ')
+                  : dirty
+                    ? 'script.md に未保存の変更があります'
+                    : '確認のうえ、この割り当てを cuts.json と narration.json に書き込みます（AI は走らせません）'
+              }
+            >
+              {applying ? '書き込み中…' : proposal.appliedAt ? 'この割り当てでもう一度書き込む' : 'この割り当てで書き込む'}
+            </button>
+            <span className="hint">
+              {proposal.appliedAt
+                ? '書き込んだあとに Timeline で直した内容は、もう一度書き込むと失われます'
+                : '押すと、置き換える内容を確認してから書き込みます。直したい点があれば台本を直して「割り当てを見るだけ」をやり直してください'}
+            </span>
+          </div>
+        </div>
+      )}
 
       <textarea
         className="caption-box"

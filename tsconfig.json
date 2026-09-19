@@ -11,7 +11,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "types": ["node", "vitest/globals"],
+    "types": ["node", "vitest/globals", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@engine/*": ["engine/src/*"],
@@ -22,5 +22,5 @@
       "remotion": ["node_modules/remotion"]
     }
   },
-  "include": ["shared", "core", "cli", "server", "src", "test", "engine/src", "studio.config.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": ["shared", "core", "cli", "server", "cloud", "worker", "api", "src", "test", "engine/src", "studio.config.ts", "vite.config.ts", "vitest.config.ts"]
 }

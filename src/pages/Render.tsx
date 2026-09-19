@@ -44,8 +44,8 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           : null;
   const canTts = !!narration && !ttsBlockedBy;
   const briefPersona = s.files.brief.data ? findPersona(s.files.brief.data.persona) : undefined;
-  const cps = briefPersona?.narration.charsPerSec ?? 11;
-  const personaSpeed = briefPersona?.narration.speed ?? 1.6;
+  const cps = briefPersona?.narration.charsPerSec ?? 8.2;
+  const personaSpeed = briefPersona?.narration.speed ?? 1.2;
   const segSec = (seg: NarrationSegment) => seg.durSec ?? [...seg.text].length / cps;
   const setNarr = (next: Narration) => s.setFile('narration', next);
   const narrIssues = useMemo(() => (narration ? checkNarration(narration, {estimate: segSec, emptyText: true}) : []), [narration, cps]);

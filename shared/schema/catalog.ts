@@ -1,5 +1,6 @@
 // catalog.json のスキーマ。素材の機械的事実（probe/thumbs）＋ Claude/ユーザーのタグ＋ユーザー判断（hook/ng/lock）。
 import {z} from 'zod';
+import {MosaicInfoSchema} from '../mosaic';
 
 export const ClipKindSchema = z.enum([
   'exterior', // 外観
@@ -86,6 +87,8 @@ export const ClipSchema = z.object({
   speech: z.array(SpeechRangeSchema).optional(),
   scenes: z.array(z.number()).optional(),
   user: ClipUserSchema.default({}),
+  /** 顔モザイクの結果（core/mosaic.ts）。無い＝まだ調べていない */
+  mosaic: MosaicInfoSchema.optional(),
 });
 export type Clip = z.infer<typeof ClipSchema>;
 

@@ -24,6 +24,7 @@ import {useEditorModel} from './useEditorModel';
 import {useMixPreview} from './useMixPreview';
 import {pendingNarration} from './mixPreview';
 import {GROUP_COLORS} from './labels';
+import {PreviewReady} from '../components/PreviewReady';
 
 type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean};
 const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true};
@@ -202,7 +203,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       const res = await fetch('/api/tts/preview', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text, voice: narration.voice, speed: narration.speed ?? m.persona?.narration.speed ?? 1.6, latency: narration.latency}),
+        body: JSON.stringify({text, voice: narration.voice, speed: narration.speed ?? m.persona?.narration.speed ?? 1.2, latency: narration.latency}),
       });
       if (!res.ok) throw new Error(((await res.json()) as {error?: string}).error ?? `HTTP ${res.status}`);
       const url = URL.createObjectURL(await res.blob());
@@ -285,6 +286,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
 
   return (
     <div className="editor" ref={rootRef} style={{height}}>
+      <PreviewReady />
       <div className="ed-toolbar" data-tour="ed-toolbar">
         <button className="primary" onClick={() => void saveAll()} disabled={!dirtyCuts && !dirtyNarr} title="cuts.json と narration.json を保存（Ctrl+S）" data-tour="save">
           保存{dirtyCuts || dirtyNarr ? ' *' : ''}

@@ -9,14 +9,30 @@
 // 「黒毛和牛大満足盛りをテーブルに置くシーン」のような台本の指示には十分に当たるため。
 import fs from 'node:fs';
 import path from 'node:path';
-import {readCuts, readBrief, writeCuts, writeNarration, backupsDir} from './project';
-import {loadCatalog} from './catalog';
+import {readBrief, readNarration, writeCuts, writeNarration} from './project';
+import {loadCatalog, studioDir} from './catalog';
 import {runAgent} from './agent';
+import {readJsonFile, writeJsonAtomic} from './json-io';
 import {activitySummary, createAgentTracker, progressView} from '../shared/agent-progress';
 import {studioConfig} from '../studio.config';
-import {ReelDataSchema, type Cut, type ReelData} from '../shared/schema/cuts';
-import {NarrationSchema} from '../shared/schema/narration';
-import {ScriptPlanSchema, checkScriptPlan, formatScriptPlan, parseSections, scriptTotalSec, type ScriptIssue, type ScriptPlan} from '../shared/script';
+import {type ReelData} from '../shared/schema/cuts';
+import {
+  ScriptPlanSchema,
+  ScriptProposalSchema,
+  checkScriptPlan,
+  formatScriptPlan,
+  parseSections,
+  reviewScriptProposal,
+  scriptPlanToCuts,
+  scriptPlanToNarration,
+  scriptPlanTotalSec,
+  scriptTextHash,
+  scriptTotalSec,
+  type ScriptIssue,
+  type ScriptPlan,
+  type ScriptProposal,
+  type ScriptProposalReview,
+} from '../shared/script';
 import {getPersona} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {stableHash} from '../shared/hash';
@@ -70,6 +86,120 @@ const PLAN_SCHEMA = {
   },
 } as const;
 
+// ───────────────────────── 案の保存・書き込み ─────────────────────────
+
+/** AI が返した組み立ての保存先。「割り当てを見るだけ」の結果を、承認されたら AI を走らせずに書き込むため */
+export const scriptProposalPath = (dir: string) => path.join(studioDir(dir), 'script-plan.json');
+
+export const readScriptProposal = (dir: string): ScriptProposal | null => {
+  const p = scriptProposalPath(dir);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return readJsonFile(p, ScriptProposalSchema);
+  } catch {
+    return null; // 壊れていたら無いのと同じ（もう一度「見るだけ」を走らせればよい）
+  }
+};
+
+const writeScriptProposal = (dir: string, proposal: ScriptProposal) => writeJsonAtomic(scriptProposalPath(dir), ScriptProposalSchema.parse(proposal));
+
+/** 台本・素材・人格・型を読む。組み立て（AI）と書き込み（承認）で同じものを使う */
+const loadScriptEnv = (projectDir: string) => {
+  const script = readScript(projectDir);
+  if (!script?.trim()) throw new Error('script.md が無い（Brief の「台本から組み立てる」に台本を貼ってください）');
+  const catalog = loadCatalog(projectDir);
+  if (!catalog) throw new Error('catalog.json が無い（先に素材のカタログ化）');
+  const brief = readBrief(projectDir);
+  if (!brief) throw new Error('brief.json が無い');
+  const persona = getPersona(brief.persona);
+  const spec = FORMAT_SPECS[brief.format ?? persona.defaultFormat];
+  const sections = parseSections(script);
+  const check = {
+    sections,
+    clipDurations: new Map(catalog.clips.map((c) => [c.id, c.probe.durationSec])),
+    ngClipIds: new Set(catalog.clips.filter((c) => c.user.ng).map((c) => c.id)),
+    maxTelopChars: spec.telop.maxChars,
+  };
+  const toCuts = (plan: ScriptPlan): ReelData =>
+    scriptPlanToCuts(plan, {catalog, theme: brief.theme ?? persona.theme, specId: spec.id, briefHash: stableHash(brief), catalogHash: stableHash(catalog)});
+  return {script, catalog, brief, persona, spec, sections, check, toCuts};
+};
+
+/** cuts.json と narration.json を書く（「台本から組み立てる」と「承認して書き込む」の共通部分）。旧版は .studio/backups/ に残る */
+const writeScriptOutputs = (projectDir: string, plan: ScriptPlan, cuts: ReelData, persona: ReturnType<typeof getPersona>, log: (l: string) => void) => {
+  writeCuts(projectDir, cuts);
+  const narration = scriptPlanToNarration(plan, persona.narration);
+  if (narration) writeNarration(projectDir, narration);
+  log(`cuts.json（${cuts.cuts.length} カット / ${scriptPlanTotalSec(plan).toFixed(2)} 秒）と narration.json（${plan.narration.length} ブロック）を書きました`);
+  log('※ 音声はまだありません。Render の「音声を生成」→「ナレーション合成（mix）」で仕上げます');
+};
+
+export type ScriptProposalView = ScriptProposalReview & {
+  createdAt: string;
+  model: string;
+  costUsd: number;
+  appliedAt?: string;
+  unmatched: string[];
+  notes: string;
+  /** いまの cuts.json / narration.json（承認の確認で「何を置き換えるか」を見せる） */
+  current: {cuts: number | null; narration: number | null; sfx: number};
+};
+
+/** 画面用：保存してある案を、いまの台本・素材で見直した結果。案が無ければ null */
+export const scriptProposalView = (projectDir: string): ScriptProposalView | null => {
+  const proposal = readScriptProposal(projectDir);
+  if (!proposal) return null;
+  let review: ScriptProposalReview;
+  try {
+    const env = loadScriptEnv(projectDir);
+    review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, cuts: env.toCuts(proposal.plan)});
+  } catch (e) {
+    review = {canApply: false, blockers: [(e as Error).message], issues: [], lines: [], totalSec: scriptPlanTotalSec(proposal.plan), cutCount: proposal.plan.cuts.length, narrationCount: proposal.plan.narration.length};
+  }
+  let currentCuts: number | null = null;
+  const cutsFile = path.join(projectDir, 'cuts.json');
+  if (fs.existsSync(cutsFile)) {
+    try {
+      currentCuts = (JSON.parse(fs.readFileSync(cutsFile, 'utf8')) as {cuts?: unknown[]}).cuts?.length ?? 0;
+    } catch {
+      currentCuts = 0;
+    }
+  }
+  let narration: ReturnType<typeof readNarration> = null;
+  try {
+    narration = readNarration(projectDir);
+  } catch {
+    /* 壊れた narration.json は置き換わるだけ */
+  }
+  return {
+    ...review,
+    createdAt: proposal.createdAt,
+    model: proposal.model,
+    costUsd: proposal.costUsd,
+    appliedAt: proposal.appliedAt,
+    unmatched: proposal.plan.unmatched,
+    notes: proposal.plan.notes,
+    current: {cuts: currentCuts, narration: narration?.segments.length ?? null, sfx: narration?.sfx?.length ?? 0},
+  };
+};
+
+/**
+ * 保存してある案（「割り当てを見るだけ」の結果）を cuts.json と narration.json に書き込む。**AI は走らせない。**
+ * 書く直前に、いまの台本・素材で検算し直す（台本が変わった・E がある なら書かない）。
+ */
+export const applyScriptProposal = (projectDir: string, opt: {onLine?: (l: string) => void} = {}): {cuts: number; narration: number; totalSec: number; issues: ScriptIssue[]} => {
+  const log = opt.onLine ?? (() => {});
+  const proposal = readScriptProposal(projectDir);
+  if (!proposal) throw new Error('書き込む割り当ての案がありません（先に「割り当てを見るだけ」を実行してください）');
+  const env = loadScriptEnv(projectDir);
+  const cuts = env.toCuts(proposal.plan);
+  const review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, cuts});
+  if (!review.canApply) throw new Error(`この案は書き込めません:\n${review.blockers.map((b) => `  ${b}`).join('\n')}`);
+  writeScriptOutputs(projectDir, proposal.plan, cuts, env.persona, log);
+  writeScriptProposal(projectDir, {...proposal, appliedAt: new Date().toISOString()});
+  return {cuts: cuts.cuts.length, narration: proposal.plan.narration.length, totalSec: review.totalSec, issues: review.issues};
+};
+
 export type AiScriptResult = {
   plan: ScriptPlan;
   issues: ScriptIssue[];
@@ -89,21 +219,14 @@ export async function aiScript(
   opt: {model?: string; write?: boolean; force?: boolean; onLine?: (l: string) => void; onProgress?: (d: number, t: number, p: string) => void; signal?: AbortSignal} = {},
 ): Promise<AiScriptResult> {
   const log = opt.onLine ?? (() => {});
-  const script = readScript(projectDir);
-  if (!script?.trim()) throw new Error('script.md が無い（Brief の「台本から組み立てる」に台本を貼ってください）');
-  const catalog = loadCatalog(projectDir);
-  if (!catalog) throw new Error('catalog.json が無い（先に素材のカタログ化）');
-  const brief = readBrief(projectDir);
-  if (!brief) throw new Error('brief.json が無い');
-  const persona = getPersona(brief.persona);
-  const spec = FORMAT_SPECS[brief.format ?? persona.defaultFormat];
+  const env = loadScriptEnv(projectDir);
+  const {script, catalog, brief, persona, spec, sections} = env;
 
   const usable = catalog.clips.filter((c) => !c.user.ng);
   if (!usable.length) throw new Error('使える素材がありません（全部 NG になっています）');
   const untagged = usable.filter((c) => !c.tags).length;
   if (untagged) log(`! タグの無い素材が ${untagged} 本あります。先に「AI にタグ付けしてもらう」と当たりが良くなります`);
 
-  const sections = parseSections(script);
   const wantTotal = scriptTotalSec(sections);
   log(`台本から組み立て: 区間 ${sections.length} 個${wantTotal ? ` / 想定 ${wantTotal} 秒` : ''} / 素材 ${usable.length} 本（model=${opt.model ?? studioConfig.agent.model}）`);
 
@@ -182,38 +305,13 @@ export async function aiScript(
   opt.onProgress?.(0, 0, '検算しています');
 
   const plan = ScriptPlanSchema.parse(run.data);
-  const durations = new Map(catalog.clips.map((c) => [c.id, c.probe.durationSec]));
-  const issues = checkScriptPlan(plan, {
-    sections,
-    clipDurations: durations,
-    ngClipIds: new Set(catalog.clips.filter((c) => c.user.ng).map((c) => c.id)),
-    maxTelopChars: spec.telop.maxChars,
-  });
+  const issues = checkScriptPlan(plan, env.check);
+  const cuts = env.toCuts(plan);
+  const total = scriptPlanTotalSec(plan);
 
-  // ── cuts.json を組み立てる ──
-  const byId = new Map(catalog.clips.map((c) => [c.id, c]));
-  const cutList: Cut[] = plan.cuts.map((c, i) => {
-    const clip = byId.get(c.clipId);
-    const cut: Cut = {
-      id: `c${String(i + 1).padStart(2, '0')}`,
-      src: clip?.src ?? c.clipId,
-      inSec: Math.max(0, Math.round(c.inSec * 1000) / 1000),
-      outSec: Math.round(c.outSec * 1000) / 1000,
-    };
-    if (c.telop.trim()) cut.main = {text: c.telop.trim(), ...(c.orientation === 'horizontal' ? {orientation: 'horizontal' as const} : {})};
-    if (c.badge?.trim()) cut.badge = c.badge.trim();
-    return cut;
-  });
-  const cuts: ReelData = ReelDataSchema.parse({
-    fps: catalog.dominantFps,
-    theme: brief.theme ?? persona.theme,
-    cuts: cutList,
-    meta: {
-      slots: plan.cuts.map((c, i) => ({cutId: `c${String(i + 1).padStart(2, '0')}`, segment: c.section, role: 'info', clipId: c.clipId, textStatus: 'draft', locked: false, qc: []})),
-      generated: {tool: 'reel-studio/script', at: new Date().toISOString(), briefHash: stableHash(brief), catalogHash: stableHash(catalog), specId: spec.id},
-    },
-  });
-  const total = cutList.reduce((n, c) => n + (c.outSec - c.inSec), 0);
+  // 結果は必ず残す。「見るだけ」で確かめて、承認されたら AI を走らせずにこれを書き込む（1 回 5〜7 分・課金があるため）
+  const proposal: ScriptProposal = {version: 1, createdAt: new Date().toISOString(), scriptHash: scriptTextHash(script), model: opt.model ?? studioConfig.agent.model, costUsd: run.costUsd, plan};
+  writeScriptProposal(projectDir, proposal);
 
   const lines = formatScriptPlan(plan, sections, cuts);
   for (const l of lines) log(l);
@@ -227,22 +325,16 @@ export async function aiScript(
     if (errors.length && !opt.force) {
       log(`E が ${errors.length} 件あるので何も書いていません（--force で W だけ無視できます。E は無視できません）`);
     } else {
-      writeCuts(projectDir, cuts);
-      if (plan.narration.length) {
-        writeNarration(projectDir, {
-          voice: persona.narration.voiceId,
-          voiceTitle: persona.narration.voiceTitle,
-          latency: 'normal',
-          speed: persona.narration.speed,
-          videoSec: Math.round(total * 1000) / 1000,
-          note: plan.notes,
-          segments: plan.narration.map((n) => ({id: n.id, at: Math.round(n.at * 1000) / 1000, text: n.text.trim(), needsTts: true})),
-        });
-      }
+      writeScriptOutputs(projectDir, plan, cuts, persona, log);
+      writeScriptProposal(projectDir, {...proposal, appliedAt: new Date().toISOString()});
       written = true;
-      log(`cuts.json（${cutList.length} カット / ${total.toFixed(2)} 秒）と narration.json（${plan.narration.length} ブロック）を書きました`);
-      log('※ 音声はまだありません。Render の「音声を生成」→「ナレーション合成（mix）」で仕上げます');
     }
+  } else {
+    log(
+      errors.length
+        ? `E が ${errors.length} 件あるので、この案は書き込めません`
+        : 'まだ書き込んでいません。Brief の「割り当ての結果」で確かめて「この割り当てで書き込む」を押すと、この案がそのまま入ります（AI はもう走らせません）',
+    );
   }
   return {plan, issues, cuts, totalSec: total, costUsd: run.costUsd, written, lines};
 }

@@ -282,7 +282,7 @@ export const synthPreview = async (
   if (!t) throw new Error('本文が空です');
   if (/[\r\n]/.test(t)) throw new Error('本文に改行があります（1 ブロック 1 文）');
   if (!opt.voice) throw new Error('ボイスが未設定です');
-  const speed = opt.speed ?? 1.6;
+  const speed = opt.speed ?? 1.2;
   if (!(speed >= 0.5 && speed <= 2)) throw new Error(`speed が範囲外です: ${speed}（0.5〜2.0）`);
   // 長文を丸ごと作ると待たされるので、試聴は先頭 60 文字まで
   return synth(env, ttsBody([...t].slice(0, 60).join(''), opt.voice, speed, opt.latency || 'normal'), opt.signal);
@@ -301,7 +301,7 @@ export const synthOne = async (
   if (!text.trim()) throw new Error('本文が空です');
   if (/[\r\n]/.test(text)) throw new Error('本文に改行があります（1 ブロック 1 文）');
   if (!opt.voice) throw new Error('ボイスが未設定です');
-  const speed = opt.speed ?? 1.6;
+  const speed = opt.speed ?? 1.2;
   if (!(speed >= 0.5 && speed <= 2)) throw new Error(`speed が範囲外です: ${speed}`);
   fs.mkdirSync(path.dirname(opt.out), {recursive: true});
   const buf = await synth(env, ttsBody(text.trim(), opt.voice, speed, opt.latency || 'normal'), opt.signal);
@@ -342,7 +342,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
     );
   if ((await voiceExists(voice, {signal: opt.signal})) === false)
     throw new Error(`このボイスは Fish Audio にありません（消された可能性）: ${narration.voiceTitle ?? voice}\n  Render の「ボイス」で選び直してください`);
-  const speed = narration.speed ?? persona?.narration.speed ?? 1.6;
+  const speed = narration.speed ?? persona?.narration.speed ?? 1.2;
   if (!(speed >= 0.5 && speed <= 2)) throw new Error(`speed が範囲外です: ${speed}（0.5〜2.0）`);
   const latency = narration.latency || 'normal';
 
@@ -379,7 +379,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   // Fish Audio の出力は決定的でなく、**同じ文でも極端に長い当たり**が出る
   // （実測: 21 文字で 1.02〜29.78 秒。2026-09-12）。そのまま採用すると後続のブロックに
   // かぶって動画全体の音が壊れるので、文字数から見た妥当な範囲を外れたら引き直す。
-  const cpsMeasured = persona?.narration.charsPerSecMeasured ?? 11;
+  const cpsMeasured = persona?.narration.charsPerSecMeasured ?? 8.5;
   const outlier = (chars: number, dur: number) => {
     const expect = chars / cpsMeasured;
     return dur > expect * OUTLIER_RATIO + OUTLIER_MARGIN_SEC || dur < expect / OUTLIER_RATIO - OUTLIER_MARGIN_SEC;
@@ -415,7 +415,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
 
   // 実測が入ったので、重なり・尺はみ出しをここで見ておく（GUI の警告と同じ判定）
   const after = readNarration(projectDir);
-  const cps = persona?.narration.charsPerSecMeasured ?? 11;
+  const cps = persona?.narration.charsPerSecMeasured ?? 8.5;
   const findings = after ? checkNarration(after, {estimate: (s) => [...s.text].length / cps}) : [];
   for (const f of findings) log(`  ! ${f}`);
   log(`音声生成 完了: ${made.length} 本 / ${totalChars} 文字`);

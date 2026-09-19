@@ -4,11 +4,13 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
-import {PATH_KEYS, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {PATH_KEYS, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
 import {AI_MODELS} from '../hooks/useAiModel';
+import {AiJobStatus} from '../components/AiJobStatus';
+import {useMosaicStatus} from '../components/MosaicPanel';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 type TestResult = {ok: boolean; message: string; version?: string | null; bin?: string};
@@ -89,6 +91,8 @@ export const SettingsPage: React.FC = () => {
       <FoldersCard view={view} save={save} />
       <TtsCard view={view} save={save} />
       <AgentCard view={view} save={save} />
+      <MosaicSettingsCard view={view} save={save} />
+      <CloudCard view={view} save={save} />
       <PersonasCard />
       <p className="hint">
         設定ファイル: <span className="mono">{view.file}</span>
@@ -437,6 +441,213 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         <span style={{flex: 1}} />
         <button className="primary" onClick={submit} disabled={!dirty}>
           AI の設定を保存
+        </button>
+      </div>
+    </section>
+  );
+};
+
+// ───────────────────────── クラウド接続（スマホから使う） ─────────────────────────
+
+/**
+ * この PC を「重い処理を実行する係（ワーカー）」としてクラウドに繋ぐための設定。
+ * 空ならローカル専用のまま。詳しくは docs/cloud.md。
+ * クラウド側の画面からは編集させない（PC の設定なので、PC の Reel Studio で入れる）。
+ */
+const CloudCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
+  const s = useStudio();
+  const fromView = useCallback(() => ({url: view.settings.cloud.url ?? '', token: '', enabled: view.settings.cloud.enabled !== false}), [view]);
+  const [form, setForm] = useState(fromView);
+  useEffect(() => setForm(fromView()), [fromView]);
+
+  const base = fromView();
+  const dirty = form.url !== base.url || form.token.trim() !== '' || form.enabled !== base.enabled;
+  const tokenView = view.settings.cloud.token;
+  const submit = () =>
+    void save(
+      {cloud: {url: form.url.trim(), ...(form.token.trim() ? {token: form.token.trim()} : {}), enabled: form.enabled}},
+      'クラウド接続を保存しました（ワーカーを再起動してください: npm run worker）',
+    ).then((ok) => ok && setForm({...form, token: ''}));
+
+  // クラウド側の画面（PWA）では PC のワーカー設定は触れない
+  if (s.isCloud)
+    return (
+      <section className="card">
+        <h2>クラウド接続</h2>
+        <p className="hint">
+          この画面はクラウド版です。重い処理（素材のカタログ化・AI・レンダー）は自宅の PC が実行します。
+          {s.config?.worker?.online ? (
+            <>
+              {' '}
+              いま PC は <b>接続中</b>
+              {s.config.worker.host ? `（${s.config.worker.host}）` : ''} です。
+            </>
+          ) : (
+            ' いま PC は繋がっていません（PC で npm run worker を起動してください）。'
+          )}
+          {' '}接続先の設定は PC の Reel Studio で行います。
+        </p>
+      </section>
+    );
+
+  return (
+    <section className="card">
+      <h2>クラウド接続（スマホから使う・任意）</h2>
+      <p className="hint">
+        Vercel に置いた画面（PWA）からこの PC に仕事をさせるための設定です。入れたら <span className="mono">npm run worker</span> を起動してください。
+        空ならローカル専用のまま動きます（詳細は docs/cloud.md）。
+      </p>
+      <div className="form">
+        <label className="full">
+          クラウドの URL
+          <input
+            value={form.url}
+            onChange={(e) => setForm({...form, url: e.target.value})}
+            placeholder="https://reel-studio-xxxx.vercel.app"
+            spellCheck={false}
+            disabled={view.env.cloudUrl}
+            style={{flex: 1, minWidth: 320}}
+          />
+        </label>
+        <label className="full">
+          ワーカートークン（Vercel の WORKER_TOKEN と同じ値）
+          <span className="btns">
+            <input
+              type="password"
+              value={form.token}
+              onChange={(e) => setForm({...form, token: e.target.value})}
+              placeholder={tokenView.present ? `保存済み（${tokenView.masked}）。変えるときだけ入力` : '未設定'}
+              spellCheck={false}
+              disabled={view.env.cloudToken}
+              style={{flex: 1, minWidth: 320}}
+            />
+            {tokenView.present && <span className="pill">{tokenView.source === 'env' ? '環境変数' : '保存済み'}</span>}
+          </span>
+        </label>
+        <label title="URL とトークンを残したまま、繋ぐのだけをやめる">
+          繋ぐ
+          <select value={form.enabled ? '1' : '0'} onChange={(e) => setForm({...form, enabled: e.target.value === '1'})}>
+            <option value="1">繋ぐ</option>
+            <option value="0">繋がない（ローカル専用）</option>
+          </select>
+        </label>
+      </div>
+      {(view.env.cloudUrl || view.env.cloudToken) && <p className="hint">環境変数（REEL_CLOUD_URL / REEL_WORKER_TOKEN）で固定されている項目は画面から変えられません。</p>}
+      <div className="row">
+        <span style={{flex: 1}} />
+        <button className="primary" onClick={submit} disabled={!dirty}>
+          クラウド接続を保存
+        </button>
+      </div>
+    </section>
+  );
+};
+
+// ───────────────────────── 顔モザイク ─────────────────────────
+
+const MOSAIC_SOURCE_LABEL: Record<MosaicStatus['source'], string> = {env: '環境変数', settings: '設定', venv: '導入した venv', path: 'PATH', none: '見つからない'};
+
+const MosaicSettingsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
+  const s = useStudio();
+  const {status, error, reload} = useMosaicStatus();
+  const saved = view.settings.mosaic?.python ?? '';
+  const [python, setPython] = useState(saved);
+  useEffect(() => setPython(saved), [saved]);
+  const [test, setTest] = useState<MosaicStatus | null>(null);
+  const [testing, setTesting] = useState(false);
+  const setupJob = s.jobs.find((j) => j.type === 'mosaic-setup' && (j.status === 'running' || j.status === 'queued'));
+  const lastSetup = s.jobs.find((j) => j.type === 'mosaic-setup');
+  const stale = !s.supportsJob('mosaic-setup');
+  const isWindows = /win/i.test(navigator.platform);
+
+  // 導入が終わったら確かめ直す
+  useEffect(() => {
+    if (lastSetup?.status === 'done' || lastSetup?.status === 'failed') {
+      setTest(null);
+      void reload(true);
+    }
+  }, [lastSetup?.id, lastSetup?.status, reload]);
+
+  const runTest = async () => {
+    setTesting(true);
+    setTest(null);
+    try {
+      const r = await api.post<MosaicStatus>('/api/settings/test/mosaic', {python: python.trim() || undefined});
+      setTest(r.data);
+      if (!python.trim()) void reload();
+    } catch (e) {
+      s.toast(msg(e), 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+  const submit = async () => {
+    if (await save({mosaic: {python: python.trim()}}, '顔モザイクの設定を保存しました')) {
+      setTest(null);
+      void reload(true);
+    }
+  };
+
+  const st = test ?? status;
+  return (
+    <section className="card" data-tour="settings-mosaic">
+      <h2>顔モザイク（deface）</h2>
+      <p className="hint">
+        素材に映った店員さんや他のお客さんの顔にモザイクをかけます（Materials の「顔モザイク」）。顔の検出に{' '}
+        <a href="https://github.com/ORB-HD/deface" target="_blank" rel="noreferrer">
+          deface
+        </a>
+        （MIT）を使うので Python 3.10 以上が要ります。「導入する」は <span className="mono">{status?.venvDir ?? '~/.reel-studio/deface-venv'}</span> に専用の環境を作って入れます（グローバルの Python には入れません。消すときはこのフォルダを消すだけ）。
+      </p>
+      <div className="row">
+        {error ? (
+          <span className="pill err">確認できません: {error}</span>
+        ) : !st ? (
+          <span className="hint">確認中…（python を起動して確かめています）</span>
+        ) : (
+          <>
+            <span className={`pill${st.ok ? '' : ' err'}`}>{st.ok ? `使えます（deface ${st.deface}${st.onnxruntime ? ` / onnxruntime ${st.onnxruntime}` : ''}）` : '使えません'}</span>
+            <span className="hint">{st.message}</span>
+          </>
+        )}
+      </div>
+      {st && (
+        <div className="hint">
+          python: <span className="mono">{st.python}</span>（{MOSAIC_SOURCE_LABEL[st.source]}）{st.pythonVersion ? ` / Python ${st.pythonVersion}` : ''}
+          {st.providers.length ? ` / ${st.providers.join(', ')}` : ''}
+        </div>
+      )}
+      <div className="row" style={{marginTop: 6}}>
+        <button className="primary" onClick={() => void s.addJob('mosaic-setup', {gpu: false})} disabled={!!setupJob || stale} title={stale ? 'Reel Studio を再起動してください（サーバーが古いプロセスです）' : 'deface・onnx・onnxruntime（CPU 版）を入れます。初回は 200MB ほどダウンロードします'}>
+          {status?.ok ? '入れ直す（CPU 版）' : '導入する（CPU 版）'}
+        </button>
+        {isWindows && (
+          <button onClick={() => void s.addJob('mosaic-setup', {gpu: true})} disabled={!!setupJob || stale} title="onnxruntime-directml を入れて GPU で検出します（NVIDIA / AMD / Intel。実測で CPU の約 3.6 倍の速さ）">
+            GPU 版で導入する（DirectML）
+          </button>
+        )}
+        <button onClick={() => void reload(true)} disabled={!!setupJob}>
+          確かめ直す
+        </button>
+      </div>
+      {setupJob && <AiJobStatus job={setupJob} onCancel={(id) => void s.cancelJob(id)} compact lines={4} />}
+      {!setupJob && lastSetup?.status === 'failed' && <p className="warn-text">導入に失敗しました: {lastSetup.error}</p>}
+      <div className="form">
+        <label className="full">
+          deface を入れた python（任意。空なら導入した venv → PATH の python の順に探す）
+          <span className="btns">
+            <input value={python} onChange={(e) => setPython(e.target.value)} placeholder="例: C:\Users\you\venvs\deface\Scripts\python.exe" disabled={view.env.mosaicPython} style={{flex: 1, minWidth: 320}} />
+            <button className="small" onClick={() => void runTest()} disabled={testing}>
+              {testing ? '確認中…' : 'テスト'}
+            </button>
+          </span>
+        </label>
+      </div>
+      <div className="row">
+        {view.env.mosaicPython && <span className="hint">環境変数 REEL_STUDIO_MOSAIC_PYTHON で固定されています</span>}
+        <span style={{flex: 1}} />
+        <button className="primary" onClick={() => void submit()} disabled={python.trim() === saved}>
+          顔モザイクの設定を保存
         </button>
       </div>
     </section>
