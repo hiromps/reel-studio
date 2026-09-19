@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {calcTotalFrames, cutStartFrame} from '../shared/timeline';
-import {validateCuts, formatValidation, type ValidationResult} from '../shared/validate';
+import {validateCuts, formatValidation, FATAL_CODES, type ValidationResult} from '../shared/validate';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {findPersona} from '../shared/personas';
 import {fileStamp} from '../shared/time';
@@ -96,11 +96,8 @@ export const validateProject = (projectDir: string, opt: {strictProxy?: boolean;
   return validateCuts(cuts, validationContext(projectDir, opt));
 };
 
-/**
- * これが出ているとレンダーそのものが成功しない E。**allowErrors でも通さない。**
- * 「見た目の good/bad」ではなく「物理的に無理」なものだけを入れる。
- */
-export const FATAL_CODES = new Set(['SRC_MISSING', 'OUT_BEYOND_DURATION', 'FPS_MISMATCH']);
+// 「物理的に無理」な E の一覧は shared/validate.ts が正（クラウドの段取り判定も同じものを見る）
+export {FATAL_CODES};
 
 export type Preflight = {
   cuts: ReelData;

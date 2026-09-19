@@ -3,7 +3,7 @@
 import type {Catalog, Clip, ClipKind, UsableRange} from './schema/catalog';
 import type {Brief, SavePriority} from './schema/brief';
 import type {FormatSpec, SegmentRules} from './schema/format-spec';
-import type {AliasOp, Cut, Orientation, ReelData, Slot, SlotRole, TelopGroupMeta, TextStatus} from './schema/cuts';
+import {isDefaultCrop, type AliasOp, type Cut, type Orientation, type ReelData, type Slot, type SlotRole, type TelopGroupMeta, type TextStatus} from './schema/cuts';
 import {FORMAT_SPECS} from './format-specs';
 import {getPersona, type Persona} from './personas';
 import {cutDurationSec, snapSec, round3} from './timeline';
@@ -881,6 +881,8 @@ export function planCuts(input: PlanInput): PlanResult {
     const g = groupOfIndex.get(i)!;
     const qc: string[] = [];
     const cut: Cut = {id, src: a.clip.src, inSec: a.inSec, outSec: a.outSec};
+    // 素材側で決めた「ここを見せる」（切り出し）をカットに引き継ぐ。既定のままなら書かない
+    if (!isDefaultCrop(a.clip.crop)) cut.crop = {...a.clip.crop!};
     if (a.rate && a.rate !== 1) cut.playbackRate = a.rate;
     let telop = '';
     let textStatus: TextStatus = g.textStatus;

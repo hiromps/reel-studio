@@ -6,6 +6,7 @@ import {SettingsPatchSchema} from '../../shared/schema/settings';
 import {fishKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
 import {claudeAvailable, claudeBin, claudeBinInfo, claudeVersion, resetClaudeBin} from '../../core/agent';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
+import {mosaicStatus, resetMosaicStatus} from '../../core/mosaic';
 import {resolveProjectDir} from '../../core/project';
 import {studioConfig} from '../../studio.config';
 import {jobs} from '../jobs';
@@ -43,6 +44,7 @@ settingsRouter.put('/', async (req, res) => {
   }
   resetFishEnv();
   resetClaudeBin();
+  resetMosaicStatus();
   // 「いまの案件」が新しいフォルダに無ければ忘れる（無い案件を見張り続けない）
   if (touchesFolders && state.activeSlug && !fs.existsSync(resolveProjectDir(state.activeSlug))) state.activeSlug = null;
   try {
@@ -73,4 +75,20 @@ settingsRouter.post('/test/claude', async (req, res) => {
     version,
     message: version ? `動きました（${version}）` : 'claude --version が動きませんでした。Claude Code のインストールと、ターミナルで claude を一度起動してログイン済みかを確認してください',
   });
+});
+
+/** 顔モザイク（deface）が使えるか。python を起動して確かめるので結果は覚えておく（?refresh=1 で確かめ直す） */
+settingsRouter.get('/mosaic', async (req, res) => {
+  try {
+    res.json(await mosaicStatus({refresh: req.query.refresh === '1'}));
+  } catch (e) {
+    res.status(500).json({error: (e as Error).message});
+  }
+});
+
+/** 本文の python（入力中の値）で deface が動くか。無ければ今の設定で確かめ直す */
+settingsRouter.post('/test/mosaic', async (req, res) => {
+  const typed = typeof req.body?.python === 'string' ? req.body.python.trim() : '';
+  if (typed && path.isAbsolute(typed) && !fs.existsSync(typed)) return res.json({ok: false, python: typed, message: `ファイルが見つかりません: ${typed}`});
+  res.json(await mosaicStatus(typed ? {python: typed} : {refresh: true}));
 });

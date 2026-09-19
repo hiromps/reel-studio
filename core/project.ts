@@ -9,12 +9,13 @@ import {CatalogSchema} from '../shared/schema/catalog';
 import {findPersona, getPersona} from '../shared/personas';
 import {resolveClip} from '../shared/validate';
 import {fileStamp} from '../shared/time';
+import {briefSkeleton, CONTRACT_FILES, type ContractName, type EngineDiff, type EngineFamily, type ProjectInfo} from '../shared/project';
 import {readJsonFile, writeJsonAtomic, backupFile} from './json-io';
 import {exec} from './exec';
 
-/** エンジンの系統。standard（同梱エンジン＝Noto Serif JP）だけがマスターとの同期対象。yui / instagram は別デザインなので触らない */
-export type EngineFamily = 'standard' | 'yui' | 'instagram' | 'unknown';
-export type EngineDiff = {stale: boolean; family: EngineFamily; files: {file: string; status: 'ok' | 'differs' | 'missing'}[]};
+// 案件の「形」は shared/project.ts が正（クラウド側からも読めるように fs 非依存で置いてある）。
+// ここからは今までどおり core/project.ts の名前で使えるよう再輸出する。
+export {CONTRACT_FILES, type ContractName, type EngineDiff, type EngineFamily, type ProjectInfo};
 
 export const engineFamily = (dir: string): EngineFamily => {
   const p = path.join(dir, 'src', 'telops.tsx');
@@ -25,22 +26,6 @@ export const engineFamily = (dir: string): EngineFamily => {
   if (/Noto Serif JP/i.test(src)) return 'standard';
   return 'unknown';
 };
-
-export type ProjectInfo = {
-  slug: string;
-  dir: string;
-  has: {catalog: boolean; brief: boolean; cuts: boolean; narration: boolean};
-  /** out/ の書き出し物。GUI が「レンダー前に mix を押す」のを防ぐために見る */
-  out: {draft: boolean; final: boolean; narration: boolean};
-  engine: EngineDiff;
-  nodeModules: boolean;
-  updatedAt: string;
-  persona?: PersonaId;
-  format?: string;
-};
-
-export const CONTRACT_FILES = ['catalog', 'brief', 'cuts', 'narration'] as const;
-export type ContractName = (typeof CONTRACT_FILES)[number];
 
 /** slug または パス → 案件ディレクトリの絶対パス */
 export const resolveProjectDir = (ref: string): string => {
@@ -158,17 +143,7 @@ export const listProjects = (): ProjectInfo[] => {
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 };
 
-export const briefSkeleton = (persona: PersonaId, shopName = ''): Brief =>
-  BriefSchema.parse({
-    version: 1,
-    persona,
-    shop: {name: shopName, area: '', genre: '', pr: false},
-    materialMode: 'raw',
-    format: getPersona(persona).defaultFormat,
-    core: '',
-    savePriorities: ['access', 'hours', 'budget'],
-    order: {mode: 'auto'},
-  });
+export {briefSkeleton};
 
 const copyDir = (src: string, dst: string, skip: (rel: string) => boolean, rel = '') => {
   fs.mkdirSync(dst, {recursive: true});
@@ -246,6 +221,13 @@ export type CloneOptions = {
   shopName?: string;
   /** 元案件の brief.facts を引き継ぐ（既定 true）。別ブランドなら false も検討 */
   facts?: boolean;
+  /**
+   * `cuts.json` / `narration.json` も引き継ぐ（既定 false＝版ごとに作る）。
+   * 台本はそのままに、ボイスやフックの一部だけ変えた版を作りたいとき用。
+   * 音声ファイル（`narration/`）は引き継がない（ボイスが変わる前提のため）ので、
+   * 引き継いだ narration.json は全ブロックを要再生成にする。
+   */
+  carryTimeline?: boolean;
   onLine?: (line: string) => void;
 };
 
@@ -256,6 +238,8 @@ export type CloneResult = {
   clips: number;
   carriedFacts: string[];
   reviewFacts: string[];
+  /** carryTimeline を指定して、実際に cuts.json / narration.json を引き継げたか */
+  carriedTimeline: boolean;
 };
 
 /**
@@ -264,7 +248,8 @@ export type CloneResult = {
  * 引き継ぐもの: 素材（ハードリンク）・`catalog.json`（タグ付けの成果）・`.studio` のサムネイル類・
  *               `brief.json`（店名と人格は差し替え）
  * 引き継がないもの: `cuts.json` / `narration.json` / `narration/` / `caption.txt` / `out/`
- *               — これらは版ごとに作るもの。構成・原稿・キャプションは別物になる
+ *               — これらは版ごとに作るもの。構成・原稿・キャプションは別物になる（`carryTimeline: true` を
+ *               指定したときだけ cuts.json / narration.json は例外的に引き継ぐ）
  * `brief.hook` と `brief.order.fixed` も消す（フックの選定は版ごとにユーザーが選ぶ決まり）。
  */
 export const cloneProject = (srcRef: string, newSlug: string, opt: CloneOptions = {}): CloneResult => {
@@ -284,7 +269,8 @@ export const cloneProject = (srcRef: string, newSlug: string, opt: CloneOptions 
   // 素材（public/）と派生物（.studio のサムネイル類）はリンクで共有する
   let linked = 0;
   let copied = 0;
-  for (const sub of ['public', path.join(studioConfig.studioDirName, 'thumbs'), path.join(studioConfig.studioDirName, 'strips'), path.join(studioConfig.studioDirName, 'preview')]) {
+  // 顔モザイクの退避ファイル（mosaic/originals）も共有する。catalog の mosaic.original が指すので、無いと「元に戻す」ができない
+  for (const sub of ['public', ...['thumbs', 'strips', 'preview', path.join('mosaic', 'originals')].map((d) => path.join(studioConfig.studioDirName, d))]) {
     const r = linkOrCopyDir(path.join(src, sub), path.join(dir, sub));
     linked += r.linked;
     copied += r.copied;
@@ -315,14 +301,47 @@ export const cloneProject = (srcRef: string, newSlug: string, opt: CloneOptions 
   const carriedFacts = Object.keys(carry.facts);
   const reviewFacts = carriedFacts.filter((k) => (BRAND_SPECIFIC_FACT_KEYS as readonly string[]).includes(k));
 
+  // 台本（cuts.json）とナレーション原稿（narration.json）。既定では版ごとに作るので触らないが、
+  // carryTimeline のときだけ例外的にそのまま引き継ぐ（音声ファイルは無いので全ブロック要再生成にする）
+  let carriedTimeline = false;
+  let narrationSegs = 0;
+  if (opt.carryTimeline) {
+    const srcCutsPath = path.join(src, 'cuts.json');
+    if (fs.existsSync(srcCutsPath)) {
+      writeCuts(dir, readJsonFile(srcCutsPath, ReelDataSchema));
+      carriedTimeline = true;
+    } else {
+      log(`  ! 元の案件に cuts.json が無いので引き継げません: ${path.basename(src)}`);
+    }
+    const srcNarrationPath = path.join(src, 'narration.json');
+    if (fs.existsSync(srcNarrationPath)) {
+      const srcNarration = readJsonFile(srcNarrationPath, NarrationSchema);
+      narrationSegs = srcNarration.segments.length;
+      writeNarration(dir, {
+        ...srcNarration,
+        segments: srcNarration.segments.map((s) => {
+          const n = {...s, needsTts: true} as typeof s & {durSec?: number};
+          delete n.durSec;
+          return n;
+        }),
+      });
+    }
+  }
+
   log(`${path.basename(src)} から ${path.basename(dir)} を作りました`);
   log(`  素材: ${linked} 本をリンクで共有${copied ? ` / ${copied} 本はコピー` : ''}（ディスクは増えません）`);
   log(`  catalog.json: ${clips} クリップ分のタグを引き継ぎ`);
   log(`  brief.json: 店名「${carry.shop.name}」／人格 ${persona}${carry.format ? `／型 ${carry.format}` : '（型は未指定＝人格の既定）'}`);
-  log('  引き継いでいないもの: cuts.json / narration.json / narration/ / caption.txt（版ごとに作るもの）');
+  if (carriedTimeline) {
+    log('  cuts.json を引き継ぎました（構成はそのまま）');
+    if (narrationSegs) log(`  narration.json を引き継ぎました（${narrationSegs} ブロック・ボイスが無いので全ブロック要再生成）`);
+    log('  引き継いでいないもの: narration/（音声ファイル） / caption.txt / out/（版ごとに作るもの）');
+  } else {
+    log('  引き継いでいないもの: cuts.json / narration.json / narration/ / caption.txt（版ごとに作るもの）');
+  }
   log('  brief の hook と order.fixed は消しました（フックは版ごとに選び直す）');
   if (reviewFacts.length) log(`  ! 引き継いだ facts のうち ${reviewFacts.join('・')} は版で変わることがあります。必ず確認してください`);
-  return {dir, linked, copied, clips, carriedFacts, reviewFacts};
+  return {dir, linked, copied, clips, carriedFacts, reviewFacts, carriedTimeline};
 };
 
 export const npmInstall = async (dir: string, onLine?: (l: string) => void): Promise<boolean> => {

@@ -14,6 +14,8 @@ export const studioConfig = {
   templateDir: path.join(here, 'engine'),
   /** ナレーション合成スクリプト（CommonJS。パッケージが ESM なので .cjs） */
   mixScript: path.join(here, 'scripts', 'mix-narration.cjs'),
+  /** 顔モザイク（deface の顔検出器を使う Python。core/mosaic.ts が呼ぶ） */
+  faceMosaicScript: path.join(here, 'scripts', 'face-mosaic.py'),
   /** 案件・素材・納品・効果音の親（既定 <appRoot>/data） */
   get dataRoot(): string {
     return resolvedPaths().dataRoot;

@@ -17,6 +17,9 @@ export const AI_JOB_LABEL: Record<string, string> = {
   winner: '二次活用版を作成中（レンダー→音声→mix→倍速）',
   build: '仕上げを実行中',
   tts: '音声を生成中',
+  mosaic: '顔にモザイクをかけています（deface）',
+  'mosaic-revert': 'モザイクを外しています',
+  'mosaic-setup': 'deface を導入中',
 };
 
 /** これ以上反応が無いと「止まっているかも」と出す秒数（heartbeat は 5 秒ごとに来る） */

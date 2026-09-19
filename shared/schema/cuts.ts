@@ -27,6 +27,21 @@ export const PriceTelopSchema = z.object({
   side: z.enum(['left', 'right', 'center']).optional(),
 });
 
+/**
+ * 画面内の切り出し（アスペクト比は変えない）。engine/src/GourmetReel.tsx の Crop と対応。
+ * zoom = 寄り（1 でそのまま）／x, y = 寄る中心（0〜1。0.5, 0.5 が真ん中）
+ */
+export const CropSchema = z.object({
+  zoom: z.number().min(1).max(3).default(1),
+  x: z.number().min(0).max(1).default(0.5),
+  y: z.number().min(0).max(1).default(0.5),
+});
+export type Crop = z.infer<typeof CropSchema>;
+
+/** 既定（そのまま・中央）。これと同じなら書かない＝ファイルを汚さない */
+export const DEFAULT_CROP: Crop = {zoom: 1, x: 0.5, y: 0.5};
+export const isDefaultCrop = (c?: Crop | null): boolean => !c || (c.zoom === 1 && c.x === 0.5 && c.y === 0.5);
+
 export const CutSchema = z
   .object({
     id: z.string().optional(), // 拡張。planCuts が "c01" 等を振る。Remotion は無視
@@ -34,6 +49,7 @@ export const CutSchema = z
     inSec: z.number().min(0),
     outSec: z.number(),
     playbackRate: z.number().positive().optional(),
+    crop: CropSchema.optional(), // 画面内の切り出し（省略時は中央・そのまま）
     main: MainTelopSchema.optional(),
     price: PriceTelopSchema.optional(),
     badge: z.string().optional(),

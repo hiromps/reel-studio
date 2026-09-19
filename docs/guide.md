@@ -65,7 +65,8 @@ CLI は Git Bash から `bin/reel <cmd>`（cmd.exe は `bin\reel.cmd`）。
 | `reel ai telop --project P [--force] [--model m]` | 同じく `{{gNN:intent}}` のテロップ文を書かせる |
 | `reel ai edit --project P "<直したいこと>" [--model m]` | 自由文の指示で `cuts.json` / `narration.json` を直させる |
 | `reel ai narration --project P [--model m]` | 完成したテロップと映像を見てナレーション原稿を書かせる（`narration.json`） |
-| `reel ai script --project P [--model m] [--force] [--dry]` | **`script.md` の台本から** cuts + narration を組み立てる |
+| `reel ai script --project P [--model m] [--force] [--dry]` | **`script.md` の台本から** cuts + narration を組み立てる（`--dry` は書かずに割り当ての案だけ `.studio/script-plan.json` に残す） |
+| `reel ai script --project P --apply` | `--dry` で残した案を**承認して書き込む**（AI は走らせない。台本が変わっていたり E があれば書かない） |
 | `reel ai facts --project P [--force] [--model m]` | 店の住所・営業時間を Web で裏取りして `brief.facts` に入れる（**Instagram 優先**） |
 | `reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]` | 裏取り → 人格の SKILL.md Step 4 と過去の実例を読んで `caption.txt` を書かせる |
 | `reel sfx scan` / `reel sfx list` | 効果音ライブラリ（`sfx/`）の棚卸し・一覧 |
@@ -84,6 +85,9 @@ CLI は Git Bash から `bin/reel <cmd>`（cmd.exe は `bin\reel.cmd`）。
 | `reel winner --project P [--id A] [--tail "締め"] [--tail-narration "締めナレ"] [--caption-file f] [--speed 1.1] [--draft] [--no-deliver] [--force] [--force-errors] [--model m]` | **勝ちパターンの二次活用**：締めの一言だけ変えて倍速で書き出し直し、新しいキャプションで納品 |
 | `reel build --project P [--plan] [--steps a,b] [--model m] [--force-errors] [--label 修正版]` | **仕上げ**。案件の状態から残っている工程（キャプション/原稿/音声/レンダー/mix/納品）を順に走らせる |
 | `reel deliver --project P [--label 修正版] [--allow-silent] [--overwrite]` | 完成品だけ `outputs/` へ（`<店名>_<人格>_ナレーション付き.mp4` と `_caption.txt`） |
+| `reel mosaic status` / `reel mosaic setup [--gpu]` | 顔モザイク（deface）が使えるか／`~/.reel-studio/deface-venv` に導入（`--gpu` は Windows なら DirectML 版） |
+| `reel mosaic apply --project P (--ids 01,02 \| --all \| --kinds person,interior) [--threshold 0.6] [--cells 8] [--mask-scale 1.3] [--detect-short 720] [--detect-every 1] [--hold-sec 0.1]` | 素材の顔にモザイクをかける（顔が無いクリップは変えない） |
+| `reel mosaic revert --project P (--ids 01,02 \| --all)` / `reel mosaic list --project P` | 元のファイルに戻す／クリップごとの状態 |
 
 `--project` は slug（`work/<slug>-reel`）でもパスでもよい。
 
@@ -117,6 +121,21 @@ Projects の **「同じ素材から作る」**（`reel new <slug> --from <既�
 （`--no-facts` で引き継がない）。
 
 作ったあとは **Materials のカタログ実行は不要**で、Brief でフックのクリップを選んで「プラン生成」から始められる。
+
+### 台本もそのまま引き継ぐ場合（`--carry-timeline`）
+
+**同じ構成・同じ原稿でボイスだけ変えたい**、**フックの一部だけ書き換えたい**、といった「台本は完成済みで、
+差分だけ作りたい」場面向け。Projects の「同じ素材から作る」の**「台本（cuts・ナレーション原稿）も引き継ぐ」**
+チェック（`reel new <slug> --from <既存slug> --carry-timeline`）を付けると、上記に加えて `cuts.json` と
+`narration.json` もそのままコピーする。
+
+- `cuts.json` は無加工でコピー（構成・トリミング・テロップはそのまま）
+- `narration.json` はコピーした上で**全ブロックを要再生成にする**（`needsTts: true` を立てて `durSec` を消す）。
+  音声ファイル（`narration/*.wav`）はコピーしない（ボイスが変わる前提のため）ので、そのままでは再生できない
+- 元の案件に `cuts.json` が無ければ（構成がまだ無い案件）、ここはスキップされて通常どおり Brief から作ることになる
+
+作ったあとは Brief をやり直す必要はなく、そのまま Render でボイスを選び、Timeline でフックなど変えたい
+ブロックの文言だけ直してから、「音声を生成」で全ブロック作り直す。
 
 ### 実測（焼肉伍龍 → 焼肉たべる）
 
@@ -173,7 +192,7 @@ slug でリポジトリの外を読ませないため、案件を URL で受け�
 
 - **同じ案件では 1 本だけ** — 同じ契約ファイルを取り合わせない
 - **重いジョブは全体で 1 本だけ** — `catalog` / `thumbs` / `proxy` / `preview-proxy` / `render` /
-  `draft` / `still` / `qc-tile` / `mix`。ffmpeg と Remotion がメモリを食い合って落ちるため
+  `draft` / `still` / `qc-tile` / `mix` / `mosaic` など（一覧は `HEAVY_JOBS`）。ffmpeg と Remotion がメモリを食い合って落ちるため
 
 全体の上限は 2（`REEL_STUDIO_JOB_CONCURRENCY` で変更可）。つまり「A 案件をレンダーしながら
 B 案件のテロップを AI に書かせる」はできるが、「2 案件を同時にレンダー」はできない（順番待ちになる）。
@@ -359,6 +378,28 @@ haiku は description の質が目に見えて落ちる（実測で料理名の�
 | `SCRIPT_SECTION_EMPTY`（W） | カットが割り当てられていない区間 |
 | `SCRIPT_SAME_CLIP_RUN`（W） | 同じ素材の連続（切り替わって見えない） |
 | `SCRIPT_TELOP_LONG` / `SCRIPT_TELOP_PERIOD`（W） | テロップの文字数・文末の句点 |
+
+### 割り当てを見てから書き込む（承認）
+
+Brief の **「割り当てを見るだけ」** は、AI に組み立てを作らせて**書き込まずに**結果だけ残す
+（`.studio/script-plan.json`）。カードの下に **「割り当ての結果」**（区間ごとのカット・検算の E/W・素材が無かった区間・意図）が出るので、
+見て良ければ **「この割り当てで書き込む」** を押す。置き換える内容（いまの cuts.json のカット数、narration.json のブロック数・
+効果音・声と音量の設定）の確認が出て、承認すると **AI を走らせずに**その案をそのまま書き込む
+（組み立ては 1 回 5〜7 分・課金があるので、見た結果を捨てて作り直さない）。
+
+| 状態 | 表示 | 書き込めるか |
+|---|---|---|
+| 見たあと、まだ書いていない | 未反映（承認待ち） | 書ける |
+| 案を作ったあとに `script.md` を直した | 書き込めません（台本が変わっています） | 書けない。「見るだけ」をやり直す |
+| いまの素材で検算し直して E がある（あとから NG にした素材が入っている等） | 書き込めません | 書けない |
+| 書き込んだ | 書き込み済み | もう一度書ける（Timeline で直した分は失われる） |
+
+書く直前にも、**いまの台本と素材で検算し直す**（案を作ったときの結果を信用しない）。src はいまの catalog から引き直すので、
+あとで slug を変えていても合う。Timeline に未保存の変更があるとき・同じ案件でジョブが動いているときは書き込まない。
+「台本から組み立てる」（すぐ書き込む）の結果も同じ場所に残るので、E で書けなかったときも理由を見られる。
+
+2026-09-18 までは「見るだけ」が**必ず失敗**していた（書かないのが正常なのに「書いていない＝E」と判定し、
+`検算で E が出たので書いていません:` の後ろが空のまま終わって、7 分かけた結果も捨てていた）。
 
 そのあとは Timeline で微調整 →「音声を生成」→「ナレーション合成（mix）」で仕上げる。
 **8 割方できた状態から始められる**のが狙いで、残りは人が詰める前提。
@@ -599,7 +640,7 @@ Render のナレーションカードの **「ボイス」** で読み上げる�
 | キャプションを書く（AI） | `caption.txt` がある | cuts が無い／claude が無い |
 | ナレーション原稿を書く（AI） | `narration.json` に segments がある | cuts が無い／テロップ未記入がある／claude が無い |
 | 音声を生成する | 全ブロックに wav があり `needsTts` が無い | `FISH_API_KEY` が無い |
-| 本番レンダー | `out/final.mp4` が `cuts.json` より新しい | 素材が無い等の致命的な E |
+| 本番レンダー | `out/final.mp4` が `cuts.json` と、使っている素材ファイルより新しい（顔モザイクで中身を差し替えたら古い扱い） | 素材が無い等の致命的な E |
 | ナレーション合成（mix） | `out/final_narration.mp4` が最新（`narrationReady` が OK） | 上 2 つのどちらかが blocked |
 | 納品 | （常に候補。同じ中身なら何もしない） | mix が blocked |
 
@@ -834,6 +875,93 @@ reel winner --project P --id B --tail "一度は行っとこ" --tail-narration "
 点検（`checkWinner`）: 締めが今と同じ（E）、締めが来店を促す語族でない（W）、キャプションが元と同じ文面（止める。`--force` で通す）、
 倍速が 1.0〜1.5 の外（E）。GUI は Render の「トライアル」カードの「勝ちパターンの二次活用」。
 
+## 顔モザイク（Materials 画面・`reel mosaic`）
+
+店員さんや他のお客さんの顔が映った素材に、**自動でモザイクをかける**。顔の検出は
+[deface](https://github.com/ORB-HD/deface)（MIT）の CenterFace を使い、塗りと書き出しは
+`scripts/face-mosaic.py` が行う。
+
+### 導入（1 回だけ）
+
+Python 3.10 以上が要る。Settings の **「顔モザイク（deface）」→「導入する」**（`reel mosaic setup`）で
+`~/.reel-studio/deface-venv` に専用の venv を作り、`deface` / `onnx` / `onnxruntime` を入れる
+（グローバルの Python には入れない。消すときはフォルダごと消す）。`onnx` が無いと deface は遅い OpenCV 版に落ちるので一緒に入れる。
+
+| ボタン | 入るもの | 実測（検出 720x1280・1 フレーム） |
+|---|---|---|
+| 導入する（CPU 版） | onnxruntime | 89 ms |
+| GPU 版で導入する（DirectML・Windows） | onnxruntime-directml | 15 ms（RTX 3060 Ti。書き出し込みで 1 秒あたり約 32 フレーム） |
+
+使う python は `REEL_STUDIO_MOSAIC_PYTHON` > Settings の python > 導入した venv > PATH の順に探す。
+
+### 使い方
+
+1. Materials の **「顔モザイク（deface）」** を開き、一覧の検索で人が映っていそうなクリップに絞る（例「人物」「店内」）
+2. **「表示中の N 本にかける」**（NG は除く）。1 本ずつ検出し、顔があればモザイク版に差し替え、無ければ何もしない
+3. クリップの詳細の「顔モザイク」で、顔の区間（`▶ 0.4〜2.3 秒`）を押して確認する。料理にかかっていたら
+   しきい値を上げて「今の設定でかけ直す」、外したければ「元に戻す」
+
+一覧のカードに `モザイク` / `顔なし` のバッジが付き、絞り込みに「顔モザイク済み」がある。
+
+### 何が起きるか
+
+- **`catalog.json` の `src` のパスは変えずに、中身だけモザイク版に入れ替える。** cuts.json・alias・
+  トライアルの cuts を書き換えずに、Timeline のプレビュー・レンダー・納品のすべてに効く
+- 元のファイルは `.studio/mosaic/originals/` に退避し、`clip.mosaic.original` に場所を残す。
+  **かけ直しは必ず元のファイルから**（モザイクの上にモザイクを重ねない）
+- 入れ替えは rename（新しい実体）で行う。「同じ素材から作る」の案件は素材をハードリンクで共有しているので、
+  上書きするともう片方の案件の素材までモザイクになる。退避ファイルもリンクで共有するので、複製先でも「元に戻す」ができる
+- 顔が 1 つも無ければファイルは差し替えない（再エンコードで画質を落とさない）。`mosaic.applied: false` で「顔なし（確認済み）」と記録する。
+  モザイク済みのクリップをかけ直して顔が見つからなかったら、元のファイルに戻す
+- サムネイル・軽量プレビュー・alias コピーは作り直す（alias が古いと、同じ素材を離れた位置で使ったカットだけ顔が映る）
+- **仕上げの「本番レンダー」は、使っている素材が `out/final.mp4` より新しければ「やり直し」になる。**
+  以前は cuts.json の時刻しか見ておらず、モザイク前の映像でレンダーしたものを「最新」と判定していた。
+  元に戻したときも、戻したファイルの時刻を今にして同じように判定させる
+- カタログを再実行しても、モザイク版は上書きしない（元の素材から作るコピー・プロキシは退避先に作る）
+- 書き出しは H.264（crf 16・GOP 30）で、fps は素材の公称値（`60000/1001` など）の固定フレームレート。尺は 1 フレーム以内で変わることがある
+
+### 既定値の根拠（2026-09-17 実測）
+
+deface の既定（しきい値 0.2）は人の写真向けで、料理の寄りだと**麻婆豆腐の 1 フレームに 8 個「顔」を見つける**。
+スコアを測った結果:
+
+| 素材 | 最大スコア |
+|---|---|
+| 料理の寄り（卵黄・麻婆豆腐・パスタ・刺身） | 0.46〜0.59（誤検出） |
+| 店の奥に小さく映る客 | 0.6〜0.85 |
+| 正面の店員・実食する人 | 0.85〜0.93 |
+
+なので既定は **0.6**。それでも料理で 1 フレームだけ出ることがあるため、**前後のフレームに同じ位置の検出が無いものは捨てる**
+（本物の顔は続けて映る）。この 2 つで料理の寄り 5 本の誤検出は 0 フレームになり、店員 144/144・奥の客 110/136・実食 674/677 フレームで検出した。
+
+| 設定 | 既定 | 意味 |
+|---|---|---|
+| しきい値 | 0.6 | 下げると横顔・遠くの顔も拾うが、料理を取り違えやすい |
+| マス数 | 8 | 顔 1 つを何マスに割るか（少ないほど粗い）。升目は画面全体の格子にそろえるので、顔が少し動いても模様がちらつかない |
+| 隠す範囲 | ×1.3 | 検出枠を広げて髪・輪郭まで隠す |
+| 検出サイズ（CLI `--detect-short`） | 720 | 検出に使う短辺。下げると速いが遠くの顔を落とす（540 で CPU 48 ms） |
+| 間引き（CLI `--detect-every`） | 1 | CPU で遅いとき 2 |
+| 保持（CLI `--hold-sec`） | 0.1 秒 | 検出した位置を前後に隠し続ける（取りこぼしたフレームで顔が一瞬映らないように） |
+
+横顔・後ろ姿・マスク・小さすぎる顔は検出できないことがある。**必ず区間を再生して確かめる**こと。
+
+### deface の CLI をそのまま使わない理由
+
+`scripts/face-mosaic.py` は deface の顔検出器（`deface.centerface.CenterFace`）だけを使い、読み書きは自前で行う。
+deface の CLI（1.5.0）には、この用途で次の問題があった:
+
+| deface の CLI | ここでの対処 |
+|---|---|
+| 出力を 16 の倍数にリサイズする（1080x1920 → 1088x1920） | 素材の実寸のまま書き出す |
+| RGB を経由するので色がずれ、色の情報（BT.709）も落ちる | YUV のまま読み書きし、`setparams` で色の情報を付け直す（ffmpeg 7 以降は `-color_trc` 等の出力オプションが効かない） |
+| 固定 fps で書き出すので、可変フレームレート素材の尺と音声がずれる | `fps` フィルタで素材の公称 fps にそろえ、音声は `-c:a copy` |
+| 開けないファイルでも終了コード 0 | 終了コードと読めたフレーム数で判定する |
+| onnxruntime の自動選択だと CPU 版で `AzureExecutionProvider` と表示される（何で動いているか分からない） | GPU 系 → CPU の順に明示し、ログに出す |
+| フレームごとに独立に検出する | 前後のフレームで裏付けを取り、前後 0.1 秒に広げて塗る |
+
+純粋ロジックは `shared/mosaic.ts`、実行とファイルの入れ替えは `core/mosaic.ts`（どちらもテストあり）。
+ジョブは `mosaic` / `mosaic-revert` / `mosaic-setup`（いずれも重いジョブ）。
+
 ## 納品（`outputs/`）
 
 Render の **「納品（outputs/ へ）」**（`reel deliver`）で、**完成品だけ**を `outputs/` に書き出す。
@@ -865,13 +993,13 @@ outputs/musch_hiro_ナレーション付き_v2.mp4              ← 同名で中
 
 ## 契約ファイル（`work/<slug>-reel/`）
 
-- `catalog.json` — 素材の事実（probe・thumbs・proxy）＋タグ（Claude/ユーザー）＋ユーザー判断（hook/ng/lock/usableRanges）。スキーマ `shared/schema/catalog.ts`
+- `catalog.json` — 素材の事実（probe・thumbs・proxy）＋タグ（Claude/ユーザー）＋ユーザー判断（hook/ng/lock/usableRanges）＋顔モザイクの結果（`mosaic`）。スキーマ `shared/schema/catalog.ts`
 - `brief.json` — edit-pipeline.md Step 0 の回答。persona / format / hook / reveal / savePriorities / order / units / precut …。スキーマ `shared/schema/brief.ts`
 - `cuts.json` — 既存互換。`id` と `meta.slots` / `meta.telopGroups` / `meta.aliases` / `meta.generated` を追加（Remotion は無視）。スキーマ `shared/schema/cuts.ts`
-- `script.md` — 自然言語の台本（`ai-script` の入力）。無い案件がふつう
+- `script.md` — 自然言語の台本（`ai-script` の入力）。無い案件がふつう。AI の割り当ての案は `.studio/script-plan.json`（承認して書き込む前の結果）
 - `hooks.json` — トライアルリールのフック候補（`shared/hooks.ts`）。パターンごとの `angle`（切り口）と `caption`（専用キャプション）を持つ。無い案件がふつう
 - `narration.json` — 既存契約（narration-tts.md §6）＋ 音の設計（`narrationGainDb` / `ambientGain` / `sfx` / `sfxGainDb` / `sfxDuck`）
-- 派生物は `.studio/`（thumbs / strips / cutframes / backups / logs / tags-export.json / render-result.json）
+- 派生物は `.studio/`（thumbs / strips / cutframes / backups / logs / tags-export.json / render-result.json / mosaic/originals＝顔モザイク前の元ファイル）
 
 ## 設計
 

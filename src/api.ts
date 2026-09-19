@@ -1,7 +1,7 @@
 // サーバー API の薄いラッパ。
 export type ApiError = Error & {status?: number; body?: unknown};
 
-const handle = async <T,>(res: Response): Promise<{data: T; etag: string | null; status: number}> => {
+const handle = async <T,>(res: Response, url = ''): Promise<{data: T; etag: string | null; status: number}> => {
   const etag = res.headers.get('ETag');
   const text = await res.text();
   let json: unknown = null;
@@ -20,9 +20,9 @@ const handle = async <T,>(res: Response): Promise<{data: T; etag: string | null;
 };
 
 export const api = {
-  get: async <T,>(path: string) => handle<T>(await fetch(path, {cache: 'no-store'})),
+  get: async <T,>(path: string) => handle<T>(await fetch(path, {cache: 'no-store'}), path),
   post: async <T,>(path: string, body?: unknown) =>
-    handle<T>(await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)})),
+    handle<T>(await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)}), path),
   put: async <T,>(path: string, body: unknown, ifMatch?: string | null) =>
     handle<T>(
       await fetch(path, {
@@ -30,8 +30,9 @@ export const api = {
         headers: {'Content-Type': 'application/json', ...(ifMatch ? {'If-Match': ifMatch} : {})},
         body: JSON.stringify(body),
       }),
+      path,
     ),
-  del: async <T,>(path: string) => handle<T>(await fetch(path, {method: 'DELETE'})),
+  del: async <T,>(path: string) => handle<T>(await fetch(path, {method: 'DELETE'}), path),
 };
 
 export type ProjectInfo = {

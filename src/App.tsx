@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useStudio} from './state/store';
 import {ProjectsPage} from './pages/Projects';
 import {MaterialsPage} from './pages/Materials';
@@ -20,6 +20,7 @@ const TABS: {id: TourTab; label: string; sub: string}[] = [
   {id: 'render', label: 'Render', sub: '書き出し'},
   {id: 'settings', label: 'Settings', sub: '設定'},
 ];
+
 type Tab = TourTab;
 const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v);
 
@@ -34,6 +35,21 @@ export const App: React.FC = () => {
   const nextBarHidden = nextBarPref === '0';
 
   const go = (t: Tab) => setTabPref(t);
+
+  // 上部バーの高さを CSS から参照できるようにする（--topbar-h）。
+  // 追従（sticky）させる要素は、これを避けた位置で止めないとバーの裏に隠れる。
+  // 高さはタブの折り返しや警告のピルで変わるので、実測して変化を追う
+  const topbarRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = topbarRef.current;
+    if (!el) return;
+    const apply = () => document.documentElement.style.setProperty('--topbar-h', `${Math.round(el.getBoundingClientRect().height)}px`);
+    apply();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // 初回起動時だけガイドツアーを自動で出す
   useEffect(() => {
@@ -90,7 +106,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="app">
-      <header className="topbar">
+      <header className="topbar" ref={topbarRef}>
         <div className="brand">Reel Studio</div>
         <nav className="tabs" data-tour="tabs">
           {TABS.map(({id, label, sub}, n) => (

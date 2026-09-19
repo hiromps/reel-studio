@@ -138,8 +138,8 @@ export async function aiTag(
   const log = opt.onLine ?? (() => {});
   const catalog = loadCatalog(projectDir);
   if (!catalog) throw new Error('catalog.json が無い（先に reel catalog）');
-  const targets = catalog.clips.filter((c) => !c.user.lock && (opt.force || !c.tags));
-  const skipped = catalog.clips.filter((c) => c.user.lock).map((c) => c.id);
+  const targets = catalog.clips.filter((c) => !c.user.lock && !c.user.ng && (opt.force || !c.tags));
+  const skipped = catalog.clips.filter((c) => c.user.lock || c.user.ng).map((c) => c.id);
   if (!targets.length) return {tagged: [], skipped, batches: 0, costUsd: 0, facts: catalog.facts};
 
   const size = Math.max(1, opt.batchSize ?? studioConfig.agent.tagBatchSize);

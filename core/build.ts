@@ -2,7 +2,7 @@
 // 段取りの判断は shared/build.ts（純粋）。ここは fs と各工程の実行だけ。
 import fs from 'node:fs';
 import path from 'node:path';
-import {readCaption, readNarration} from './project';
+import {readCaption, readCuts, readNarration} from './project';
 import {FATAL_CODES, PreflightError, renderProject, validateProject} from './render';
 import {generateTts, needsTtsIds, ttsAvailable} from './tts';
 import {mixNarration} from './mix';
@@ -41,6 +41,18 @@ export const buildFacts = (dir: string): BuildFacts => {
   const narration = readNarration(dir);
   const finalPath = path.join(dir, 'out', 'final.mp4');
   const hasFinal = fs.existsSync(finalPath);
+  const finalAt = mtime(finalPath);
+  // 素材の中身が差し替わった（顔モザイクをかけた・外した）のに cuts.json は変わらない。
+  // cuts.json の時刻だけで見ると、モザイク前の映像でレンダーしたものを「最新」と判定して納品してしまう
+  let mediaAt = 0;
+  if (hasCuts && hasFinal) {
+    try {
+      for (const src of new Set(readCuts(dir).cuts.map((c) => c.src))) mediaAt = Math.max(mediaAt, mtime(path.join(dir, 'public', src)));
+    } catch {
+      /* 読めない cuts.json は上の validate が fatal にしている */
+    }
+  }
+  const finalStaleBy: BuildFacts['finalStaleBy'] = !hasFinal ? undefined : mtime(cutsPath) > finalAt ? 'cuts' : mediaAt > finalAt ? 'media' : undefined;
   const ready = narrationReady(dir);
   return {
     hasCuts,
@@ -52,7 +64,8 @@ export const buildFacts = (dir: string): BuildFacts => {
     segments: narration?.segments.length ?? 0,
     needsTts: narration ? needsTtsIds(dir, narration).length : 0,
     hasFinal,
-    finalStale: hasFinal && mtime(cutsPath) > mtime(finalPath),
+    finalStale: !!finalStaleBy,
+    finalStaleBy,
     hasMixed: fs.existsSync(path.join(dir, 'out', 'final_narration.mp4')),
     mixStaleReason: ready.ok ? undefined : ready.reason,
     hasCaption: !!readCaption(dir)?.trim(),

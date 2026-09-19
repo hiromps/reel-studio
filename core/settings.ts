@@ -76,6 +76,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     paths: {...cur.paths},
     tts: {...cur.tts, voices: [...cur.tts.voices]},
     agent: {...cur.agent},
+    mosaic: {...cur.mosaic},
   };
   const setOrClear = (obj: Record<string, unknown>, key: string, v: unknown) => {
     if (v === undefined) return;
@@ -96,6 +97,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(agent, 'model', patch.agent.model);
     for (const k of ['tagBatchSize', 'tagConcurrency', 'timeoutMin'] as const) if (patch.agent[k] !== undefined) agent[k] = patch.agent[k];
   }
+  if (patch.mosaic) setOrClear(next.mosaic as Record<string, unknown>, 'python', patch.mosaic.python);
   return SettingsSchema.parse(next);
 };
 
@@ -187,6 +189,7 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
       fishModelId: !!process.env.FISH_MODEL_ID?.trim(),
       claudeBin: !!process.env.REEL_STUDIO_CLAUDE_BIN?.trim(),
       agentModel: !!process.env.REEL_STUDIO_AGENT_MODEL?.trim(),
+      mosaicPython: !!process.env.REEL_STUDIO_MOSAIC_PYTHON?.trim(),
     },
     claude,
   };

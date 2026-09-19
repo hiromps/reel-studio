@@ -4,11 +4,14 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
-import {PATH_KEYS, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {UpdateCard} from '../components/UpdateCard';
+import {PATH_KEYS, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
 import {AI_MODELS} from '../hooks/useAiModel';
+import {AiJobStatus} from '../components/AiJobStatus';
+import {useMosaicStatus} from '../components/MosaicPanel';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 type TestResult = {ok: boolean; message: string; version?: string | null; bin?: string};
@@ -89,7 +92,9 @@ export const SettingsPage: React.FC = () => {
       <FoldersCard view={view} save={save} />
       <TtsCard view={view} save={save} />
       <AgentCard view={view} save={save} />
+      <MosaicSettingsCard view={view} save={save} />
       <PersonasCard />
+      <UpdateCard />
       <p className="hint">
         設定ファイル: <span className="mono">{view.file}</span>
         {view.exists ? '' : '（まだ無い。何か保存すると作られます）'}／人格: <span className="mono">{view.dir.replace(/\\/g, '/')}/personas.json</span>
@@ -437,6 +442,117 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         <span style={{flex: 1}} />
         <button className="primary" onClick={submit} disabled={!dirty}>
           AI の設定を保存
+        </button>
+      </div>
+    </section>
+  );
+};
+
+// ───────────────────────── 顔モザイク ─────────────────────────
+
+const MOSAIC_SOURCE_LABEL: Record<MosaicStatus['source'], string> = {env: '環境変数', settings: '設定', venv: '導入した venv', path: 'PATH', none: '見つからない'};
+
+const MosaicSettingsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
+  const s = useStudio();
+  const {status, error, reload} = useMosaicStatus();
+  const saved = view.settings.mosaic?.python ?? '';
+  const [python, setPython] = useState(saved);
+  useEffect(() => setPython(saved), [saved]);
+  const [test, setTest] = useState<MosaicStatus | null>(null);
+  const [testing, setTesting] = useState(false);
+  const setupJob = s.jobs.find((j) => j.type === 'mosaic-setup' && (j.status === 'running' || j.status === 'queued'));
+  const lastSetup = s.jobs.find((j) => j.type === 'mosaic-setup');
+  const stale = !s.supportsJob('mosaic-setup');
+  const isWindows = /win/i.test(navigator.platform);
+
+  // 導入が終わったら確かめ直す
+  useEffect(() => {
+    if (lastSetup?.status === 'done' || lastSetup?.status === 'failed') {
+      setTest(null);
+      void reload(true);
+    }
+  }, [lastSetup?.id, lastSetup?.status, reload]);
+
+  const runTest = async () => {
+    setTesting(true);
+    setTest(null);
+    try {
+      const r = await api.post<MosaicStatus>('/api/settings/test/mosaic', {python: python.trim() || undefined});
+      setTest(r.data);
+      if (!python.trim()) void reload();
+    } catch (e) {
+      s.toast(msg(e), 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+  const submit = async () => {
+    if (await save({mosaic: {python: python.trim()}}, '顔モザイクの設定を保存しました')) {
+      setTest(null);
+      void reload(true);
+    }
+  };
+
+  const st = test ?? status;
+  return (
+    <section className="card" data-tour="settings-mosaic">
+      <h2>顔モザイク（deface）</h2>
+      <p className="hint">
+        素材に映った店員さんや他のお客さんの顔にモザイクをかけます（Materials の「顔モザイク」）。顔の検出に{' '}
+        <a href="https://github.com/ORB-HD/deface" target="_blank" rel="noreferrer">
+          deface
+        </a>
+        （MIT）を使うので Python 3.10 以上が要ります。「導入する」は <span className="mono">{status?.venvDir ?? '~/.reel-studio/deface-venv'}</span> に専用の環境を作って入れます（グローバルの Python には入れません。消すときはこのフォルダを消すだけ）。
+      </p>
+      <div className="row">
+        {error ? (
+          <span className="pill err">確認できません: {error}</span>
+        ) : !st ? (
+          <span className="hint">確認中…（python を起動して確かめています）</span>
+        ) : (
+          <>
+            <span className={`pill${st.ok ? '' : ' err'}`}>{st.ok ? `使えます（deface ${st.deface}${st.onnxruntime ? ` / onnxruntime ${st.onnxruntime}` : ''}）` : '使えません'}</span>
+            <span className="hint">{st.message}</span>
+          </>
+        )}
+      </div>
+      {st && (
+        <div className="hint">
+          python: <span className="mono">{st.python}</span>（{MOSAIC_SOURCE_LABEL[st.source]}）{st.pythonVersion ? ` / Python ${st.pythonVersion}` : ''}
+          {st.providers.length ? ` / ${st.providers.join(', ')}` : ''}
+        </div>
+      )}
+      <div className="row" style={{marginTop: 6}}>
+        <button className="primary" onClick={() => void s.addJob('mosaic-setup', {gpu: false})} disabled={!!setupJob || stale} title={stale ? 'Reel Studio を再起動してください（サーバーが古いプロセスです）' : 'deface・onnx・onnxruntime（CPU 版）を入れます。初回は 200MB ほどダウンロードします'}>
+          {status?.ok ? '入れ直す（CPU 版）' : '導入する（CPU 版）'}
+        </button>
+        {isWindows && (
+          <button onClick={() => void s.addJob('mosaic-setup', {gpu: true})} disabled={!!setupJob || stale} title="onnxruntime-directml を入れて GPU で検出します（NVIDIA / AMD / Intel。実測で CPU の約 3.6 倍の速さ）">
+            GPU 版で導入する（DirectML）
+          </button>
+        )}
+        <button onClick={() => void reload(true)} disabled={!!setupJob}>
+          確かめ直す
+        </button>
+      </div>
+      {setupJob && <AiJobStatus job={setupJob} onCancel={(id) => void s.cancelJob(id)} compact lines={4} />}
+      {!setupJob && lastSetup?.status === 'failed' && <p className="warn-text">導入に失敗しました: {lastSetup.error}</p>}
+      <div className="form">
+        <label className="full">
+          deface を入れた python（任意。空なら導入した venv → PATH の python の順に探す）
+          <span className="btns">
+            <input value={python} onChange={(e) => setPython(e.target.value)} placeholder="例: C:\Users\you\venvs\deface\Scripts\python.exe" disabled={view.env.mosaicPython} style={{flex: 1, minWidth: 320}} />
+            <button className="small" onClick={() => void runTest()} disabled={testing}>
+              {testing ? '確認中…' : 'テスト'}
+            </button>
+          </span>
+        </label>
+      </div>
+      <div className="row">
+        {view.env.mosaicPython && <span className="hint">環境変数 REEL_STUDIO_MOSAIC_PYTHON で固定されています</span>}
+        <span style={{flex: 1}} />
+        <button className="primary" onClick={() => void submit()} disabled={python.trim() === saved}>
+          顔モザイクの設定を保存
         </button>
       </div>
     </section>

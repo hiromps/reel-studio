@@ -1,5 +1,6 @@
 import {Router, type Request, type Response} from 'express';
 import {jobs, JOB_TYPES, type JobType} from '../jobs';
+import {PROJECTLESS_JOBS} from '../../shared/jobs';
 import {state} from '../state';
 import {watcher} from '../watch';
 
@@ -13,7 +14,7 @@ jobsRouter.post('/', (req, res) => {
   const {type, slug, params} = req.body ?? {};
   if (!isJobType(type))
     return res.status(400).json({error: `この機能は起動中のサーバーにありません（画面だけ新しい状態です）。Reel Studio を再起動してください。\n  受け付けられる type: ${JOB_TYPES.join('|')}`});
-  const target = slug ?? state.activeSlug;
+  const target = slug ?? state.activeSlug ?? (PROJECTLESS_JOBS.has(type) ? '_studio' : null);
   if (!target) return res.status(400).json({error: 'slug が無い（active project も未設定）'});
   const job = jobs.add(type, target, params ?? {});
   res.json(jobs.publicJob(job));

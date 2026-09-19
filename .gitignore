@@ -17,3 +17,7 @@ dist/
 
 # 一時ファイル
 .playwright-mcp/
+
+
+# Vercel CLI が作る作業用（公開しない）
+.vercel

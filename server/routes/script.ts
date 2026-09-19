@@ -1,8 +1,9 @@
 // script.md（自然言語の台本）の GET / PUT。契約ファイルと違って素のテキスト。
 import {Router, type Request} from 'express';
 import fs from 'node:fs';
-import {readScript, scriptPath, writeScript} from '../../core/script';
-import {resolveProjectDirStrict} from '../../core/project';
+import {applyScriptProposal, readScript, scriptPath, scriptProposalView, writeScript} from '../../core/script';
+import {jobs} from '../jobs';
+import {resolveProjectDir, resolveProjectDirStrict} from '../../core/project';
 import {parseSections, scriptTotalSec} from '../../shared/script';
 import {fileEtag} from '../../core/json-io';
 
@@ -24,6 +25,27 @@ scriptRouter.get('/script', (req, res) => {
   if (etag) res.setHeader('ETag', etag);
   res.setHeader('Cache-Control', 'no-cache');
   res.json({etag, data: text, ...info(text)});
+});
+
+/** 「割り当てを見るだけ」の結果（保存してある案を、いまの台本・素材で見直したもの）。無ければ data: null */
+scriptRouter.get('/script/plan', (req, res) => {
+  const dir = resolveProjectDirStrict(slugOf(req));
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({data: scriptProposalView(dir)});
+});
+
+/** 承認：保存してある案を cuts.json と narration.json に書き込む（AI は走らせない） */
+scriptRouter.post('/script/plan/apply', (req, res) => {
+  const dir = resolveProjectDirStrict(slugOf(req));
+  // 同じ案件のジョブ（AI の修正・組み立て等）が cuts.json を書いている最中に上書きしない
+  const busy = jobs.list().find((j) => (j.status === 'running' || j.status === 'queued') && resolveProjectDir(j.slug) === dir);
+  if (busy) return res.status(409).json({error: `この案件でジョブ（${busy.type}）が動いています。終わってから書き込んでください`});
+  try {
+    const r = applyScriptProposal(dir);
+    res.json({...r, view: scriptProposalView(dir)});
+  } catch (e) {
+    res.status(400).json({error: (e as Error).message, view: scriptProposalView(dir)});
+  }
 });
 
 scriptRouter.put('/script', (req, res) => {

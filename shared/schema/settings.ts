@@ -40,6 +40,12 @@ const AgentSchema = z.object({
   timeoutMin: z.number().min(1).max(180).default(20),
 });
 
+const MosaicSettingsSchema = z.object({
+  /** deface を入れた python の場所。省略＝<設定の置き場>/deface-venv → PATH の python の順に探す */
+  python: z.string().min(1).optional(),
+});
+
+
 export const SettingsSchema = z.object({
   version: z.literal(1),
   /** 案件・素材・納品・効果音の親フォルダ。省略＝<アプリ>/data */
@@ -48,6 +54,8 @@ export const SettingsSchema = z.object({
   paths: PathsSchema.default({}),
   tts: TtsSchema.default({}),
   agent: AgentSchema.default({}),
+  /** 顔モザイク（deface） */
+  mosaic: MosaicSettingsSchema.default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -75,6 +83,7 @@ export const SettingsPatchSchema = z
       })
       .strict()
       .optional(),
+    mosaic: z.object({python: nullable()}).strict().optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
@@ -96,6 +105,24 @@ export type SettingsView = {
   settings: Omit<Settings, 'tts'> & {tts: Omit<Settings['tts'], 'apiKey'> & {apiKey: SecretView}};
   paths: Record<PathKey, {value: string; source: ValueSource; exists: boolean}> & {templateDir: string};
   /** 環境変数で固定されているキー（画面では変更不可にする） */
-  env: {fishApiKey: boolean; fishModelId: boolean; claudeBin: boolean; agentModel: boolean};
+  env: {fishApiKey: boolean; fishModelId: boolean; claudeBin: boolean; agentModel: boolean; mosaicPython: boolean};
   claude: {bin: string; available: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};
+};
+
+/** GET /api/settings/mosaic が返す形。deface が使えるかは python を実際に起動して確かめる */
+export type MosaicStatus = {
+  ok: boolean;
+  /** 使う python と、どこで見つけたか（venv = <設定の置き場>/deface-venv） */
+  python: string;
+  source: 'env' | 'settings' | 'venv' | 'path' | 'none';
+  /** 導入コマンド（Settings の「導入する」・`reel mosaic setup`）が作る venv の場所 */
+  venvDir: string;
+  pythonVersion: string | null;
+  deface: string | null;
+  onnxruntime: string | null;
+  providers: string[];
+  /** GPU で検出できる（DirectML / CUDA / CoreML / OpenVINO） */
+  gpu: boolean;
+  message: string;
+  checkedAt: string;
 };

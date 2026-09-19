@@ -20,7 +20,7 @@ export const PersonaSchema = z.object({
     /** Fish Audio の reference_id。空＝未設定（黙って別の声にしない。音声生成が「未設定です」で止まる） */
     voiceId: z.string().regex(/^(|[0-9a-f]{32})$/, 'Fish Audio の reference_id（32 桁の 16 進数）か空'),
     voiceTitle: z.string().default(''),
-    speed: z.number().min(0.5).max(2).default(1.6),
+    speed: z.number().min(0.5).max(2).default(1.2),
     /** 文字数設計に使う値（ブロック秒数 × charsPerSec が上限） */
     charsPerSec: z.number().positive().default(9),
     /** 参考：実測話速 */

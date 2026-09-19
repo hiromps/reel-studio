@@ -76,6 +76,13 @@ const SUB_MAX_CHARS = 20;
 const cutLabel = (c: Cut, i: number): string => c.id ?? `#${i + 1}`;
 
 /** 素材ファイル名の連番部分を除いた slug で catalog を引く（alias 名 "08b_x-seg2.mp4" → "08_x.mp4"） */
+/**
+ * これが出ているとレンダーそのものが成功しない E。**「E を承知で実行」でも通さない。**
+ * 「見た目の good/bad」ではなく「物理的に無理」なものだけを入れる。
+ * 実行側（core/render.ts）とクラウドの段取り判定の両方が見るのでここに置く。
+ */
+export const FATAL_CODES: ReadonlySet<string> = new Set(['SRC_MISSING', 'OUT_BEYOND_DURATION', 'FPS_MISMATCH']);
+
 export const resolveClip = (catalog: Catalog | undefined, src: string, aliases: Map<string, string>): Clip | undefined => {
   if (!catalog) return undefined;
   const real = aliases.get(src) ?? src;

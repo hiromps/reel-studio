@@ -23,6 +23,8 @@ import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
+import {applyMosaic, revertMosaic, setupMosaic} from '../core/mosaic';
+import type {MosaicParams} from '../shared/mosaic';
 import type {BuildStepId} from '../shared/build';
 import type {SfxRole} from '../shared/sfx';
 import {formatOrderCheck} from '../shared/order';
@@ -143,11 +145,25 @@ class JobQueue extends EventEmitter {
     }
   }
 
-  private async run(job: Job, signal: AbortSignal): Promise<unknown> {
-    const dir = resolveProjectDir(job.slug);
-    const onLine = (l: string) => this.log(job, l);
-    const p = job.params;
-    switch (job.type) {
+  private run(job: Job, signal: AbortSignal): Promise<unknown> {
+    return runJobBody(job, {onLine: (l) => this.log(job, l), onProgress: (pr) => this.progress(job, pr), signal});
+  }
+}
+
+export const jobs = new JobQueue();
+
+/** ジョブ 1 本の中身。実行主体（ローカルのキュー／クラウドのワーカー）から切り離してある */
+export type JobRunCtx = {
+  onLine: (line: string) => void;
+  onProgress: (p: {phase: string; done: number; total: number}) => void;
+  signal: AbortSignal;
+};
+
+export async function runJobBody(job: {type: JobType; slug: string; params: Record<string, unknown>}, ctx: JobRunCtx): Promise<unknown> {
+  const dir = resolveProjectDir(job.slug);
+  const {onLine, signal} = ctx;
+  const p = job.params;
+  switch (job.type) {
       case 'catalog': {
         const materialsDir = (p.materialsDir as string | undefined) ?? loadCatalog(dir)?.materialsDir;
         if (!materialsDir) throw new Error('materialsDir が未指定');
@@ -161,7 +177,7 @@ class JobQueue extends EventEmitter {
           speech: !!p.speech,
           force: !!p.force,
           onLine,
-          onProgress: (done, total, label) => this.progress(job, {phase: label, done, total}),
+          onProgress: (done, total, label) => ctx.onProgress({phase: label, done, total}),
         });
         for (const w of r.warnings) onLine(`W ${w}`);
         return {clips: r.catalog.clips.length, changed: r.changed.length, warnings: r.warnings};
@@ -175,7 +191,7 @@ class JobQueue extends EventEmitter {
           concurrency: typeof p.concurrency === 'number' ? p.concurrency : undefined,
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {tagged: r.tagged.length, batches: r.batches, costUsd: r.costUsd, facts: r.facts.length};
@@ -188,7 +204,7 @@ class JobQueue extends EventEmitter {
           force: !!p.force,
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         onLine(formatOrderCheck(r.check));
@@ -201,7 +217,7 @@ class JobQueue extends EventEmitter {
           force: !!p.force,
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         if (r.skipped.length) onLine(`skipped: ${r.skipped.join('; ')}`);
@@ -212,7 +228,7 @@ class JobQueue extends EventEmitter {
         const r = await aiNarration(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {blocks: r.blocks.length, findings: r.findings, costUsd: r.costUsd, notes: r.notes};
@@ -220,17 +236,22 @@ class JobQueue extends EventEmitter {
       // 自然言語の台本 → cuts.json + narration.json（型ではなく台本が正）
       case 'ai-script': {
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const write = p.write !== false;
         const r = await aiScript(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
-          write: p.write !== false,
+          write,
           force: !!p.force,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
-        if (!r.written)
-          throw new Error(`検算で E が出たので書いていません:\n${r.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}`);
-        return {cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
+        // 「割り当てを見るだけ」（write: false）は書かないのが正常。以前はここで失敗扱いにしていて、
+        // E が 0 件でも「検算で E が出たので書いていません:」で終わり、結果も捨てていた
+        if (write && !r.written)
+          throw new Error(
+            `検算で E が出たので書いていません:\n${r.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}\n  結果は Brief の「割り当ての結果」で確認できます`,
+          );
+        return {written: r.written, cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
       }
       case 'ai-caption': {
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
@@ -240,7 +261,7 @@ class JobQueue extends EventEmitter {
           research: p.research !== false,
           researchForce: !!p.researchForce,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {chars: [...r.caption].length, issues: r.issues, missing: r.missing, costUsd: r.costUsd, notes: r.notes, factsAdded: r.research?.added.length ?? 0, conflicts: r.research?.conflicts ?? []};
@@ -252,7 +273,7 @@ class JobQueue extends EventEmitter {
           model: typeof p.model === 'string' ? p.model : undefined,
           force: !!p.force,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {added: r.added, kept: r.kept, conflicts: r.conflicts, unresolved: r.unresolved, instagram: r.instagram, costUsd: r.costUsd};
@@ -263,7 +284,7 @@ class JobQueue extends EventEmitter {
         const r = await aiEdit(dir, instruction, {
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {summary: r.summary, applied: r.applied, unapplied: r.unapplied, needsTts: r.needsTts, costUsd: r.costUsd, placeholders: r.validation?.summary.placeholders};
@@ -274,7 +295,7 @@ class JobQueue extends EventEmitter {
           force: !!p.force,
           ids: Array.isArray(p.ids) ? (p.ids as string[]) : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {made: r.made.length, skipped: r.skipped.length, chars: r.chars, modelId: r.modelId};
@@ -318,7 +339,7 @@ class JobQueue extends EventEmitter {
           model: typeof p.model === 'string' ? p.model : undefined,
           instruction: typeof p.instruction === 'string' ? p.instruction : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {
@@ -346,7 +367,7 @@ class JobQueue extends EventEmitter {
           model: typeof p.model === 'string' ? p.model : undefined,
           instruction: typeof p.instruction === 'string' ? p.instruction : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {key: r.key, tailTelop: r.tailTelop, tailNarration: r.tailNarration, speed: r.speed, outRel: r.outRel, deliveredAs: r.deliveredAs, captionAs: r.captionAs, durationSec: r.durationSec, mb: Math.round((r.sizeBytes / 1024 / 1024) * 10) / 10, issues: r.issues, costUsd: r.costUsd};
@@ -361,7 +382,7 @@ class JobQueue extends EventEmitter {
           force: !!p.force,
           allowErrors: !!p.allowErrors,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {
@@ -377,7 +398,7 @@ class JobQueue extends EventEmitter {
         let i = 0;
         for (const clip of c.clips) {
           if (signal.aborted) break;
-          this.progress(job, {phase: clip.original, done: i++, total: c.clips.length});
+          ctx.onProgress({phase: clip.original, done: i++, total: c.clips.length});
           try {
             clip.thumbs = await makeThumbnails(path.join(dir, 'public', clip.src), path.join(sdir, 'thumbs'), path.join(sdir, 'strips'), clip.id, clip.probe.durationSec);
             onLine(`${clip.id} ${clip.thumbs.strip.length} 枚`);
@@ -398,6 +419,11 @@ class JobQueue extends EventEmitter {
           const abs = path.join(dir, 'public', clip.src);
           const need = needsProxy(clip.probe);
           if (!need.needed && !p.force) continue;
+          // 顔モザイク版はプロキシと同じ形式（H.264 1080x1920）で書き出してある。作り直すと元に戻せなくなる
+          if (clip.mosaic?.applied) {
+            onLine(`${clip.id} 顔モザイク済みなので飛ばします（元に戻してから作り直してください）`);
+            continue;
+          }
           const out = abs.replace(/\.[^.]+$/, '') + (abs.endsWith('.mp4') ? '.proxy.mp4' : '.mp4');
           onLine(`${clip.id} proxy (${need.reason ?? 'force'}) → ${path.basename(out)}`);
           await makeProxy(abs, out, clip.probe, {onLine: (l) => onLine(`  ${l}`)});
@@ -419,7 +445,7 @@ class JobQueue extends EventEmitter {
         let i = 0;
         for (const clip of c.clips) {
           if (signal.aborted) break;
-          this.progress(job, {phase: clip.original, done: i++, total: c.clips.length});
+          ctx.onProgress({phase: clip.original, done: i++, total: c.clips.length});
           const out = path.join(outDir, path.basename(clip.src));
           if (fs.existsSync(out) && !p.force) continue;
           onLine(`${clip.id} preview → ${path.basename(out)}`);
@@ -443,7 +469,7 @@ class JobQueue extends EventEmitter {
           noSync: !!p.noSync,
           strictProxy: !!p.strictProxy,
           onLine,
-          onProgress: (pr) => this.progress(job, pr),
+          onProgress: (pr) => ctx.onProgress(pr),
           signal,
         });
         return {...r, validation: undefined, outRel: path.relative(dir, r.outPath).replace(/\\/g, '/'), qcTileRel: r.qcTile ? path.relative(dir, r.qcTile).replace(/\\/g, '/') : undefined};
@@ -484,15 +510,38 @@ class JobQueue extends EventEmitter {
           label: typeof p.label === 'string' ? p.label : undefined,
           gl: typeof p.gl === 'string' ? p.gl : undefined,
           onLine,
-          onProgress: (done, total, phase) => this.progress(job, {phase, done, total}),
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
         return {ran: r.ran, skipped: r.skipped, delivered: r.delivered, costUsd: r.costUsd, outRel: r.outRel};
       }
-      default:
-        throw new Error(`未知のジョブ: ${job.type}`);
-    }
+      // 顔モザイク（deface）。src の中身をモザイク版に差し替える（元は .studio/mosaic/originals/ に退避）
+      case 'mosaic': {
+        const r = await applyMosaic(dir, {
+          ids: Array.isArray(p.ids) ? (p.ids as unknown[]).map(String) : [],
+          params: p.params && typeof p.params === 'object' ? (p.params as Partial<MosaicParams>) : undefined,
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done: Math.round(done), total}),
+          signal,
+        });
+        const count = (k: string) => r.items.filter((i) => i.result === k).length;
+        return {applied: count('applied'), noFaces: count('no-faces'), restored: count('restored'), failed: count('failed'), items: r.items, engine: r.engine};
+      }
+      case 'mosaic-revert': {
+        const r = await revertMosaic(dir, {
+          ids: Array.isArray(p.ids) ? (p.ids as unknown[]).map(String) : [],
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
+        return {reverted: r.items.filter((i) => i.result === 'reverted').length, items: r.items};
+      }
+      // deface を <設定の置き場>/deface-venv に入れる（案件に属さない）
+      case 'mosaic-setup': {
+        const r = await setupMosaic({gpu: !!p.gpu, onLine, signal});
+        return {venvDir: r.venvDir, deface: r.status.deface, onnxruntime: r.status.onnxruntime, gpu: r.status.gpu, message: r.status.message};
+      }
+    default:
+      throw new Error(`未知のジョブ: ${job.type}`);
   }
 }
-
-export const jobs = new JobQueue();

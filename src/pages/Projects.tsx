@@ -15,6 +15,8 @@ export const ProjectsPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   // 「同じ素材で別バージョン」を作るとき、元になる案件（空＝まっさらな新規）
   const [from, setFrom] = useState('');
+  // 台本（cuts.json・narration.json）もそのまま引き継ぐか（既定は版ごとに作る）
+  const [carryTimeline, setCarryTimeline] = useState(false);
 
   const create = async () => {
     if (!slug.trim()) return s.toast('slug を入力', 'error');
@@ -25,6 +27,7 @@ export const ProjectsPage: React.FC = () => {
         persona,
         shopName: shop,
         from: from || undefined,
+        carryTimeline: from ? carryTimeline : undefined,
       });
       s.toast(`作成: ${r.data.slug}${r.data.jobId ? '（npm install 実行中）' : ''}`, 'ok');
       for (const l of r.data.lines ?? []) s.toast(l, l.startsWith('  !') ? 'error' : 'info');
@@ -72,6 +75,12 @@ export const ProjectsPage: React.FC = () => {
               ))}
             </select>
           </label>
+          {from && (
+            <label title="cuts.json（構成・トリミング・テロップ）と narration.json（ナレーション原稿）もそのままコピーする。ボイスやフックの一部だけ変えた版を作りたいときに使う。音声ファイルは無いので全ブロック要再生成になる">
+              <input type="checkbox" checked={carryTimeline} onChange={(e) => setCarryTimeline(e.target.checked)} />
+              台本（cuts・ナレーション原稿）も引き継ぐ
+            </label>
+          )}
           <button className="primary" onClick={create} disabled={busy}>
             {from ? '同じ素材で作る（素材はリンク共有）' : '作成（テンプレ複製 + brief 雛形 + npm install）'}
           </button>
@@ -83,7 +92,9 @@ export const ProjectsPage: React.FC = () => {
           <b>「同じ素材から作る」</b>を選ぶと、素材をハードリンクで共有して（ディスクは増えません）
           <b>catalog.json のタグ付けを引き継いだ</b>案件ができます。同じ撮影で hiro 版 / さゆり版を作る、
           同じ店の別ブランド版（例：焼肉たべる版 / 焼肉伍龍版）を作る、といったときに使います。
-          構成（cuts）・ナレーション・キャプションは版ごとに作るので引き継ぎません。Materials のカタログ実行は不要で、Brief から始められます。
+          構成（cuts）・ナレーション・キャプションは版ごとに作るので引き継ぎません（Materials のカタログ実行は不要で、Brief から始められます）。
+          <b>「台本も引き継ぐ」</b>にチェックすると、cuts.json と narration.json をそのままコピーします。同じ構成・同じ原稿でボイスだけ変えたい版や、
+          フックの一部だけ書き換えたい版を作りたいときに使います。音声ファイル（narration/）はコピーしないので、作成後は Render で全ブロックの音声を作り直してください。
         </p>
       </section>
       <section className="card" data-tour="project-list">

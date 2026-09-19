@@ -1,6 +1,6 @@
 {
   "name": "reel-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Reel Studio: GUI/CLI that turns raw food-shop footage into 9:16 short reels with telops, AI narration, and captions (Remotion + Claude Code + Fish Audio)",
   "license": "MIT",
@@ -29,6 +29,7 @@
     "build": "vite build",
     "start": "node scripts/launch.mjs",
     "start:dev": "node scripts/launch.mjs --dev",
+    "update": "node scripts/update.mjs",
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

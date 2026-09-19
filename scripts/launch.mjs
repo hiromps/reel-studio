@@ -55,6 +55,20 @@ const newestMtime = (dir, skip = new Set(['node_modules', 'dist', '.studio'])) =
   return newest;
 };
 
+/**
+ * 依存パッケージを入れ直す必要があるか。
+ * git pull で package-lock.json が新しくなったのに気づかず起動すると
+ * 「Cannot find module …」で落ちる —— 更新後の一番よくある失敗なので、ここで吸収する。
+ * `.package-lock.json` は npm が node_modules の中に置く「いま入っている状態」の記録。
+ */
+const depsStale = () => {
+  const lock = path.join(root, 'package-lock.json');
+  const installed = path.join(root, 'node_modules', '.package-lock.json');
+  if (!fs.existsSync(path.join(root, 'node_modules', 'remotion'))) return true;
+  if (!fs.existsSync(lock) || !fs.existsSync(installed)) return false;
+  return fs.statSync(lock).mtimeMs > fs.statSync(installed).mtimeMs;
+};
+
 const needsBuild = () => {
   if (forceBuild) return true;
   const indexHtml = path.join(root, 'dist', 'index.html');
@@ -135,8 +149,9 @@ const startChild = (label, argv) => {
 async function main() {
   console.log(`\n${C.cyan}Reel Studio${C.reset} ${C.dim}${root}${C.reset}\n`);
 
-  if (!fs.existsSync(path.join(root, 'node_modules', 'remotion'))) {
-    runNpm(['install', '--no-audit', '--no-fund'], '依存パッケージを導入しています（初回のみ・数分かかります）');
+  if (depsStale()) {
+    const first = !fs.existsSync(path.join(root, 'node_modules', 'remotion'));
+    runNpm(['install', '--no-audit', '--no-fund'], first ? '依存パッケージを導入しています（初回のみ・数分かかります）' : '更新で増えた依存パッケージを入れています（少し時間がかかります）');
   }
 
   // すでに起動していれば、二重に立ち上げずブラウザだけ開く

@@ -44,8 +44,8 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           : null;
   const canTts = !!narration && !ttsBlockedBy;
   const briefPersona = s.files.brief.data ? findPersona(s.files.brief.data.persona) : undefined;
-  const cps = briefPersona?.narration.charsPerSec ?? 11;
-  const personaSpeed = briefPersona?.narration.speed ?? 1.6;
+  const cps = briefPersona?.narration.charsPerSec ?? 8.2;
+  const personaSpeed = briefPersona?.narration.speed ?? 1.2;
   const segSec = (seg: NarrationSegment) => seg.durSec ?? [...seg.text].length / cps;
   const setNarr = (next: Narration) => s.setFile('narration', next);
   const narrIssues = useMemo(() => (narration ? checkNarration(narration, {estimate: segSec, emptyText: true}) : []), [narration, cps]);
@@ -179,7 +179,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
       <div className="result">
         {r.outRel && /\.mp4$/.test(r.outRel) && (
           <div>
-            <video src={`${s.mediaBase}/${r.outRel}?t=${j.endedAt}`} controls />
+            <video src={`${s.mediaBase}/${r.outRel}?t=${j.endedAt}`} controls playsInline />
             <div className="hint">
               {r.outRel} {r.sizeBytes ? `${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB` : ''} {r.frames !== undefined ? `${r.frames}f / 期待 ${r.expectedFrames}f` : ''} {r.durationSec ? `${r.durationSec.toFixed(2)}s` : ''} {r.attempts ? `（${r.attempts} 回目で成功）` : ''}
             </div>
@@ -197,7 +197,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           <div>
             {r.items.map((it) => (
               <div key={it.id} style={{marginBottom: 8}}>
-                <video src={`${s.mediaBase}/${it.outRel}`} controls style={{maxWidth: 220}} />
+                <video src={`${s.mediaBase}/${it.outRel}`} controls playsInline style={{maxWidth: 220}} />
                 <div className="hint">
                   <b>{it.id}</b>
                   {it.label ? `（${it.label}）` : ''} {it.changes.join(' / ')} — {it.durationSec.toFixed(2)}s / {it.mb} MB

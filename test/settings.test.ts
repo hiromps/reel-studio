@@ -85,6 +85,13 @@ describe('settings: merge と保存', () => {
     expect(next.agent.tagBatchSize).toBe(4);
   });
 
+  it('顔モザイクの python は書いたときだけ変わり、空文字で消える', () => {
+    const cur = mergeSettings(defaultSettings(), {mosaic: {python: ' C:/venv/Scripts/python.exe '}});
+    expect(cur.mosaic.python).toBe('C:/venv/Scripts/python.exe');
+    expect(mergeSettings(cur, {tts: {modelId: 's1'}}).mosaic.python).toBe('C:/venv/Scripts/python.exe');
+    expect(mergeSettings(cur, {mosaic: {python: ''}}).mosaic.python).toBeUndefined();
+  });
+
   it('voices は配列ごと置き換わる', () => {
     const cur = mergeSettings(defaultSettings(), {tts: {voices: [{id: 'a'.repeat(32), title: 'A'}, {id: 'b'.repeat(32), title: 'B'}]}});
     const next = mergeSettings(cur, {tts: {voices: [{id: 'c'.repeat(32), title: 'C'}]}});

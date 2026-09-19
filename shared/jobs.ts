@@ -31,6 +31,9 @@ export const JOB_TYPES = [
   'trial',
   'winner',
   'build',
+  'mosaic',
+  'mosaic-revert',
+  'mosaic-setup',
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -39,8 +42,29 @@ export type JobType = (typeof JOB_TYPES)[number];
  * （このPCは空きメモリが少なく、レンダーを 2 本並べると落ちた実績がある）。
  * ここに無いもの（AI・音声生成）は待ち時間のほとんどが外部処理なので、案件をまたいで同時に動かしてよい。
  * build はレンダーと mix を含むので重い扱い。winner（二次活用）もレンダー・mix・ffmpeg の倍速を含む。
+ * mosaic は顔検出（GPU/CPU）と ffmpeg の再エンコード、mosaic-revert はサムネの作り直し。
+ * mosaic-setup は mosaic が使っている venv を入れ替えるので、同時に走らせない。
  */
-export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>(['catalog', 'thumbs', 'proxy', 'preview-proxy', 'render', 'draft', 'still', 'qc-tile', 'mix', 'trial', 'winner', 'build']);
+export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
+  'catalog',
+  'thumbs',
+  'proxy',
+  'preview-proxy',
+  'render',
+  'draft',
+  'still',
+  'qc-tile',
+  'mix',
+  'trial',
+  'winner',
+  'build',
+  'mosaic',
+  'mosaic-revert',
+  'mosaic-setup',
+]);
+
+/** 案件に属さないジョブ（案件を開いていなくても投げられる） */
+export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup']);
 
 export const isHeavyJob = (type: string): boolean => HEAVY_JOBS.has(type as JobType);
 

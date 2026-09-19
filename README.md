@@ -11,7 +11,8 @@ live in `~/.reel-studio/`, outside the repository.
 
 - **Requirements**: Node.js 20+, `ffmpeg` / `ffprobe` on PATH,
   [Claude Code](https://claude.com/claude-code) installed and logged in (`claude` on PATH),
-  and optionally a [Fish Audio](https://fish.audio/) API key for narration audio.
+  optionally a [Fish Audio](https://fish.audio/) API key for narration audio, and optionally
+  Python 3.10+ for automatic face mosaic ([deface](https://github.com/ORB-HD/deface); installed from the Settings tab).
 - **Quick start**
 
   ```bash
@@ -55,6 +56,7 @@ API キーは要りません。ログイン済みの Claude Code がそのまま
 | ffmpeg / ffprobe（PATH に通っていること） | 素材の解析・サムネイル・プロキシ・合成 | `ffmpeg -version` |
 | Claude Code（`claude` が PATH にあり、ログイン済み） | タグ付け・テロップ・原稿・キャプション | `claude --version` |
 | Fish Audio の API キー（任意） | ナレーション音声の生成 | Settings の「接続テスト」 |
+| Python 3.10 以上（任意） | 素材の顔モザイク（[deface](https://github.com/ORB-HD/deface) を専用の venv に入れる） | Settings の「顔モザイク（deface）」 |
 
 Windows 11 で開発・運用しています。macOS / Linux でも動く作りですが、フォルダ選択ダイアログ（Settings・Materials の「フォルダを選ぶ」）は Windows 専用で、他 OS ではパスを手で入力してください。
 
@@ -72,6 +74,27 @@ Windows なら `Reel Studio.cmd` をダブルクリックしても同じです�
 
 開発時は `npm run server`（API :4310）と `npm run dev`（Vite :5173、HMR）を別々に起動します。
 テストは `npm test`、型検査は `npm run typecheck`。
+
+## 更新のしかた
+
+新しい機能や修正は GitHub に置いています。**案件データ・設定・人格はリポジトリの外**
+（`~/.reel-studio/` とデータフォルダ）にあるので、更新で失われることはありません。
+
+```bash
+npm run update      # git pull → 依存の導入 → 画面のビルド をまとめて行う
+```
+
+そのあと **Reel Studio を起動し直してください**（起動中なら一度閉じる）。
+
+画面からも更新できます。**Settings（Ctrl+6）の「版と更新」**に、更新の有無と入る変更が出ます。
+「更新する」を押すと `git pull` まで行うので、あとは再起動するだけです。
+
+- 手元でコードを直している場合は、先に `git stash` で退避するか、コミットしてください
+  （勝手にマージせず、その旨を表示して止まります）
+- zip で展開した場合は更新コマンドが使えません。`git clone` で入れ直してください
+  （設定と案件データはフォルダの外なので引き継がれます）
+- エンジン（テロップ描画）が変わった更新のあとは、各案件は次のレンダーで自動的に揃います
+- 何が変わったかは [CHANGELOG.md](CHANGELOG.md) にあります
 
 ## 初期設定（Settings タブ・Ctrl+6）
 
@@ -98,7 +121,7 @@ CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）�
 タブを左から右へ進めば 1 本できます。画面上の「次にやること」に従ってください。
 
 1. **Projects** — 案件（動画 1 本）を作る。同じ素材で別バージョンも作れる（素材はハードリンクで共有）
-2. **Materials** — 素材フォルダを読み込み、1 本ずつタグを付ける（AI に任せられる）
+2. **Materials** — 素材フォルダを読み込み、1 本ずつタグを付ける（AI に任せられる）。店員さんや他のお客さんの顔には「顔モザイク」をかけられる
 3. **Brief** — 何を伝えるかを決めて構成を自動生成。台本があるなら貼って「台本から組み立てる」
 4. **Timeline** — 映像・テロップ・ナレーション・効果音を 1 つのタイムラインで整えて検証する
 5. **Render** — 「仕上げ」で原稿 → 音声 → レンダー → 合成 → 納品まで一気に。声の設定・効果音・キャプション・トライアルもここ
@@ -120,6 +143,7 @@ CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）�
 | `FISH_API_KEY` / `FISH_MODEL_ID` | Fish Audio の鍵とモデル（既定 `s2.1-pro-free`） |
 | `REEL_STUDIO_CLAUDE_BIN` | `claude` 実行ファイルの場所 |
 | `REEL_STUDIO_AGENT_MODEL` | AI の既定モデル |
+| `REEL_STUDIO_MOSAIC_PYTHON` | 顔モザイク（deface）に使う python |
 | `REEL_STUDIO_PORT` / `REEL_STUDIO_HOST` | サーバーのポート（既定 4310）とホスト（既定 127.0.0.1） |
 | `REEL_STUDIO_JOB_CONCURRENCY` | 同時に走らせるジョブ数（既定 2。ffmpeg / Remotion 系は常に 1） |
 
@@ -133,12 +157,14 @@ CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）�
 
 ## ドキュメント
 
+- [CHANGELOG.md](CHANGELOG.md) — 版ごとの変更（更新したときはここを見る）
 - [docs/guide.md](docs/guide.md) — 画面と CLI の詳細、AI ジョブ、台本からの組み立て、トライアル、契約ファイル、設計とセキュリティ
 - [engine/README.md](engine/README.md) — Remotion エンジン（案件に複製されるテンプレート）
 
 ## 開発
 
 ```bash
+npm run update      # 更新（git pull + 依存 + ビルド）
 npm run server      # API サーバー（tsx）
 npm run dev         # Vite dev server（HMR）
 npm test            # vitest
