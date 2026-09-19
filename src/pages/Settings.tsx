@@ -4,6 +4,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
+import {NotificationsCard} from '../components/NotificationsCard';
 import {PATH_KEYS, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
@@ -93,6 +94,7 @@ export const SettingsPage: React.FC = () => {
       <AgentCard view={view} save={save} />
       <MosaicSettingsCard view={view} save={save} />
       <CloudCard view={view} save={save} />
+      <NotificationsCard />
       <PersonasCard />
       <p className="hint">
         設定ファイル: <span className="mono">{view.file}</span>

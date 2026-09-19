@@ -13,6 +13,7 @@ import {JOB_TYPES} from '../../shared/jobs';
 import {normalizeSlug} from '../../shared/project';
 import {blobPath} from '../blob';
 import {fishEnv, listVoices, probeFishKey, synthPreview} from '../fish';
+import {countSubscriptions, publicKey, pushAvailable, removeSubscription, saveSubscription, sendToAll} from '../push';
 import {addJob, findAsset, kvGet, kvSet, listJobs, listProjects, replacePersonas} from '../store';
 import {WORKER_ONLINE_MS, type WorkerStatus} from '../worker-status';
 
@@ -232,6 +233,31 @@ miscRouter.post('/tts/preview', async (req, res) => {
   } catch (e) {
     res.status(400).json({error: (e as Error).message});
   }
+});
+
+// ───────────────────────── 通知（Web Push） ─────────────────────────
+
+miscRouter.get('/push/key', async (_req, res) => {
+  res.json({key: publicKey(), available: pushAvailable(), subscriptions: pushAvailable() ? await countSubscriptions() : 0});
+});
+
+miscRouter.post('/push/subscribe', async (req, res) => {
+  const sub = req.body?.subscription as {endpoint?: string; keys?: {p256dh?: string; auth?: string}} | undefined;
+  if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys.auth) return res.status(400).json({error: 'subscription が不正です'});
+  await saveSubscription({endpoint: sub.endpoint, keys: {p256dh: sub.keys.p256dh, auth: sub.keys.auth}}, typeof req.body?.label === 'string' ? req.body.label.slice(0, 80) : undefined);
+  res.json({ok: true, subscriptions: await countSubscriptions()});
+});
+
+miscRouter.post('/push/unsubscribe', async (req, res) => {
+  const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : '';
+  if (endpoint) await removeSubscription(endpoint);
+  res.json({ok: true, subscriptions: await countSubscriptions()});
+});
+
+/** 届くか確かめる（Settings の「テスト送信」） */
+miscRouter.post('/push/test', async (_req, res) => {
+  if (!pushAvailable()) return res.status(503).json({error: '通知の鍵（VAPID）が設定されていません'});
+  res.json(await sendToAll({title: 'Reel Studio', body: '通知はここに届きます', url: '/'}));
 });
 
 // ───────────────────────── スマホからの素材アップロード ─────────────────────────

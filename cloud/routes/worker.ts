@@ -15,11 +15,13 @@ import {PersonaSchema, type Persona} from '../../shared/personas';
 import {DOC_NAMES, normalizeSlug, type DocName} from '../../shared/project';
 import type {BuildFacts} from '../../shared/build';
 import {delBlob, isAssetKind, isAssetMode} from '../blob';
+import {notifyJobFinished} from '../push';
 import type {ProjectSnapshot} from '../db/schema';
 import {
   claimJob,
   deleteAssets,
   finishJob,
+  getJob,
   isDocName,
   kvGet,
   kvSet,
@@ -127,7 +129,12 @@ workerRouter.post('/jobs/:id/finish', async (req, res) => {
   const status = req.body?.status;
   if (status !== 'done' && status !== 'failed' && status !== 'cancelled') return res.status(400).json({error: 'status は done|failed|cancelled'});
   if (Array.isArray(req.body?.lines) && req.body.lines.length) await reportProgress(req.params.id, {lines: req.body.lines as string[]});
-  await finishJob(req.params.id, {status, result: req.body?.result, error: typeof req.body?.error === 'string' ? req.body.error : undefined});
+  const error = typeof req.body?.error === 'string' ? req.body.error : undefined;
+  await finishJob(req.params.id, {status, result: req.body?.result, error});
+  // 時間のかかるもの（レンダー・仕上げ・AI）が終わったらスマホに知らせる。
+  // 送れなくてもジョブの完了は成立させる
+  const job = await getJob(req.params.id);
+  if (job) void notifyJobFinished({type: job.type, slug: job.slug, status, error}).catch(() => undefined);
   res.json({ok: true});
 });
 

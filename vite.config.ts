@@ -17,6 +17,10 @@ export default defineConfig({
       // 登録は自前でやる（src/pwa.ts）。開発中に勝手に効くと混乱するため
       injectRegister: null,
       registerType: 'autoUpdate',
+      // Service Worker は自分で書く（通知を受け取るため）。中身は src/sw.ts
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       manifest: {
         name: 'Reel Studio',
         short_name: 'Reel Studio',
@@ -34,33 +38,11 @@ export default defineConfig({
           {src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable'},
         ],
       },
-      workbox: {
+      injectManifest: {
         // 画面の枠だけを先読みする。7MB のフォントは入れない（要求されたときに拾う）
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         globIgnores: ['fonts/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        navigateFallback: '/index.html',
-        // API・通知・メディアの入口はキャッシュの対象から外す（古い案件情報を掴ませない）
-        navigateFallbackDenylist: [/^\/api\//, /^\/events$/, /^\/p\//],
-        runtimeCaching: [
-          {
-            // テロップのフォント。一度取れば変わらない
-            urlPattern: /\/fonts\/.*\.(ttf|otf|woff2?)$/i,
-            handler: 'CacheFirst',
-            options: {cacheName: 'reel-fonts', expiration: {maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 365}},
-          },
-          {
-            // サムネイル・軽量プロキシ・完成動画。実体は差し替わるので短めに持つ
-            urlPattern: /\/p\/.*\/(studio|uploads|out|qc|narration)\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'reel-media',
-              expiration: {maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 14},
-              cacheableResponse: {statuses: [0, 200]},
-              rangeRequests: true,
-            },
-          },
-        ],
       },
       devOptions: {enabled: false},
     }),

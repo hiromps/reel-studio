@@ -114,6 +114,16 @@ export const personas = pgTable('personas', {
  * - `settings` … ワーカーが送る settingsView（鍵の値は入らない）
  * - `active-slug` … ?p= 無しで開いたタブの既定
  */
+/** 通知（Web Push）の購読先。端末ごとに 1 行。失効したら消す */
+export const pushSubs = pgTable('push_subs', {
+  endpoint: text('endpoint').primaryKey(),
+  keys: jsonb('keys').$type<{p256dh: string; auth: string}>().notNull(),
+  /** どの端末か（画面で見分けるため。User-Agent の要約） */
+  label: text('label'),
+  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+  lastSent: timestamp('last_sent', {withTimezone: true}),
+});
+
 export const kv = pgTable('kv', {
   key: text('key').primaryKey(),
   data: jsonb('data').notNull(),

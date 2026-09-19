@@ -84,6 +84,8 @@ Vercel のログイン画面に弾かれます。
 | `WORKER_TOKEN` | ランダム文字列。PC のワーカーと同じ値にする |
 | `BLOB_READ_WRITE_TOKEN` | Blob ストアを接続すると自動で入る |
 | `FISH_API_KEY`（任意） | 音声のボイス一覧と試聴をクラウドから使う場合。生成そのものは PC が行う |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`（任意） | 通知を使う場合。`node -e "console.log(JSON.stringify(require('web-push').generateVAPIDKeys()))"` |
+| `VAPID_SUBJECT`（任意） | 通知の連絡先。`mailto:you@example.com` |
 
 ```bash
 npx vercel deploy --prod
@@ -133,6 +135,18 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED ^
 
 間隔はアイドル 15 秒 / 稼働中 3 秒。5 分ごとに全案件の棚卸し（同期）を行います。
 
+## 通知（レンダーが終わったら知らせる）
+
+レンダーや仕上げは 10 分以上かかることがあるので、終わったらスマホに通知を出せます
+（失敗したときは必ず出ます）。Settings の「通知」で端末ごとに有効にします。
+
+- **iPhone / iPad は「ホーム画面に追加」した PWA からでないと届きません**（iOS 16.4 以降）。
+  Safari のタブで開いたままでは受け取れません
+- 通知を出すのは時間のかかるジョブだけです（レンダー・仕上げ・合成・納品・カタログ化・
+  顔モザイク・素材の取り込み・音声生成・AI 各種）。一瞬で終わるものでは鳴りません
+- 実体は Web Push（VAPID）。鍵が未設定なら機能そのものが画面に出ません
+- 端末を機種変更したり通知を切ったりすると購読が失効します。失効したものは送信時に自動で消えます
+
 ## クラウドでは使えないもの
 
 | もの | 理由と代わり |
@@ -166,3 +180,4 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED ^
 | 「PC のワーカーがまだ繋がっていません」 | `npm run worker` のログ。`WORKER_TOKEN` の食い違いなら 401 が出る |
 | ジョブが「ワーカーとの通信が途切れました」で失敗 | PC がスリープした。押し直せば再実行される |
 | デプロイした関数が 500 | `npx vercel logs <url>`。`api/_app.cjs` が生成されているか（`npm run build`） |
+| 通知が来ない | iPhone はホーム画面から開いているか。Settings の「テスト送信」で `sent` が 1 以上か |
