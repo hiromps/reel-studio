@@ -87,9 +87,14 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
         <div className="ai-pop card">
           {mode === 'menu' ? (
             <>
-              <div className="summary" style={{marginBottom: 6}}>
+              <div className="summary ai-pop-head">
                 <AiModelSelect value={model} onChange={setModel} />
                 {unsaved && <span className="pill warn">{unsaved}</span>}
+                <span style={{flex: 1}} />
+                {/* 狭い画面では画面下のシートになる。外を押して閉じる操作が効かないので出口を置く */}
+                <button className="small" onClick={() => setOpen(false)} aria-label="閉じる">
+                  閉じる
+                </button>
               </div>
               <div className="ai-items">
                 {item(`テロップを書いてもらう（未記入 ${placeholders}）`, 'ai-telop', {}, {disabled: placeholders === 0, title: '各テロップのカット頭の画を見て {{gNN:intent}} を埋めます。記入済みには触りません', primary: placeholders > 0})}
@@ -118,11 +123,14 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
             </>
           ) : (
             <>
-              <div className="summary" style={{marginBottom: 6}}>
+              <div className="summary ai-pop-head">
                 <b>AI に直してもらう</b>
                 <span style={{flex: 1}} />
                 <button className="small" onClick={() => setMode('menu')}>
                   ← 戻る
+                </button>
+                <button className="small" onClick={() => setOpen(false)} aria-label="閉じる">
+                  閉じる
                 </button>
               </div>
               <textarea
