@@ -39,6 +39,8 @@ export const useDragReorder = ({axis, gap, onDrop, blockOf, threshold = 5}: Opti
   const pointer = useRef({x: 0, y: 0});
   const opts = useRef({axis, gap, onDrop, blockOf, threshold});
   opts.current = {axis, gap, onDrop, blockOf, threshold};
+  /** 進行中のドラッグを外から捨てるための口（実体は下の effect が入れる） */
+  const abort = useRef<(() => void) | null>(null);
 
   const setRef = useCallback((el: HTMLElement | null) => {
     containerRef.current = el;
@@ -174,11 +176,13 @@ export const useDragReorder = ({axis, gap, onDrop, blockOf, threshold = 5}: Opti
       }
     };
 
+    abort.current = onCancel;
     window.addEventListener('pointermove', onMove, {passive: false});
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     window.addEventListener('keydown', onKey);
     return () => {
+      abort.current = null;
       cancelAnimationFrame(raf);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -190,6 +194,8 @@ export const useDragReorder = ({axis, gap, onDrop, blockOf, threshold = 5}: Opti
 
   return {
     drag,
+    /** 掴んでいる途中で外から取り消す（2 本指のピンチに切り替わったときなど）。落とさずに捨てる */
+    cancel: useCallback(() => abort.current?.(), []),
     /** コンテナに付ける（キャレットの基準になるので position:relative にしておく） */
     containerProps: {ref: setRef},
     /** 掴める要素に付ける。onPointerDown だけなのでフォーム部品と共存できる（CSS で touch-action:none を当てること） */

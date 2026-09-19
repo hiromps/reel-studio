@@ -279,7 +279,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
         {!c.subs?.length && (
           <>
             <div className="row">
-              <label style={{flex: 1}}>
+              <label className="grow">
                 文言{gi !== undefined && m.groups[gi].cutIndices.length > 1 ? <span className="hint">（このカットだけ変えると別グループになります。まとめて直すならテロップ段のブロックをクリック）</span> : null}
                 <span className="btns" style={{width: '100%'}}>
                   <input
@@ -308,7 +308,6 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
               <label title="左上に出すバッジ。F0 はエリア名（任意）、F2 は順位、F6 は店名">
                 バッジ
                 <input
-                  style={{width: 110}}
                   value={c.badge ?? ''}
                   onFocus={pushHistory}
                   onChange={(e) =>
@@ -431,7 +430,6 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
         <label title="グループの先頭カットに付くバッジ（エリア名など）">
           バッジ
           <input
-            style={{width: 110}}
             value={head.badge ?? ''}
             onFocus={pushHistory}
             onChange={(e) =>
@@ -545,7 +543,7 @@ export const SfxInspector: React.FC<Common & {index: number; lib: SfxLibrary | n
   return (
     <Section title={<>効果音 <span className="mono">{x.id}</span></>}>
       <div className="row">
-        <label style={{flex: 1}}>
+        <label className="grow">
           音源
           <select value={x.file} onChange={(e) => patchSfx(index, {file: e.target.value, label: sounds.find((y) => y.file === e.target.value)?.label})}>
             {!sounds.some((y) => y.file === x.file) && <option value={x.file}>{x.file}（ライブラリに無い）</option>}

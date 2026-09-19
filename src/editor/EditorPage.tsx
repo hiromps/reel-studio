@@ -457,11 +457,21 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             {narration ? ` / ナレーション ${narration.segments.length}` : ''}
             {narration?.sfx?.length ? ` / 効果音 ${narration.sfx.length}` : ''}
           </span>
+          <span className="hint tl-touch-hint">2 本指でつまむ＝拡大・横移動</span>
           <span style={{flex: 1}} />
-          <label className="sb-inline" title="拡大率（Ctrl+ホイールでも）">
+          <label className="sb-inline tl-zoom-slider" title="拡大率（Ctrl+ホイールでも）">
             <span>拡大</span>
             <input type="range" min={PX_PER_SEC_MIN} max={PX_PER_SEC_MAX} step={1} value={prefsSafe.zoom} onChange={(e) => setPrefs({...prefsSafe, zoom: clampZoom(Number(e.target.value))})} style={{width: 110}} />
           </label>
+          {/* 指で押す用。スライダーは細くて狙えないので、狭い画面ではこちらだけ出す */}
+          <span className="btns">
+            <button className="small" onClick={() => setPrefs({...prefsSafe, zoom: clampZoom(prefsSafe.zoom / 1.5)})} disabled={prefsSafe.zoom <= PX_PER_SEC_MIN} title="縮小">
+              −
+            </button>
+            <button className="small" onClick={() => setPrefs({...prefsSafe, zoom: clampZoom(prefsSafe.zoom * 1.5)})} disabled={prefsSafe.zoom >= PX_PER_SEC_MAX} title="拡大">
+              ＋
+            </button>
+          </span>
           <button className="small" onClick={() => timeline.current?.fit()} title="全体が収まる拡大率にする">
             全体
           </button>

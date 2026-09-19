@@ -191,6 +191,72 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     return () => el.removeEventListener('wheel', h);
   }, []);
 
+  // ---- 2 本指：つまんで拡大縮小、そのまま動かして横スクロール（指での操作） ----
+  // 指 1 本の操作（尺・並べ替え・シーク）と取り合いにならないよう、**2 本目が触れた時点で
+  // それまでの操作を捨てて**ピンチに切り替える。触った位置の時刻は動かさないので、
+  // 見たいところを指の間に置いたまま寄れる。
+  const pointers = useRef(new Map<number, {x: number; y: number}>());
+  const pinch = useRef<{dist: number; zoom: number; timeAtCenter: number} | null>(null);
+  const [pinching, setPinching] = useState(false);
+
+  // 指が離れたら必ず数える対象から外す（画面の外で離しても届くよう window で受ける）
+  useEffect(() => {
+    const drop = (e: PointerEvent) => {
+      pointers.current.delete(e.pointerId);
+      if (pointers.current.size < 2 && pinch.current) {
+        pinch.current = null;
+        setPinching(false);
+      }
+    };
+    window.addEventListener('pointerup', drop);
+    window.addEventListener('pointercancel', drop);
+    return () => {
+      window.removeEventListener('pointerup', drop);
+      window.removeEventListener('pointercancel', drop);
+    };
+  }, []);
+
+  const onPointerDownCapture = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') return;
+    pointers.current.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (pointers.current.size !== 2) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    // 1 本目で始まりかけていた操作は捨てる（ピンチ中に尺が変わったり並べ替わったりしない）
+    dragRef.current = null;
+    setActiveTrim(null);
+    dnd.cancel();
+    const [a, b] = [...pointers.current.values()];
+    const center = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
+    pinch.current = {dist: Math.hypot(a.x - b.x, a.y - b.y), zoom: pxPerSec, timeAtCenter: (el.scrollLeft + center) / pxPerSec};
+    setPinching(true);
+  };
+
+  useEffect(() => {
+    if (!pinching) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    const move = (e: PointerEvent) => {
+      if (!pointers.current.has(e.pointerId)) return;
+      pointers.current.set(e.pointerId, {x: e.clientX, y: e.clientY});
+      const p = pinch.current;
+      if (!p || pointers.current.size < 2) return;
+      e.preventDefault();
+      const [a, b] = [...pointers.current.values()];
+      const center = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const {pxPerSec: cur, onPxPerSec: setZoom} = latest.current;
+      const next = p.dist > 0 ? clampZoom(p.zoom * (dist / p.dist)) : cur;
+      if (next !== cur) setZoom(next);
+      // 中身の幅が変わったあとでないと scrollLeft が頭打ちになる
+      requestAnimationFrame(() => {
+        el.scrollLeft = Math.max(0, p.timeAtCenter * next - center);
+      });
+    };
+    window.addEventListener('pointermove', move, {passive: false});
+    return () => window.removeEventListener('pointermove', move);
+  }, [pinching]);
+
   // 再生中に再生ヘッドが画面の外へ出たら追いかける（ドラッグ中は動かさない）
   useEffect(() => {
     const el = scrollerRef.current;
@@ -371,6 +437,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
           dnd.containerProps.ref(el);
         }}
         className={`tl-scroll${extOver ? ' ext-over' : ''}`}
+        onPointerDownCapture={onPointerDownCapture}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}

@@ -469,9 +469,15 @@ input.telop.placeholder {
 }
 .subs-editor .sub {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   margin: 2px 0;
+}
+/* 秒 2 つ＋本文＋削除。本文が残り幅を取り、入らなければ折り返す */
+.subs-editor .sub > input.telop {
+  flex: 1 1 140px;
+  min-width: 0;
 }
 
 /* ── 絵コンテ（カットの順番をドラッグで決める） ───────────────────────── */
@@ -1820,6 +1826,10 @@ a.btn-like:hover {
   gap: 10px;
   padding-bottom: 4px;
 }
+/* 2 本指の案内は指で操作するときだけ出す（下の pointer: coarse で表示に切り替える） */
+.tl-touch-hint {
+  display: none;
+}
 
 /* トランスポート */
 .transport {
@@ -2682,6 +2692,8 @@ a.btn-like:hover {
   .ed-main {
     display: contents;
   }
+  /* 折り返して使う。**overflow は付けないこと** —— 中の AI メニューの吹き出しが
+     position: absolute なので、スクロール領域にすると切り取られて押せなくなる */
   .ed-toolbar {
     order: 0;
     position: sticky;
@@ -2697,6 +2709,11 @@ a.btn-like:hover {
     order: 2;
     /* 横スクロールは中の .tl-scroll が受け持つ */
     padding: 4px 6px 6px;
+  }
+  /* 拡大ボタン・全体ボタンが押せなくならないよう折り返す */
+  .tl-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .ed-storyboard {
     order: 3;
@@ -2721,6 +2738,30 @@ a.btn-like:hover {
     border-bottom: none;
     box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
     padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  /* ── カット等を選んだときのシートの中身 ──
+     インスペクタは小さな入力欄ばかりなので、既定（1 行 1 個で積む）だと
+     右側が丸ごと空く。入るだけ横に並べ、余りは伸ばして幅を使い切る */
+  .ed-inspector .row > label {
+    flex: 1 1 160px;
+  }
+  .ed-inspector .row > label > .btns {
+    width: 100%;
+  }
+  /* 数値欄は既定 84px 固定。ラベルが広がったぶんは数値欄に使わせる
+     （−1f / +1f のボタンは指で押せる幅のまま右端に残る） */
+  .ed-inspector .row > label > .btns > input[type='number'],
+  .ed-inspector .row > label > input[type='number'] {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+  }
+  /* 切り出しの枠。32vh だと幅が画面の 1/3 ほどしか無く、左右が大きく空く。
+     既定（.insp-crop .cropbox-stage）はこれより後ろに書いてあるので、
+     詳細度で勝てるよう .ed-inspector から辿る */
+  .ed-inspector .insp-crop .cropbox-stage {
+    --crop-h: 46vh;
   }
   .ed-bin {
     order: 5;
@@ -2939,10 +2980,43 @@ a.btn-like:hover {
     width: 22px;
     margin-left: -11px;
   }
-  /* ルーラーとトラックは縦スクロールを妨げない範囲でだけ触りを取る */
+  /* ルーラーとトラックは縦スクロールを妨げない範囲でだけ触りを取る。
+     横方向はこちらで受ける（カットのドラッグと、2 本指の拡大・横移動） */
   .tl-row,
   .tl-ruler {
     touch-action: pan-y;
+  }
+  /* 段を厚くする。指の幅（最低 24px 目安）に対して T 段 28px・S 段 24px は狙えない */
+  .tl {
+    --tl-ruler: 24px;
+    --tl-v: 92px;
+    --tl-t: 36px;
+    --tl-n: 42px;
+    --tl-s: 32px;
+  }
+  .tl-labels {
+    flex: 0 0 40px;
+  }
+  /* 映像ブロックの高さは決め打ち（70px）なので、段を厚くしたぶんを追わせる */
+  .tl-row-v .ctl-clip {
+    height: calc(var(--tl-v) - 4px);
+  }
+  /* 段ラベルの中の「＋」。button の最低高さ（40px）をそのまま当てると段からはみ出す */
+  .tl-add {
+    min-height: 22px;
+    padding: 0 8px;
+    line-height: 20px;
+  }
+  /* キーボードの説明は指の操作では使えないので場所を譲る */
+  .insp-section:has(> .insp-keys) {
+    display: none;
+  }
+  /* 2 本指の案内を出し、細くて狙えない拡大スライダーは引っ込める（＋ / − ボタンで操作する） */
+  .tl-touch-hint {
+    display: inline;
+  }
+  .tl-zoom-slider {
+    display: none;
   }
 }
 
