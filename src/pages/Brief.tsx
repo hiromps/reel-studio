@@ -238,7 +238,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
             OUT 秒
             <input type="number" step={0.05} value={brief.hook?.outSec ?? ''} disabled={!brief.hook} onChange={(e) => set({hook: {...brief.hook!, outSec: e.target.value === '' ? undefined : Number(e.target.value)}})} />
           </label>
-          <label style={{minWidth: 320}}>
+          <label className="grow">
             確定フック文（空なら Claude が提案。エリア名＋一桁数字型）
             <input value={brief.hook?.text ?? ''} disabled={!brief.hook} onChange={(e) => set({hook: {...brief.hook!, text: e.target.value || undefined}})} />
             <span className={`counter${countChars(brief.hook?.text ?? '') > 13 ? ' over' : ''}`}>{countChars(brief.hook?.text ?? '')}/13</span>
@@ -268,7 +268,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
             </select>
           </label>
           {brief.order.mode === 'fixed' && (
-            <label style={{flex: 1}}>
+            <label className="grow">
               固定順（clip id をカンマ区切り）
               <input value={(brief.order.fixed ?? []).join(',')} onChange={(e) => set({order: {...brief.order, fixed: e.target.value.split(/[,\s、]+/).filter(Boolean)}})} />
             </label>
@@ -308,7 +308,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
                   バッジ（第3位 / ①店名）
                   <input value={u.badge} onChange={(e) => set({units: brief.units!.map((x, k) => (k === i ? {...x, badge: e.target.value} : x))})} />
                 </label>
-                <label style={{flex: 1}}>
+                <label className="grow">
                   clip id（カンマ区切り）
                   <input value={u.clipIds.join(',')} onChange={(e) => set({units: brief.units!.map((x, k) => (k === i ? {...x, clipIds: e.target.value.split(/[,\s、]+/).filter(Boolean)} : x))})} />
                 </label>
@@ -332,7 +332,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
                   秒
                   <input type="number" step={0.1} value={t.atSec ?? ''} onChange={(e) => set({precut: {...brief.precut!, fixedTelops: brief.precut!.fixedTelops.map((x, k) => (k === i ? {...x, atSec: e.target.value === '' ? undefined : Number(e.target.value)} : x))}})} />
                 </label>
-                <label style={{flex: 1}}>
+                <label className="grow">
                   文言
                   <input value={t.text} onChange={(e) => set({precut: {...brief.precut!, fixedTelops: brief.precut!.fixedTelops.map((x, k) => (k === i ? {...x, text: e.target.value} : x))}})} />
                 </label>
@@ -348,12 +348,14 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
         )}
 
         <h3>ファクト（テロップ・キャプションの根拠。key: value）</h3>
+        {/* キーと値は必ず横並びに保つ（縦に積むとどの値がどのキーのものか分からなくなる） */}
         {Object.entries(brief.facts).map(([k, v]) => (
-          <div className="row" key={k}>
-            <input value={k} readOnly style={{width: 120}} />
-            <input style={{flex: 1}} value={v} onChange={(e) => set({facts: {...brief.facts, [k]: e.target.value}})} />
+          <div className="fact-row" key={k}>
+            <input className="fact-key" value={k} readOnly aria-label="キー" />
+            <input className="fact-value" value={v} onChange={(e) => set({facts: {...brief.facts, [k]: e.target.value}})} aria-label={`${k} の値`} />
             <button
               className="small danger"
+              aria-label={`${k} を削除`}
               onClick={() => {
                 const f = {...brief.facts};
                 delete f[k];

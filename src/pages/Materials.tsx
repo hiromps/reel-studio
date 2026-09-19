@@ -1,6 +1,6 @@
 // Materials：素材カタログの閲覧・タグ編集・フック／NG／区間の指定（保存先は catalog.json）。
 // 並べる作業（cuts.json）は Timeline 画面の編集エディタで行う。
-import React, {useMemo, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import {EmptyState} from '../components/EmptyState';
@@ -11,10 +11,9 @@ import {TriageMode} from '../components/TriageMode';
 import {MosaicCard, MosaicClipSection, mediaVersion, useMosaicForm} from '../components/MosaicPanel';
 import {UploadMaterials} from '../components/UploadMaterials';
 import {PreviewReady} from '../components/PreviewReady';
-import {TrimBar} from '../components/TrimBar';
-import {CropBox} from '../components/CropBox';
-import {DEFAULT_CROP} from '@shared/schema/cuts';
-import {rangeForBar, withRange} from '../components/triage';
+import {ClipEditor} from '../components/ClipEditor';
+import {useUndo} from '../hooks/useUndo';
+import {useHotkeys} from '../hooks/useHotkeys';
 import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
@@ -51,6 +50,8 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [triageIds, setTriageIds] = useState<string[] | null>(null);
+  /** 詳細欄の切り出し枠を大きくしているか（選別モードの「枠を大きく」と同じ） */
+  const [bigStage, setBigStage] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const clip = useMemo(() => catalog?.clips.find((c) => c.id === selected) ?? null, [catalog, selected]);
   const untagged = catalog?.clips.filter((c) => !c.tags && !c.user.ng).length ?? 0;
@@ -61,14 +62,44 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   const staleTag = !s.supportsJob('ai-tag');
   const RESTART_HINT = 'Reel Studio を再起動してください（画面だけ新しく、サーバーが古いプロセスです）';
 
-  const setCatalog = (next: Catalog) => s.setFile('catalog', next);
-  const updateClip = (id: string, patch: (c: Clip) => Clip) => {
+  // ── 取り消し（元に戻す）─────────────────────────────────────
+  // catalog.json 丸ごとを 1 手として積む。案件を切り替えたら履歴は捨てる。
+  const history = useUndo<Catalog>({resetKey: s.active});
+  /** 保存済みの状態。取り消しでここまで戻ったら「未保存」の印を消す */
+  const baseline = useRef<Catalog | null>(null);
+  useEffect(() => {
+    if (!s.files.catalog.dirty) baseline.current = catalog;
+  }, [s.files.catalog.dirty, s.files.catalog.etag, catalog]);
+
+  const setCatalog = (next: Catalog, opt?: {dirty?: boolean}) => s.setFile('catalog', next, opt);
+  /** historyKey が同じ変更が続いている間（ドラッグ・文字入力）は、取り消し 1 手にまとまる */
+  const updateClip = (id: string, patch: (c: Clip) => Clip, historyKey?: string) => {
     if (!catalog) return;
+    history.push(catalog, historyKey);
     setCatalog({...catalog, clips: catalog.clips.map((c) => (c.id === id ? patch(c) : c))});
   };
-  const setTags = (id: string, patch: Partial<ClipTags>) =>
-    updateClip(id, (c) => ({...c, tags: {...(c.tags ?? defaultTags(c)), ...patch, source: 'user', taggedAt: new Date().toISOString()}}));
+  const setTags = (id: string, patch: Partial<ClipTags>, historyKey?: string) =>
+    updateClip(id, (c) => ({...c, tags: {...(c.tags ?? defaultTags(c)), ...patch, source: 'user', taggedAt: new Date().toISOString()}}), historyKey);
   const setUser = (id: string, patch: Partial<Clip['user']>) => updateClip(id, (c) => ({...c, user: {...c.user, ...patch}}));
+
+  const step = (dir: 'undo' | 'redo') => {
+    if (!catalog) return;
+    const snap = dir === 'undo' ? history.undo(catalog) : history.redo(catalog);
+    if (!snap) return;
+    setCatalog(snap, {dirty: snap !== baseline.current});
+  };
+  const undo = () => step('undo');
+  const redo = () => step('redo');
+
+  useHotkeys([
+    {key: 'z', ctrl: true, handler: undo},
+    {key: 'z', ctrl: true, shift: true, handler: redo},
+    {key: 'y', ctrl: true, handler: redo},
+    {key: 's', ctrl: true, inInputs: true, handler: () => void s.saveFile('catalog')},
+    // 切り出し枠の大小。選別モードと同じキーにする
+    {key: 'z', handler: () => setBigStage((v) => !v)},
+    // 選別モードは自前でキーを見ている（同じキーを二重に処理しない）
+  ], !triageIds);
 
   // alias コピーは元の src に寄せて数える
   const aliasMap = useMemo(() => new Map((cuts?.meta?.aliases ?? []).map((a) => [a.to, a.from])), [cuts]);
@@ -112,6 +143,12 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   };
 
   const currentTime = () => Math.round((videoRef.current?.currentTime ?? 0) * 100) / 100;
+
+  // 別のクリップに移ったら slug の下書きは捨てる（前のクリップ名のまま
+  // 「リネームして適用」を押せてしまい、別の素材に前の名前が付いていた）
+  useEffect(() => {
+    setSlugDraft('');
+  }, [selected]);
 
   const shown = useMemo(() => {
     const all = catalog?.clips ?? [];
@@ -209,9 +246,19 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
             軽量プレビュー生成
           </button>
           <span style={{flex: 1}} />
-          <button onClick={() => s.loadFile('catalog')}>読み直す</button>
-          <button className="primary" onClick={() => s.saveFile('catalog')} disabled={!s.files.catalog.dirty}>
-            catalog.json を保存
+          <span className="btns">
+            <button onClick={undo} disabled={!history.canUndo} title="直前の編集を取り消す（Ctrl+Z）">
+              ↶
+            </button>
+            <button onClick={redo} disabled={!history.canRedo} title="やり直す（Ctrl+Y）">
+              ↷
+            </button>
+          </span>
+          <button onClick={() => s.loadFile('catalog')} title="ディスクから読み直す（未保存の変更は捨てます）">
+            読み直す
+          </button>
+          <button className="primary" onClick={() => s.saveFile('catalog')} disabled={!s.files.catalog.dirty} title="編集した内容を書き込む（Ctrl+S）">
+            catalog.json を保存{s.files.catalog.dirty ? ' *' : ''}
           </button>
           {s.files.catalog.external && (
             <button className="warn" onClick={() => s.saveFile('catalog', true)}>
@@ -277,7 +324,9 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 Timeline で並べる →
               </button>
             </div>
-            <p className="hint">クリックすると右側で編集できます（← → で前後のクリップ）。★＝つかみに使いたい画、NG＝使わない画。並べるのは Timeline 画面の素材ビンから。</p>
+            <p className="hint">
+              クリックすると右側で編集できます（← → で前後のクリップ）。寄り・位置・使える区間は選別モードと同じように直せます。★＝つかみに使いたい画、NG＝使わない画。直したら <b>catalog.json を保存</b>（Ctrl+S）。取り消しは Ctrl+Z。並べるのは Timeline 画面の素材ビンから。
+            </p>
             {/* クラウドでは軽量プレビューが無いと映像が再生できない（選別モード・クリップ確認の両方） */}
             <PreviewReady />
             <div
@@ -341,15 +390,8 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 <h2>
                   {clip.id} {clip.original} → {clip.src.replace('uploads/', '')}
                 </h2>
-                {/* 9:16 の枠の中で「どこを、どれだけ寄って見せるか」を決める（比率は変わらない） */}
-                <CropBox
-                  key={clip.id}
-                  src={s.mediaBase ? `${s.mediaBase}/${clip.src}${mediaVersion(clip)}` : null}
-                  crop={clip.crop ?? DEFAULT_CROP}
-                  onChange={(crop) => updateClip(clip.id, (c) => ({...c, crop}))}
-                  probe={clip.probe}
-                  videoRef={videoRef}
-                />
+                {/* 切り出し（寄り・位置）と使える区間。選別モードと同じ部品 */}
+                <ClipEditor clip={clip} mediaBase={s.mediaBase} onUpdate={updateClip} videoRef={videoRef} big={bigStage} onBig={setBigStage} defaultLoop={false} />
                 <div className="strip">
                   {clip.thumbs.strip.map((p, i) => (
                     <img
@@ -387,9 +429,9 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                     並び順ヒント
                     <input type="number" value={clip.user.orderHint ?? ''} onChange={(e) => setUser(clip.id, {orderHint: e.target.value === '' ? null : Number(e.target.value)})} />
                   </label>
-                  <label style={{flex: 1}}>
+                  <label className="grow">
                     メモ
-                    <input value={clip.user.note ?? ''} onChange={(e) => setUser(clip.id, {note: e.target.value})} />
+                    <input value={clip.user.note ?? ''} onChange={(e) => updateClip(clip.id, (c) => ({...c, user: {...c.user, note: e.target.value}}), `note:${clip.id}`)} />
                   </label>
                 </div>
 
@@ -470,49 +512,42 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                     </label>
                     <label>
                       被写体
-                      <input value={clip.tags.subject} onChange={(e) => setTags(clip.id, {subject: e.target.value})} />
+                      <input value={clip.tags.subject} onChange={(e) => setTags(clip.id, {subject: e.target.value}, `subject:${clip.id}`)} />
                     </label>
                     <label className="full">
                       内容（カタログの「内容」列）
-                      <input value={clip.tags.description} onChange={(e) => setTags(clip.id, {description: e.target.value})} />
+                      <input value={clip.tags.description} onChange={(e) => setTags(clip.id, {description: e.target.value}, `desc:${clip.id}`)} />
                     </label>
                   </div>
                 )}
 
-                <h3>使える区間（usableRanges）</h3>
-                {/* 帯を掴んで決める（選別モードと同じ操作）。数値での微調整は下の一覧で */}
-                <TrimBar
-                  inSec={rangeForBar(clip).inSec}
-                  outSec={rangeForBar(clip).outSec}
-                  durationSec={clip.probe.durationSec}
-                  fps={clip.probe.fps}
-                  strip={clip.thumbs.strip}
-                  mediaBase={s.mediaBase}
-                  usableRanges={clip.usableRanges}
-                  onChange={(r) => {
-                    updateClip(clip.id, (c) => withRange(c, r));
-                    if (videoRef.current) videoRef.current.currentTime = Math.max(0, Math.min(clip.probe.durationSec - 0.05, r.inSec));
-                  }}
-                />
+                <h3>使える区間（usableRanges）の一覧</h3>
+                {/* 帯を掴んで決めるのは上の編集欄。ここは数値での微調整と、2 つ目以降の区間を足す場所 */}
                 <div className="ranges">
                   {clip.usableRanges.map((r, i) => (
                     <div className="range" key={i}>
-                      <input type="number" step={0.05} value={r.inSec} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, inSec: Number(e.target.value)} : x))}))} />
+                      <label className="range-num">
+                        IN 秒
+                        <input type="number" step={0.05} value={r.inSec} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, inSec: Number(e.target.value)} : x))}), `range-in:${clip.id}:${i}`)} />
+                      </label>
                       <button className="small" onClick={() => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, inSec: currentTime()} : x))}))}>
                         IN=再生位置
                       </button>
-                      <input type="number" step={0.05} value={r.outSec} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, outSec: Number(e.target.value)} : x))}))} />
+                      <label className="range-num">
+                        OUT 秒
+                        <input type="number" step={0.05} value={r.outSec} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, outSec: Number(e.target.value)} : x))}), `range-out:${clip.id}:${i}`)} />
+                      </label>
                       <button className="small" onClick={() => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, outSec: currentTime()} : x))}))}>
                         OUT=再生位置
                       </button>
-                      <select value={r.label} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, label: e.target.value as typeof x.label} : x))}))}>
+                      <select className="range-label" value={r.label} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, label: e.target.value as typeof x.label} : x))}))} aria-label="区間の扱い">
                         <option value="best">best（見せ場）</option>
                         <option value="ok">ok</option>
                         <option value="motion-full">motion-full（一連動作）</option>
                         <option value="avoid">avoid（使わない）</option>
                       </select>
-                      <input placeholder="メモ" value={r.note ?? ''} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, note: e.target.value} : x))}))} />
-                      <button className="small danger" onClick={() => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.filter((_, k) => k !== i)}))}>
+                      <input className="range-note" placeholder="メモ" value={r.note ?? ''} onChange={(e) => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.map((x, k) => (k === i ? {...x, note: e.target.value} : x))}), `range-note:${clip.id}:${i}`)} />
+                      <button className="small danger" onClick={() => updateClip(clip.id, (c) => ({...c, usableRanges: c.usableRanges.filter((_, k) => k !== i)}))} aria-label="この区間を削除">
                         ×
                       </button>
                     </div>
@@ -525,7 +560,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
 
                 <h3>ファイル名（slug）</h3>
                 <div className="row">
-                  <input value={slugDraft || clip.slug} onChange={(e) => setSlugDraft(e.target.value)} placeholder={clip.slug} />
+                  <input className="grow" value={slugDraft || clip.slug} onChange={(e) => setSlugDraft(e.target.value)} placeholder={clip.slug} spellCheck={false} aria-label="ファイル名（slug）" />
                   <button className="small" onClick={applySlug} disabled={!slugDraft || slugDraft === clip.slug}>
                     リネームして適用
                   </button>
@@ -540,6 +575,12 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                   <button className={clip.user.hook ? 'primary' : ''} onClick={() => setUser(clip.id, {hook: !clip.user.hook})}>
                     ★ フック候補
                   </button>
+                  <button onClick={undo} disabled={!history.canUndo}>
+                    ↶ 元に戻す
+                  </button>
+                  <button className="primary" onClick={() => void s.saveFile('catalog')} disabled={!s.files.catalog.dirty}>
+                    保存{s.files.catalog.dirty ? ' *' : ''}
+                  </button>
                   <button onClick={() => moveSel(1)} disabled={shown.findIndex((c) => c.id === clip.id) >= shown.length - 1}>
                     次へ →
                   </button>
@@ -550,7 +591,17 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
         </div>
       )}
 
-      {triageClips && <TriageMode clips={triageClips} mediaBase={s.mediaBase} onDecide={(id, patch) => setUser(id, patch)} onUpdate={updateClip} onClose={() => setTriageIds(null)} />}
+      {triageClips && (
+        <TriageMode
+          clips={triageClips}
+          mediaBase={s.mediaBase}
+          onDecide={(id, patch) => setUser(id, patch)}
+          onUpdate={updateClip}
+          onUndo={undo}
+          canUndo={history.canUndo}
+          onClose={() => setTriageIds(null)}
+        />
+      )}
     </div>
   );
 };

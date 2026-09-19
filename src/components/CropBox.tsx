@@ -18,6 +18,9 @@ type Props = {
   /** 再生位置を外から触りたいとき（区間だけ再生など） */
   videoRef?: React.RefObject<HTMLVideoElement>;
   onError?: () => void;
+  /** 枠を大きくして細かい位置合わせをする。渡したときだけ切り替えボタンを出す */
+  big?: boolean;
+  onBig?: (v: boolean) => void;
   children?: React.ReactNode;
 };
 
@@ -27,7 +30,7 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 /** 2 本指の間の距離（ピンチの判定に使う） */
 const spread = (a: {clientX: number; clientY: number}, b: {clientX: number; clientY: number}) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 
-export const CropBox: React.FC<Props> = ({src, crop, onChange, probe, videoRef, onError, children}) => {
+export const CropBox: React.FC<Props> = ({src, crop, onChange, probe, videoRef, onError, big, onBig, children}) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const localVideo = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
   const video = videoRef ?? localVideo;
@@ -131,6 +134,11 @@ export const CropBox: React.FC<Props> = ({src, crop, onChange, probe, videoRef, 
         <button className="small" onClick={() => onChange({...DEFAULT_CROP})} disabled={atDefault} title="そのまま（中央・等倍）に戻す">
           切り出しを戻す
         </button>
+        {onBig && (
+          <button className="small" onClick={() => onBig(!big)} title="編集する枠を大きくする（Z）。切り出しは枠の中でピンチ・ドラッグ">
+            {big ? '枠を小さく' : '枠を大きく'}
+          </button>
+        )}
         {zoom > 1 ? (
           <span className="hint">
             画をドラッグ（2 本指でピンチ）して位置を決める

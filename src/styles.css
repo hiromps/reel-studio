@@ -172,6 +172,36 @@ label > textarea {
   gap: 10px;
   align-items: flex-end;
 }
+/* 横並びの部品は、行に収まらないときは縮む（画面外へはみ出させない）。
+   min-width の既定（auto＝中身の最大幅）のままだと、長い option を持つ select ひとつで
+   カードごと横にはみ出す */
+.row > *,
+.form > * {
+  min-width: 0;
+}
+/* 入力欄は自分の列の幅に収める。数値だけは狭いままにする（秒・点数） */
+.row > label > input:not([type='checkbox']):not([type='radio']),
+.row > label > select,
+.form > label > input:not([type='checkbox']):not([type='radio']),
+.form > label > select {
+  width: 100%;
+  min-width: 0;
+}
+.row > label > input[type='number'],
+.form > label > input[type='number'] {
+  width: 84px;
+}
+select {
+  max-width: 100%;
+}
+/* チェックボックスは文字の横に置く（label の既定は縦積みなので、そのままだと
+   文字の下にぽつんと箱が出る）。:where() で詳細度 0 にしてあるので、
+   独自のクラスを持つラベル（.sb-inline / .build-step 等）の指定を邪魔しない */
+label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
 .hint {
   color: var(--muted);
   font-size: 12px;
@@ -320,12 +350,10 @@ label > textarea {
   background: #4a2f1f;
   color: var(--warn);
 }
-.detail video {
-  width: 100%;
-  max-height: 360px;
-  background: #000;
-  border-radius: 4px;
-}
+/* 詳細欄（.detail）の video に max-height を掛けないこと。高さは切り出し枠
+   （.cropbox-stage）が 9:16 から決めているので、二重に掛けると枠の中で映像だけが
+   縮んで下に黒帯が出る。大きさを変えたいときは --crop-h（.clip-editor）を動かす */
+
 .strip {
   display: flex;
   gap: 4px;
@@ -346,11 +374,26 @@ label > textarea {
 .form .full {
   grid-column: 1 / -1;
 }
+/* 使える区間の一覧（数値での微調整）。狭い画面では 1 区間＝1 枠にして折り返す */
 .ranges .range {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  align-items: center;
-  margin: 2px 0;
+  align-items: flex-end;
+  margin: 4px 0;
+}
+.ranges .range > * {
+  min-width: 0;
+}
+.ranges .range-num > input {
+  width: 84px;
+}
+.ranges .range-label {
+  flex: 0 1 auto;
+}
+.ranges .range-note {
+  flex: 1 1 120px;
+  min-width: 0;
 }
 
 /* プレビュー（Remotion Player）の待ち・エラー表示 */
@@ -736,6 +779,22 @@ pre.md {
   gap: 4px;
   flex-wrap: wrap;
 }
+/* Brief のファクト（key: value）。狭い画面でもキーと値は必ず横に並べる */
+.fact-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.fact-row .fact-key {
+  flex: 0 1 108px;
+  min-width: 0;
+  color: var(--muted);
+}
+.fact-row .fact-value {
+  flex: 1 1 120px;
+  min-width: 0;
+}
 .chip {
   padding: 2px 8px;
   border-radius: 10px;
@@ -1003,8 +1062,28 @@ pre.md {
   gap: 10px;
   align-items: stretch;
 }
-.triage-stage {
+
+/* ── 素材 1 本の編集（切り出し＋使える区間）──
+   選別モードと素材ページの詳細欄で共通。どちらで直しても見た目と操作が同じになるように */
+/* 枠の高さは --crop-h。幅はそこから 9:16 で決まる（.cropbox-stage）。
+   「どこで使っているか」ではなく「大きくしているか」だけで決める
+   —— 場所ごとに上書きすると .big が効かなくなる（詳細度で負ける）ため */
+.clip-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  --crop-h: 44vh;
+}
+/* 「枠を大きく」：切り出しの枠を広げて、細かい位置合わせをしやすくする（区間の帯は畳む） */
+.clip-editor.big {
+  --crop-h: 74vh;
+}
+.clip-stage {
   position: relative;
+}
+.clip-editor.big .clip-trim {
+  display: none;
 }
 
 /* ── 画面内の切り出し（アスペクト比は変えない） ──
@@ -1077,6 +1156,8 @@ pre.md {
 }
 .cropbox-zoom {
   display: flex;
+  /* label の既定は縦積み。ここは「寄り [====] 1.00×」と横に並べたいので上書きする */
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   font-size: 12px;
@@ -1093,25 +1174,31 @@ pre.md {
   margin-left: 6px;
 }
 
-/* 選別しながら素材を編集する部分（使える区間・最小限のタグ） */
-.triage-trim {
+/* 使える区間（トリミング）の帯と、その下の操作列 */
+.clip-trim {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
-.triage-trim-row {
+.clip-trim-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
-.triage-loop {
+.clip-trim-row > select {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.clip-loop {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 4px;
   white-space: nowrap;
 }
-.triage-loop input {
+.clip-loop input {
   margin: 0;
 }
 .triage-tags {
@@ -1138,15 +1225,11 @@ pre.md {
   align-items: center;
 }
 
-/* 「枠を大きく」：切り出しの枠を広げて、細かい位置合わせをしやすくする。
-   区間の帯とタグは畳む（判定ボタンは残す） */
-.modal.triage.zoom .triage-stage {
-  --crop-h: 74vh;
-}
-.modal.triage.zoom .triage-trim,
-.modal.triage.zoom .triage-tags,
-.modal.triage.zoom .triage-meta,
-.modal.triage.zoom .triage-foot {
+/* 「枠を大きく」のとき、選別モードでは判定に必要な段だけ残して他を畳む
+   （枠そのものを広げるのは .clip-editor.big の側） */
+.modal.triage.big .triage-tags,
+.modal.triage.big .triage-meta,
+.modal.triage.big .triage-foot {
   display: none;
 }
 
@@ -2487,11 +2570,24 @@ a.btn-like:hover {
   .row {
     gap: 8px;
   }
-  /* 横並びの入力群は縦に積む（画面外に出さない） */
+  /* 横並びの入力群は縦に積む（画面外に出さない）。
+     ラベルで包まれていない裸の入力欄・選択欄も同じ扱いにする（幅が中途半端に残るため） */
   .row > label,
-  .row > .field {
+  .row > .field,
+  .row > input:not([type='checkbox']):not([type='radio']),
+  .row > select,
+  .row > textarea {
     flex: 1 1 100%;
     min-width: 0;
+  }
+  /* チェックボックスは行の右端へ寄せる（説明文が長いので、押す場所を決めておく） */
+  .row > label:has(> input[type='checkbox']),
+  .form > label:has(> input[type='checkbox']) {
+    align-items: flex-start;
+  }
+  .row > label:has(> input[type='checkbox']) > span,
+  .form > label:has(> input[type='checkbox']) > span {
+    flex: 1;
   }
 
   .nextbar {
@@ -2640,28 +2736,46 @@ a.btn-like:hover {
     width: 100%;
     max-height: 100%;
   }
+  /* 見出しの右側に操作ボタンが並ぶ。狭い画面では 2 段に折り返す（押せなくなるより良い） */
+  .modal-head {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+  }
+  .modal-body {
+    padding: 10px 10px 16px;
+  }
 
-  /* ── 選別モード ── */
+  /* ── 素材の編集（選別モード・素材ページ共通）── */
   /* 画面が狭いので、切り出し枠を控えめにして「区間・タグ・判定」が同時に見える高さにする */
-  .triage-stage {
+  .clip-editor {
     --crop-h: 34vh;
   }
-  .modal.triage.zoom .triage-stage {
+  .clip-editor.big {
     --crop-h: 66vh;
   }
+  .cropbox-zoom {
+    flex: 1 1 100%;
+  }
   .cropbox-zoom input[type='range'] {
-    width: 120px;
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  /* 区間の操作列は、ボタンが指で押せる大きさのまま折り返す */
+  .clip-trim-row > button.small {
+    flex: 1 1 auto;
   }
   .triage-tags label.grow {
     flex: 1 1 100%;
   }
-  /* 判定ボタンはいつでも押せるよう、本文の下端に貼り付ける */
+  /* 判定ボタンはいつでも押せるよう、本文の下端に貼り付ける
+     （左右の負のマージンは .modal-body の内側余白と同じ値にする） */
   .triage-actions {
     position: sticky;
     bottom: 0;
     z-index: 2;
-    margin: 0 -14px;
-    padding: 8px 14px;
+    margin: 0 -10px;
+    padding: 8px 10px;
     padding-bottom: calc(8px + env(safe-area-inset-bottom));
     background: var(--panel);
     border-top: 1px solid var(--line);
@@ -2760,14 +2874,11 @@ a.btn-like:hover {
     margin: 6px 0 4px;
     word-break: break-all;
   }
-  /* 縦 9:16 の素材は放っておくと画面を埋めてしまう。操作ボタンが入る高さに抑える */
-  .detail video {
-    max-height: 38vh;
-  }
-  /* よく押すものはシートの下端に固定して、中をスクロールしなくても届くようにする */
+  /* よく押すものはシートの下端に固定して、中をスクロールしなくても届くようにする。
+     ボタンの数は増えることがあるので、入るだけ並べて折り返す */
   .detail-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr auto;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 8px;
     position: sticky;
     bottom: 0;
@@ -2780,6 +2891,21 @@ a.btn-like:hover {
   }
   .detail-actions button {
     min-height: 44px;
+    padding: 5px 4px;
+  }
+
+  /* 区間の一覧は 1 区間＝1 枠にまとめる（どの数値がどの区間のものか分かるように） */
+  .ranges .range {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+  }
+  .ranges .range > button.small {
+    flex: 1 1 auto;
+  }
+  .ranges .range-label {
+    flex: 1 1 100%;
   }
 }
 
@@ -2824,10 +2950,6 @@ a.btn-like:hover {
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  /* 追従する枠の中では、動画が高さを食いすぎるとタグ編集が見えなくなる */
-  .materials > .card.detail video {
-    max-height: 42vh;
-  }
 }
 
 /* クラウド版：スマホで映像が見られるか（軽量プレビューの作成状況）の知らせ */
@@ -2859,11 +2981,8 @@ a.btn-like:hover {
   color: var(--accent);
 }
 
-/* 選別モードで映像が読めなかったとき（クラウドでは軽量プレビュー未作成が主因） */
-.triage-stage {
-  position: relative;
-}
-.triage-noplay {
+/* 映像が読めなかったとき（クラウドでは軽量プレビュー未作成が主因） */
+.clip-noplay {
   position: absolute;
   inset: 0;
   display: flex;
@@ -2878,7 +2997,7 @@ a.btn-like:hover {
   font-size: 12px;
   line-height: 1.6;
 }
-.triage-noplay b {
+.clip-noplay b {
   color: var(--warn);
 }
 
