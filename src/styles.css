@@ -2507,6 +2507,16 @@ a.btn-like:hover {
     max-width: none !important;
   }
 
+  /* 固定幅の列を持つレイアウトは、そのままだと横にはみ出す（画面幅より広くなる） */
+  /* Render のジョブ一覧＋ログ（320px + 1fr） */
+  .jobs {
+    grid-template-columns: 1fr;
+  }
+  /* 設定・企画の入力欄（2 列 → 1 列）。指で押す幅を確保する */
+  .form {
+    grid-template-columns: 1fr;
+  }
+
   /* ── 素材（Materials）の詳細パネル ── */
   /* PC と同じ 2 カラム（1fr 420px）のままだと、詳細が行の先頭に居座って
      一覧の下の方を見ているときに「上へ戻らないとボタンが押せない」状態になる。
@@ -2629,6 +2639,24 @@ a.btn-like:hover {
   .detail-bar,
   .detail-actions {
     display: none;
+  }
+  /* 右カラム（プレビューとタグ編集）を画面に追従させる。
+     一覧は素材の本数ぶん縦に長いので、追従しないと下の方のクリップを選ぶたびに
+     上へ戻らないとプレビューもボタンも見えなかった。
+     - align-self: start … グリッドの行いっぱいに伸びると sticky が動けない
+     - top … 上部バー（sticky）の裏に隠れない位置で止める
+     - max-height + overflow … 中身が画面より高いときはパネルの中だけスクロールさせる */
+  .materials > .card.detail {
+    position: sticky;
+    align-self: start;
+    top: calc(var(--topbar-h, 52px) + 8px);
+    max-height: calc(100vh - var(--topbar-h, 52px) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* 追従する枠の中では、動画が高さを食いすぎるとタグ編集が見えなくなる */
+  .materials > .card.detail video {
+    max-height: 42vh;
   }
 }
 
