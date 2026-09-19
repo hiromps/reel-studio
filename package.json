@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "server": "tsx server/index.ts",
     "worker": "tsx worker/index.ts",
+    "cloud:setup": "node scripts/cloud-setup.mjs",
     "dev": "vite",
     "build": "node scripts/prepare-public.mjs && node scripts/build-api.mjs && vite build",
     "start": "node scripts/launch.mjs",
