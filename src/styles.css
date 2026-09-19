@@ -176,7 +176,8 @@ label > textarea {
    min-width の既定（auto＝中身の最大幅）のままだと、長い option を持つ select ひとつで
    カードごと横にはみ出す */
 .row > *,
-.form > * {
+.form > *,
+.summary > * {
   min-width: 0;
 }
 /* 入力欄は自分の列の幅に収める。数値だけは狭いままにする（秒・点数） */
@@ -2114,6 +2115,10 @@ a.btn-like:hover {
   align-items: center;
   margin-bottom: 6px;
 }
+/* 後ろの覆いは狭い画面でだけ使う（広い画面はボタン直下の吹き出しなので要らない） */
+.ai-backdrop {
+  display: none;
+}
 .ai-items {
   display: flex;
   flex-direction: column;
@@ -2732,25 +2737,35 @@ a.btn-like:hover {
 
   /* ── AI ▾ の吹き出し ──
      ボタンを基準に左端を合わせる作りなので、折り返したツールバーの右寄りに
-     ボタンが来ると画面の外へ出てしまう。狭い画面では**画面下のシート**にして、
-     ボタンの位置と切り離す（素材の詳細・インスペクタと同じ出かた） */
+     ボタンが来ると画面の外へ出てしまう。狭い画面では**画面中央のダイアログ**にして、
+     ボタンの位置と切り離す。
+     下端に貼り付ける形（シート）にすると、項目がホームバーの際まで下がって
+     押しにくく、下のほうの説明文も読み飛ばされる。中央なら指も届く */
+  .ai-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 47;
+    background: rgba(0, 0, 0, 0.55);
+  }
   .ai-pop {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: auto;
+    left: 8px;
+    right: 8px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
     width: auto;
     max-width: none;
-    /* 下部ナビ（40）・詳細シート（46）より手前 */
+    /* 下部ナビ（40）・詳細シート（46）・覆い（47）より手前 */
     z-index: 48;
-    max-height: 80vh;
+    /* 画面に入りきらないぶんは中でスクロールする。dvh はアドレスバーの伸び縮みを考慮した高さ */
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    border-radius: 12px 12px 0 0;
-    border-bottom: none;
-    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
   }
   /* 中をスクロールしても「閉じる」に届くようにする */
   .ai-pop-head {
