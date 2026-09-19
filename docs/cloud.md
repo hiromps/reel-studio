@@ -93,18 +93,16 @@ npx vercel deploy --prod
 
 ### 4. PC 側（ワーカー）
 
-`~/.reel-studio/settings.json` の `cloud` に入れるか、環境変数で渡します。
-
-```json
-{
-  "version": 1,
-  "cloud": {"url": "https://<あなたのアプリ>.vercel.app", "token": "<WORKER_TOKEN と同じ値>"}
-}
-```
+GUI の Settings「クラウド接続」で入れるか、コマンドで入れます（どちらも
+`~/.reel-studio/settings.json` の `cloud` に入ります。他の設定には触りません）。
 
 ```bash
+node scripts/set-cloud.mjs https://<あなたのアプリ>.vercel.app <WORKER_TOKEN と同じ値>
 npm run worker
 ```
+
+繋ぐのを一時的にやめるなら `node scripts/set-cloud.mjs --off`。
+`reel settings show` の最終行に、いまの接続先が出ます。
 
 起動すると `ffmpeg=ok claude=ok 案件=N 件` と出て、クラウドに繋がります。
 画面の `/api/config` の `worker.online` が `true` になれば通っています。
@@ -113,11 +111,10 @@ npm run worker
 
 #### Windows で常駐させる
 
-タスクスケジューラで「ログオン時に起動」にするのが簡単です。
+タスクスケジューラで「ログオン時に起動」にするのが簡単です（コマンドプロンプトで 1 行）。
 
-```powershell
-schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED ^
-  /TR "cmd /c cd /d C:\path\to\reel-studio && npm run worker" /F
+```bat
+schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c cd /d C:\path\to\reel-studio && npm run worker"
 ```
 
 スリープすると止まります（ジョブは消えず、復帰後に続きます）。レンダー中に寝ないよう、
