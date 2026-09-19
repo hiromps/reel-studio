@@ -84,6 +84,16 @@ describe('配置（秒 → px）', () => {
     expect(fitPxPerSec(9, 1016)).toBe(100); // (1016-16) / (9 + 余白 1)
     expect(fitPxPerSec(0, 500)).toBe(PX_PER_SEC_MAX);
   });
+
+  it('いちばん長い型（F6 = 50 秒）が狭い端末でも全体表示できる', () => {
+    // 320px 幅のスマホで、段ラベルとカードの余白を引いたトラック幅はおよそ 250px。
+    // 下限が高すぎると「全体」を押してもピンチで縮めても画面に収まらない
+    const NARROW_TRACK_PX = 250;
+    const LONGEST_FORMAT_SEC = 50;
+    expect(LONGEST_FORMAT_SEC * PX_PER_SEC_MIN).toBeLessThanOrEqual(NARROW_TRACK_PX);
+    // 全体表示の計算そのものが下限で頭打ちになっていないこと
+    expect(fitPxPerSec(LONGEST_FORMAT_SEC, NARROW_TRACK_PX)).toBeGreaterThan(PX_PER_SEC_MIN);
+  });
 });
 
 describe('挿入位置とフレーム', () => {

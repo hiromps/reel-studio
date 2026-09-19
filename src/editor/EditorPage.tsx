@@ -457,7 +457,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             {narration ? ` / ナレーション ${narration.segments.length}` : ''}
             {narration?.sfx?.length ? ` / 効果音 ${narration.sfx.length}` : ''}
           </span>
-          <span className="hint tl-touch-hint">2 本指でつまむ＝拡大・横移動</span>
+          <span className="hint tl-touch-hint">2 本指でつまむ＝拡大・縮小（広げると寄り、狭めると全体）</span>
           <span style={{flex: 1}} />
           <label className="sb-inline tl-zoom-slider" title="拡大率（Ctrl+ホイールでも）">
             <span>拡大</span>

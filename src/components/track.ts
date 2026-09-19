@@ -6,8 +6,16 @@ import {stripStepSec} from '@shared/strip';
 import {MIN_CUT_SEC} from './trim';
 import {reorderBlock} from './reorder';
 
-/** 拡大率（1 秒あたりの px）の範囲。狭すぎると 1 秒カットが掴めず、広すぎると 30 秒が横に長すぎる */
-export const PX_PER_SEC_MIN = 24;
+/**
+ * 拡大率（1 秒あたりの px）の範囲。
+ *
+ * 下限は「**いちばん狭い画面でも全体が入る**」で決める。掴みやすさで決めてはいけない
+ * —— 以前は 24 にしていたが、それだとスマホ（トラック幅およそ 310px）では 13 秒ぶんしか
+ * 映らず、45 秒の動画は画面 3.5 枚分になって「全体を見る」が一生できなかった。
+ * 上限の長い型（F6 = 50 秒）が 320px 幅の端末にも収まる値にしてある。
+ * 掴みにくさは layoutBlocks の最低幅（2px）と、寄って作業することで吸収する。
+ */
+export const PX_PER_SEC_MIN = 4;
 export const PX_PER_SEC_MAX = 400;
 export const PX_PER_SEC_DEFAULT = 90;
 
