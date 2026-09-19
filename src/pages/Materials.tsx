@@ -11,6 +11,8 @@ import {TriageMode} from '../components/TriageMode';
 import {MosaicCard, MosaicClipSection, mediaVersion, useMosaicForm} from '../components/MosaicPanel';
 import {UploadMaterials} from '../components/UploadMaterials';
 import {PreviewReady} from '../components/PreviewReady';
+import {TrimBar} from '../components/TrimBar';
+import {rangeForBar, withRange} from '../components/triage';
 import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
@@ -468,6 +470,20 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 )}
 
                 <h3>使える区間（usableRanges）</h3>
+                {/* 帯を掴んで決める（選別モードと同じ操作）。数値での微調整は下の一覧で */}
+                <TrimBar
+                  inSec={rangeForBar(clip).inSec}
+                  outSec={rangeForBar(clip).outSec}
+                  durationSec={clip.probe.durationSec}
+                  fps={clip.probe.fps}
+                  strip={clip.thumbs.strip}
+                  mediaBase={s.mediaBase}
+                  usableRanges={clip.usableRanges}
+                  onChange={(r) => {
+                    updateClip(clip.id, (c) => withRange(c, r));
+                    if (videoRef.current) videoRef.current.currentTime = Math.max(0, Math.min(clip.probe.durationSec - 0.05, r.inSec));
+                  }}
+                />
                 <div className="ranges">
                   {clip.usableRanges.map((r, i) => (
                     <div className="range" key={i}>
@@ -524,7 +540,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
         </div>
       )}
 
-      {triageClips && <TriageMode clips={triageClips} mediaBase={s.mediaBase} onDecide={(id, patch) => setUser(id, patch)} onClose={() => setTriageIds(null)} />}
+      {triageClips && <TriageMode clips={triageClips} mediaBase={s.mediaBase} onDecide={(id, patch) => setUser(id, patch)} onUpdate={updateClip} onClose={() => setTriageIds(null)} />}
     </div>
   );
 };

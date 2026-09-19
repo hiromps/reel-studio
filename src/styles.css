@@ -1010,12 +1010,74 @@ pre.md {
 }
 .triage-stage video {
   width: 100%;
-  max-height: 60vh;
+  /* 下に「使える区間」の帯とタグと判定ボタンが入るので、その分は空けておく。
+     細部を見たいときは「拡大」（Z）で 78vh まで広げる */
+  max-height: 44vh;
   display: block;
 }
 .triage-meta .badge {
   margin-left: 6px;
 }
+
+/* 選別しながら素材を編集する部分（使える区間・最小限のタグ） */
+.triage-trim {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.triage-trim-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.triage-loop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.triage-loop input {
+  margin: 0;
+}
+.triage-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+.triage-tags label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.triage-tags label.grow {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.triage-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+/* 拡大：動画だけを大きくして、編集用の帯とタグは畳む（細部の確認に使う） */
+.modal.triage.zoom {
+  width: min(1100px, 100%);
+}
+.modal.triage.zoom .triage-stage video {
+  max-height: 78vh;
+}
+.modal.triage.zoom .triage-trim,
+.modal.triage.zoom .triage-tags,
+.modal.triage.zoom .triage-meta,
+.modal.triage.zoom .triage-foot {
+  display: none;
+}
+
 .triage-actions {
   display: flex;
   gap: 8px;
@@ -2496,9 +2558,42 @@ a.btn-like:hover {
   }
 
   /* ヘルプ（モーダル）とツアーの吹き出しは画面いっぱいに */
+  .modal-root {
+    padding: 8px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    align-items: stretch;
+  }
   .modal {
     width: 100%;
-    max-height: 92vh;
+    max-height: 100%;
+  }
+
+  /* ── 選別モード ── */
+  /* 画面が狭いので、動画を控えめにして「区間・タグ・判定」が同時に見える高さにする */
+  .triage-stage video {
+    max-height: 32vh;
+  }
+  .modal.triage.zoom .triage-stage video {
+    max-height: 72vh;
+  }
+  .triage-tags label.grow {
+    flex: 1 1 100%;
+  }
+  /* 判定ボタンはいつでも押せるよう、本文の下端に貼り付ける */
+  .triage-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 -14px;
+    padding: 8px 14px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+  /* キーボードの説明はスマホでは意味がないので場所を譲る */
+  .triage-keys {
+    display: none;
   }
   .tour-card {
     left: 8px !important;
