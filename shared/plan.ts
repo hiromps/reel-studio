@@ -5,6 +5,7 @@ import type {Brief, SavePriority} from './schema/brief';
 import type {FormatSpec, SegmentRules} from './schema/format-spec';
 import {isDefaultCrop, type AliasOp, type Cut, type Orientation, type ReelData, type Slot, type SlotRole, type TelopGroupMeta, type TextStatus} from './schema/cuts';
 import {FORMAT_SPECS} from './format-specs';
+import {applyAliasNames} from './alias';
 import {getPersona, type Persona} from './personas';
 import {cutDurationSec, snapSec, round3} from './timeline';
 import {minDisplaySec} from './telop-text';
@@ -796,42 +797,6 @@ const buildGroups = (ctx: Ctx, asg: Assignment[], brief: Brief): GroupDraft[] =>
     });
   }
   return groups;
-};
-
-// ───────────────────────── alias ─────────────────────────
-
-const aliasName = (src: string, blockOrdinal: number): string => {
-  const letter = String.fromCharCode('a'.charCodeAt(0) + blockOrdinal); // 2 回目 → b
-  const m = /^(.*\/)?(\d+)_([^/]+)\.([^./]+)$/.exec(src);
-  if (m) return `${m[1] ?? ''}${m[2]}${letter}_${m[3]}-seg${blockOrdinal + 1}.${m[4]}`;
-  const m2 = /^(.*)\.([^./]+)$/.exec(src);
-  if (m2) return `${m2[1]}-seg${blockOrdinal + 1}.${m2[2]}`;
-  return `${src}-seg${blockOrdinal + 1}`;
-};
-
-export const applyAliasNames = (cuts: Cut[]): AliasOp[] => {
-  const ops: AliasOp[] = [];
-  const blocks = new Map<string, number>(); // src → これまでのブロック数
-  let prevSrc: string | null = null;
-  let currentAlias: string | null = null;
-  for (const c of cuts) {
-    const src = c.src;
-    if (src === prevSrc) {
-      if (currentAlias) c.src = currentAlias;
-      continue;
-    }
-    prevSrc = src;
-    const k = blocks.get(src) ?? 0;
-    blocks.set(src, k + 1);
-    if (k === 0) {
-      currentAlias = null;
-      continue;
-    }
-    currentAlias = aliasName(src, k);
-    ops.push({from: src, to: currentAlias, applied: false});
-    c.src = currentAlias;
-  }
-  return ops;
 };
 
 // ───────────────────────── 出力 ─────────────────────────

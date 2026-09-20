@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import path from 'node:path';
-import {planCuts, PlanError, applyAliasNames} from '@shared/plan';
+import {planCuts, PlanError} from '@shared/plan';
+import {applyAliasNames} from '@shared/alias';
 import {validateCuts, formatValidation} from '@shared/validate';
 import {FORMAT_SPECS} from '@shared/format-specs';
 import {TEST_PERSONAS} from './helpers';

@@ -365,6 +365,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     (iss: Issue) => {
       if (!cuts || iss.cutIndex === undefined || !iss.fix) return;
       const f = iss.fix;
+      if (f.type === 'alias') return; // 実ファイルのコピーが要るので画面だけでは直せない（ValidationPanel が aliases ジョブに回す）
       let next: ReelData = {
         ...cuts,
         cuts: cuts.cuts.map((c, k) => {

@@ -1,6 +1,7 @@
 // 検証パネル：cuts の E/W・構成（並び順）・ナレーション・効果音の指摘を 1 か所に。行をクリックでその場面へ。
 import React, {useState} from 'react';
 import {IssueList, type IssueRow} from '../components/IssueList';
+import {useAliasFix} from '../components/AliasFix';
 import type {EditorModel} from './useEditorModel';
 import {usePref} from '../hooks/usePref';
 
@@ -8,6 +9,8 @@ type Tab = 'cuts' | 'order' | 'narr' | 'sfx';
 
 export const ValidationPanel: React.FC<{m: EditorModel; onSeekCut: (i: number) => void; onSeekSec: (sec: number) => void}> = ({m, onSeekCut, onSeekSec}) => {
   const {validation, orderCheck, narrIssues, sfxIssues, applyFix, fixOverlaps, s} = m;
+  // 別名コピー（SAME_SRC_NONCONSECUTIVE）は実ファイルのコピーを伴うので、その場の書き換えではなく PC のジョブに任せる
+  const aliasFix = useAliasFix();
   const [open, setOpen] = usePref('reel-studio.editor.validation', true);
   const [tab, setTab] = useState<Tab>('cuts');
   const e = validation?.errors.length ?? 0;
@@ -24,7 +27,11 @@ export const ValidationPanel: React.FC<{m: EditorModel; onSeekCut: (i: number) =
     tag: iss.cutId ? `[${iss.cutId}]` : undefined,
     message: iss.message,
     onClick: iss.cutIndex !== undefined ? () => onSeekCut(iss.cutIndex!) : undefined,
-    fix: iss.fix ? {label: '適用', onClick: () => applyFix(iss)} : undefined,
+    fix: !iss.fix
+      ? undefined
+      : iss.fix.type === 'alias'
+        ? {label: aliasFix.running ? '最適化中…' : 'ファイル名を最適化', onClick: () => void aliasFix.run()}
+        : {label: '適用', onClick: () => applyFix(iss)},
   }));
   const orderRows: IssueRow[] = (orderCheck?.findings ?? []).map((f) => ({
     severity: f.severity,

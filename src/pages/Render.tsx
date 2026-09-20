@@ -10,6 +10,7 @@ import {BuildCard} from '../components/BuildCard';
 import {FinishedVideo} from '../components/FinishedVideo';
 import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {IssueList} from '../components/IssueList';
+import {AliasFixNotice} from '../components/AliasFix';
 import {AI_JOB_LABEL, AiJobStatus} from '../components/AiJobStatus';
 import type {Job} from '../api';
 import type {Narration, NarrationSegment} from '@shared/schema';
@@ -260,6 +261,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
             してからレンダーしてください。
           </p>
         )}
+        <AliasFixNotice />
         <div className="row">
           <button className="primary" onClick={() => s.addJob('draft', opts())} disabled={!canRender}>
             ドラフト（0.25 倍・crf30）
@@ -299,6 +301,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
                 <span>{e}</span>
               </div>
             ))}
+            {preflightErrors.some((e) => e.includes('SAME_SRC_NONCONSECUTIVE')) && <div className="hint">SAME_SRC_NONCONSECUTIVE は承知で通すより、上の「ファイル名を最適化」で直したほうが確実です</div>}
             <div className="row" style={{marginTop: 6}}>
               <button className="warn" onClick={() => forceRender('render')} disabled={!canRender}>
                 指摘を承知で本番レンダー

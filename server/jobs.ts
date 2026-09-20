@@ -12,6 +12,7 @@ import {ffprobe} from '../core/ffprobe';
 import {renderProject, renderStill} from '../core/render';
 import {npmInstall, resolveProjectDir, syncEngine, readCuts, writeCuts} from '../core/project';
 import {applyAliases} from '../core/alias';
+import {realignAliases} from '../shared/alias';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
@@ -492,9 +493,13 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       case 'aliases': {
         const cuts = readCuts(dir);
-        const done = applyAliases(dir, cuts);
-        writeCuts(dir, cuts);
-        return {applied: done.length};
+        // realign: 同じ素材を離れた位置から読み直しているカットを、先に別名へ振り直す
+        // （画面の「ファイル名を最適化」がこれ。レンダーの preflight が E で止まるのを解消する）
+        const re = p.realign ? realignAliases(cuts) : {data: cuts, renames: [] as {cutId?: string; cutIndex: number; from: string; to: string}[]};
+        for (const r of re.renames) onLine(`${r.cutId ?? `#${r.cutIndex + 1}`}: ${r.from} → ${r.to}`);
+        const done = applyAliases(dir, re.data);
+        writeCuts(dir, re.data);
+        return {applied: done.length, renamed: re.renames.length};
       }
       case 'mix': {
         // scripts/mix-narration.js（hiro スキル同梱）。足りないものは core/mix.ts が日本語で止める

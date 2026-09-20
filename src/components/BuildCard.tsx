@@ -6,6 +6,7 @@ import {useStudio} from '../state/store';
 import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {AiJobStatus} from './AiJobStatus';
 import {IssueList} from './IssueList';
+import {AliasFixNotice} from './AliasFix';
 import {buildSelectionIssues, defaultBuildSelection, orderBuildSteps, type BuildFacts, type BuildStep, type BuildStepId} from '@shared/build';
 
 type PlanRes = {facts: BuildFacts; steps: BuildStep[]};
@@ -113,6 +114,7 @@ export const BuildCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) =
           </span>
         </div>
       )}
+      <AliasFixNotice />
       <div className="row" style={{marginTop: 8}}>
         <button className="primary" onClick={() => void run()} disabled={!!blockedBy} title={blockedBy ?? `${willRun.length} 工程を順に実行します`}>
           {job ? '実行中…' : allDone && willRun.length <= 1 ? '納品する' : `仕上げを実行（${willRun.length} 工程）`}
