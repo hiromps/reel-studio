@@ -176,6 +176,10 @@ async function main() {
     return;
   }
 
+  // クラウド接続を設定してあれば、スマホ用のワーカーも一緒に動かす（この窓を閉じるまで繋がる）。
+  // 未設定・「繋がない」・すでに別のワーカーが動いているときは、worker 側が一言出して終わる。
+  startChild('ワーカー', [tsx, path.join(root, 'worker', 'index.ts'), '--auto']);
+
   if (dev) {
     log(`Vite 開発サーバーを起動しています（ポート ${VITE_PORT}）`);
     startChild('Vite', [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(VITE_PORT), '--strictPort']);

@@ -470,7 +470,7 @@ const CloudCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
   const submit = () =>
     void save(
       {cloud: {url: form.url.trim(), ...(form.token.trim() ? {token: form.token.trim()} : {}), enabled: form.enabled}},
-      'クラウド接続を保存しました（ワーカーを再起動してください: npm run worker）',
+      'クラウド接続を保存しました（Reel Studio を起動し直すと繋がります）',
     ).then((ok) => ok && setForm({...form, token: ''}));
 
   // クラウド側の画面（PWA）では PC のワーカー設定は触れない
@@ -487,7 +487,7 @@ const CloudCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
               {s.config.worker.host ? `（${s.config.worker.host}）` : ''} です。
             </>
           ) : (
-            ' いま PC は繋がっていません（PC で npm run worker を起動してください）。'
+            ' いま PC は繋がっていません（PC で Reel Studio を起動してください）。'
           )}
           {' '}接続先の設定は PC の Reel Studio で行います。
         </p>
@@ -498,7 +498,8 @@ const CloudCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
     <section className="card">
       <h2>クラウド接続（スマホから使う・任意）</h2>
       <p className="hint">
-        Vercel に置いた画面（PWA）からこの PC に仕事をさせるための設定です。入れたら <span className="mono">npm run worker</span> を起動してください。
+        Vercel に置いた画面（PWA）からこの PC に仕事をさせるための設定です。入れたあと Reel Studio を起動し直すと、
+        デスクトップのショートカットから立ち上げているあいだ、スマホからもこの PC が使えます（PC を閉じると切れます）。
         空ならローカル専用のまま動きます（詳細は docs/cloud.md）。
       </p>
       <div className="form">

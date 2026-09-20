@@ -48,4 +48,4 @@ console.log(`保存しました: ${file}`);
 console.log(`  url     ${cloud.url ?? '(未設定)'}`);
 console.log(`  token   ${mask(cloud.token)}`);
 console.log(`  enabled ${cloud.enabled}`);
-console.log('次: npm run worker');
+console.log('次: Reel Studio を起動し直す（ショートカットから起動すればワーカーも一緒に動きます）');

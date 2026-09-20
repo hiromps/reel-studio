@@ -102,4 +102,4 @@ if (dep.code !== 0) throw new Error('デプロイに失敗しました');
 console.log('');
 ok('本番に出しました。');
 console.log(`  ${C.dim}確認: 画面を開いてログインできること、Settings で「PC 接続中」になること${C.reset}`);
-console.log(`  ${C.dim}PC 側のワーカーが止まっていたら npm run worker を起動し直してください${C.reset}\n`);
+console.log(`  ${C.dim}スマホで「PC オフライン」と出ていたら、PC で Reel Studio を起動し直してください${C.reset}\n`);

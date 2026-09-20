@@ -12,9 +12,13 @@ Reel Studio を **スマホから全機能使えるようにする**ための構
         ▲
         │  ポーリング（**PC からの発信だけ**。PC のポートは開けない）
         │
-[自宅 PC]  npm run worker
+[自宅 PC]  Reel Studio を起動しているあいだ（＝ワーカーが動いているあいだ）
         ffmpeg・Remotion・Claude Code CLI を実行 ／ work/ uploads/ outputs/ は PC の中
 ```
+
+**PC 側は、デスクトップのショートカットから Reel Studio を起動するだけで繋がります。**
+ランチャー（`scripts/launch.mjs`）がサーバーと一緒にワーカーも動かすので、`npm run worker` を
+別に叩く必要はありません（叩いても構いません。二重には走りません）。
 
 ## なぜこの形か
 
@@ -32,8 +36,9 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 
 代わりの制約:
 
-- **PC の電源が入っていないとジョブが実行されません。** 押したジョブはキューに残り、PC が
-  起きると順に実行されます（画面上部に「PC オフライン」と出ます）
+- **PC で Reel Studio が動いていないとジョブが実行されません。** 押したジョブはキューに残り、
+  次に起動したとき順に実行されます（画面上部に「PC オフライン」と出ます）。
+  PC を触らない日もスマホから使いたいなら、下の「Windows で常駐させる」で自動起動にしてください
 - スマホで再生できるのは軽量プロキシがあるクリップだけです（Timeline に作成状況が出ます）
 
 ## 何がどこにあるか
@@ -89,8 +94,8 @@ Blob ストアの作成と接続 → DB のスキーマ適用 → パスワー�
 | [Neon](https://neon.tech) のアカウント | 無料枠で足りる | 接続文字列を 1 回貼り付けるだけ |
 | `npx vercel login` を済ませておく | — | 未ログインなら script が案内します |
 
-終わったら、その PC で `npm run worker` を起動したままにして、スマホで URL を開いて
-ログイン →「ホーム画面に追加」。それで使えます。
+終わったら、その PC で Reel Studio を起動したままにして（ショートカットから立ち上げれば
+ワーカーも一緒に動きます）、スマホで URL を開いてログイン →「ホーム画面に追加」。それで使えます。
 
 ### ログインのパスワードはどう決まるか
 
@@ -170,24 +175,37 @@ GUI の Settings「クラウド接続」で入れるか、コマンドで入れ�
 
 ```bash
 node scripts/set-cloud.mjs https://<あなたのアプリ>.vercel.app <WORKER_TOKEN と同じ値>
+```
+
+繋ぐのを一時的にやめるなら `node scripts/set-cloud.mjs --off`（設定は残したまま繋ぎません）。
+`reel settings show` の最終行に、いまの接続先が出ます。
+
+あとは **デスクトップのショートカットから Reel Studio を起動するだけ**です。サーバーと一緒に
+ワーカーが立ち上がり、`Reel Studio ワーカー起動: https://…` と `ffmpeg=ok claude=ok 案件=N 件`
+がコンソールに出ます。画面の `/api/config` の `worker.online` が `true` になれば通っています。
+**窓を閉じるとワーカーも止まります**（＝スマホからは「PC オフライン」になります）。
+
+ワーカーだけを単体で動かすこともできます（常駐させるときはこちら）。
+
+```bash
 npm run worker
 ```
 
-繋ぐのを一時的にやめるなら `node scripts/set-cloud.mjs --off`。
-`reel settings show` の最終行に、いまの接続先が出ます。
-
-起動すると `ffmpeg=ok claude=ok 案件=N 件` と出て、クラウドに繋がります。
-画面の `/api/config` の `worker.online` が `true` になれば通っています。
+二重に動くことはありません。錠（`~/.reel-studio/worker.lock`）を見て、先に動いているほうに
+譲ります。譲ったほうは `ワーカーはすでに動いています（pid …）` と出して終わります。
 
 環境変数で渡す場合は `REEL_CLOUD_URL` と `REEL_WORKER_TOKEN`（設定ファイルより優先）。
 
-#### Windows で常駐させる
+#### Windows で常駐させる（PC を触らない日もスマホから使いたい場合）
 
-タスクスケジューラで「ログオン時に起動」にするのが簡単です（コマンドプロンプトで 1 行）。
+Reel Studio を開いていない間も繋げておきたいなら、タスクスケジューラで「ログオン時に起動」に
+するのが簡単です（コマンドプロンプトで 1 行）。
 
 ```bat
 schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c cd /d C:\path\to\reel-studio && npm run worker"
 ```
+
+これを入れておいても、ショートカットから起動したときに二重にはなりません（先客に譲ります）。
 
 スリープすると止まります（ジョブは消えず、復帰後に続きます）。レンダー中に寝ないよう、
 電源設定を見直してください。
@@ -247,9 +265,10 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 
 | 症状 | 見るところ |
 |---|---|
-| ジョブが `queued` のまま | PC のワーカーが動いているか（画面上部の「PC オフライン」） |
+| ジョブが `queued` のまま | PC で Reel Studio（またはワーカー）が動いているか（画面上部の「PC オフライン」） |
+| PC で Reel Studio を起動したのに「PC オフライン」のまま | 起動したコンソールに出ているワーカーの行を見る。`クラウド接続が未設定` なら Settings の「クラウド接続」、`401` ならトークンの食い違い |
 | Timeline の映像が真っ黒 | 軽量プレビューが未作成。Timeline 上部の「軽量プレビューを作る」 |
-| 「PC のワーカーがまだ繋がっていません」 | `npm run worker` のログ。`WORKER_TOKEN` の食い違いなら 401 が出る |
+| 「PC のワーカーがまだ繋がっていません」 | PC 側のコンソール（ランチャーの窓、または `npm run worker`）のログ。`WORKER_TOKEN` の食い違いなら 401 が出る |
 | ジョブが「ワーカーとの通信が途切れました」で失敗 | PC がスリープした。押し直せば再実行される |
 | デプロイした関数が 500 | `npx vercel logs <url>`。`api/_app.cjs` が生成されているか（`npm run build`） |
 | 画面は出るが「サーバーに接続できません」（`NOT_FOUND`） | **公開版が本番に乗っています。** GitHub の自動連携で push が本番を上書きしたか、公開版のブランチからデプロイしたかのどちらか。連携を切って `npm run cloud:deploy` で出し直す |

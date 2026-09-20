@@ -46,8 +46,8 @@ const MosaicSettingsSchema = z.object({
 });
 
 /**
- * クラウド（Vercel の PWA）に繋ぐための設定。`npm run worker` がこれを見て、
- * この PC を「重い処理を実行する係」としてクラウドに繋ぐ。
+ * クラウド（Vercel の PWA）に繋ぐための設定。ワーカー（Reel Studio の起動時に一緒に動く／
+ * `npm run worker`）がこれを見て、この PC を「重い処理を実行する係」としてクラウドに繋ぐ。
  * 空なら従来どおりローカル専用で動く（クラウド機能は完全に無効）。
  */
 const CloudSchema = z.object({

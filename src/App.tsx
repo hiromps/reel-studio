@@ -151,7 +151,7 @@ export const App: React.FC = () => {
         <div className="offlinebar">
           <span className="pill err">PC オフライン</span>
           <span>
-            重い処理（素材のカタログ化・AI・レンダー）は自宅の PC が行います。いま PC が繋がっていないので、押したジョブは待機のまま残り、PC を起動すると順に実行されます。
+            重い処理（素材のカタログ化・AI・レンダー）は自宅の PC が行います。いま PC が繋がっていないので、押したジョブは待機のまま残り、PC で Reel Studio を起動すると順に実行されます。
             {s.config.worker.lastSeen && <> 最後の応答: {new Date(s.config.worker.lastSeen).toLocaleString('ja-JP')}</>}
           </span>
         </div>

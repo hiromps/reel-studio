@@ -248,9 +248,9 @@ const main = async () => {
   console.log(`  画面:      ${C.cyan}${url}${C.reset}`);
   console.log(`  ログイン:  いま決めたパスワード`);
   console.log(`\n  次の 2 つで使えるようになります:`);
-  console.log(`   1. この PC で ${C.cyan}npm run worker${C.reset} を起動したままにする`);
+  console.log(`   1. この PC で ${C.cyan}Reel Studio${C.reset}（デスクトップのショートカット）を起動したままにする`);
   console.log(`   2. スマホで上の URL を開き、ログインして「ホーム画面に追加」`);
-  console.log(`\n  ${C.dim}PC の電源が入っていないとジョブは待機します（消えません）。${C.reset}`);
+  console.log(`\n  ${C.dim}PC で Reel Studio が動いていないとジョブは待機します（消えません）。${C.reset}`);
   console.log(`  ${C.dim}常駐のさせ方・困ったときは docs/cloud.md を見てください。${C.reset}\n`);
 };
 

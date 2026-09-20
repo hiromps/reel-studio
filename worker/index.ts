@@ -1,6 +1,8 @@
 // PC 常駐ワーカー。クラウド（Vercel の PWA）から来たジョブを、この PC で実行する。
 //
 //   npm run worker
+//   npm run worker -- --auto   ショートカット（scripts/launch.mjs）からの自動起動。
+//                              クラウド未設定なら黙って終わり、二重起動なら先客に譲る
 //
 // 通信は**この PC からの発信だけ**（ポートは開けない）。やることは 3 つ:
 //   1. 生きていることと環境（ffmpeg / claude / 空きメモリ）を知らせる
@@ -29,7 +31,11 @@ import type {CloudJob} from '../cloud/store';
 import type {WorkerStatus} from '../cloud/worker-status';
 import {CloudClient, CloudError, cloudConfig} from './client';
 import {ensurePreviewProxies, runCatalogImport, runCreateProject, runIngest} from './cloud-jobs';
+import {acquireWorkerLock, releaseWorkerLock, touchWorkerLock} from './lock';
 import {pushProjectState, syncAssets, syncDocs} from './sync';
+
+/** ショートカットからの自動起動（手で叩いたときと違い、やることが無ければ静かに終わる） */
+const AUTO = process.argv.slice(2).includes('--auto');
 
 const IDLE_MS = 15_000;
 const BUSY_MS = 3_000;
@@ -298,6 +304,8 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
 const main = async (): Promise<void> => {
   const cfg = cloudConfig();
   if (!cfg) {
+    // ローカル専用で使っている人には要らない機能なので、自動起動のときは止めない
+    if (AUTO) return log('クラウド接続が未設定なので、スマホ用のワーカーは動かしません（ローカルでの利用には影響しません）');
     console.error(
       [
         'クラウドの接続先が未設定です。次のどちらかを設定してください:',
@@ -309,6 +317,10 @@ const main = async (): Promise<void> => {
     );
     process.exit(1);
   }
+  const other = await acquireWorkerLock();
+  if (other !== null) return log(`ワーカーはすでに動いています（pid ${other}）。こちらは起動しません`);
+  process.on('exit', releaseWorkerLock);
+
   loadPersonasFromDisk();
   await refreshEnv();
   const client = new CloudClient(cfg);
@@ -327,6 +339,7 @@ const main = async (): Promise<void> => {
   process.on('SIGTERM', stop);
 
   for (;;) {
+    touchWorkerLock(); // 生きているあいだは錠を新しく保つ
     try {
       const reply = await client.hello(await status([...running.values()].map((r) => ({slug: r.slug, type: r.type}))));
       blobToken = reply.blobToken;
