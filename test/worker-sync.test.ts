@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {stableHash} from '@shared/hash';
 import type {DocName} from '@shared/project';
+import {readProjectMeta, setProjectArchived} from '../core/project';
 import {syncDocs} from '../worker/sync';
 import type {CloudClient, DocPull, DocPushResult} from '../worker/client';
 
@@ -136,6 +137,21 @@ describe('ワーカーの契約ファイル同期', () => {
     const r = await syncDocs(cloud.asClient(), dir);
     expect(r.pulled).toEqual(['script']);
     expect(fs.readFileSync(path.join(dir, 'script.md'), 'utf8')).toBe('# 台本\n0:00 つかみ');
+  });
+
+  it('「投稿済み（隠す）」も両方向に流れる（PC とスマホで一覧が揃う）', async () => {
+    const cloud = new FakeCloud();
+    // スマホで隠した → PC の .studio/meta.json に落ちる
+    cloud.put('meta', {version: 1, archivedAt: '2026-09-21T09:00:00.000Z'});
+    const r = await syncDocs(cloud.asClient(), dir);
+    expect(r.pulled).toEqual(['meta']);
+    expect(readProjectMeta(dir).archivedAt).toBe('2026-09-21T09:00:00.000Z');
+
+    // PC で一覧に戻した → クラウドにも伝わる
+    setProjectArchived(dir, false);
+    const back = await syncDocs(cloud.asClient(), dir);
+    expect(back.pushed).toEqual(['meta']);
+    expect((cloud.docs.get('meta')?.data as {archivedAt: string | null}).archivedAt).toBeNull();
   });
 
   it('壊れた JSON は「無い」扱いにしてクラウドを壊さない', async () => {

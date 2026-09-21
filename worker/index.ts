@@ -154,6 +154,16 @@ const currentSettingsView = async () => {
 
 const running = new Map<string, {slug: string; type: string; abort: AbortController}>();
 
+/**
+ * 画面の「最新に」ボタンから積まれる同期ジョブ。
+ * 実体は**この前後で必ず走る** syncDocs（取り込み）と pushAfterJob（押し上げ）なので、ここは知らせるだけ。
+ * 5 分ごとの棚卸しを待たずに、PC で直したものをスマホへ出すための入口。
+ */
+const runSync = (ctx: JobRunCtx): {ok: true} => {
+  ctx.onLine('PC の最新をクラウドへ送ります（契約ファイル・サムネイル・軽量プレビュー・書き出し）');
+  return {ok: true};
+};
+
 const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | null): Promise<void> => {
   const abort = new AbortController();
   running.set(job.id, {slug: job.slug, type: job.type, abort});
@@ -214,7 +224,9 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
             ? await runFontJob(job.params, ctx)
             : job.type === 'catalog-import'
               ? await runCatalogImport(job.slug, job.params, ctx)
-              : await runJobBody({type: job.type as Parameters<typeof runJobBody>[0]['type'], slug: job.slug, params: job.params}, ctx);
+              : job.type === 'sync'
+                ? runSync(ctx)
+                : await runJobBody({type: job.type as Parameters<typeof runJobBody>[0]['type'], slug: job.slug, params: job.params}, ctx);
 
     // 取り込んだ・消したフォントは、その場でクラウドへ反映する（スマホの一覧と見本に出す）
     if (job.type === 'fonts' && !abort.signal.aborted) {

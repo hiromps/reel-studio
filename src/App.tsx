@@ -10,6 +10,7 @@ import {Tour, type TourTab} from './components/Tour';
 import {HelpPanel} from './components/HelpPanel';
 import {InstallHint} from './components/InstallHint';
 import {nextStepOf} from './components/nextStep';
+import {visibleProjects} from './components/projectList';
 import {useStringPref} from './hooks/usePref';
 import {AI_JOB_LABEL} from './components/AiJobStatus';
 
@@ -126,12 +127,28 @@ export const App: React.FC = () => {
         <div className="status">
           <select data-tour="project-select" value={s.active ?? ''} onChange={(e) => e.target.value && s.setActive(e.target.value)} title="編集中の案件">
             <option value="">（案件を選択）</option>
-            {s.projects.map((p) => (
+            {/* 投稿済みにして隠した案件は出さない。ただし開いている案件だけは必ず残す（選択が空欄になるのを防ぐ） */}
+            {visibleProjects(s.projects, {active: s.active, showArchived: false}).map((p) => (
               <option key={p.slug} value={p.slug}>
                 {p.slug}
+                {p.archivedAt ? '（非表示）' : ''}
               </option>
             ))}
           </select>
+          {/* PC で直したものを取り込む。クラウド版では PC に「いま送って」と頼んでから読み直す
+              （棚卸しは 5 分ごとなので、押さないと出てこないことがある） */}
+          <button
+            className="small pull-btn"
+            onClick={() => void s.pullLatest()}
+            disabled={s.pulling}
+            title={
+              s.isCloud
+                ? 'PC に最新を送らせて取り込みます（キャプション・構成・書き出し・サムネイル）。未保存の編集は上書きしません'
+                : '案件のファイルを読み直します（未保存の編集は上書きしません）'
+            }
+          >
+            {s.pulling ? '取り込み中…' : '⟳ 最新に'}
+          </button>
           {s.config?.stale && (
             <span className="pill err" title="起動したあとにツールのコードが更新されています。画面だけ新しく、サーバーは古い規則のまま動いています">
               ⚠ サーバーが古い：Reel Studio を再起動してください

@@ -43,6 +43,12 @@ export const JOB_TYPES = [
   'catalog-import',
   /** スマホから上げたテロップ用フォントを PC の置き場に入れる／置き場から消す */
   'fonts',
+  /**
+   * 「最新に」ボタン。PC の案件フォルダとクラウドをその場で突き合わせる。
+   * 棚卸し（5 分ごと）を待たずに、PC で直したキャプション・構成・書き出しをスマホへ出すためのもの。
+   * 中身は空で、ワーカーがジョブの前後で必ず行う同期（syncDocs / pushAfterJob）が本体。
+   */
+  'sync',
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 

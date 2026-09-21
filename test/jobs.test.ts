@@ -27,6 +27,15 @@ describe('canStartJob', () => {
   it('何も走っていなければ必ず始められる', () => {
     for (const t of JOB_TYPES) expect(canStartJob(j('a-reel', t), [], 2)).toBe(true);
   });
+
+  // 「最新に」ボタンが積む同期。押してすぐ走ってほしいので軽いジョブ扱いにしてある
+  it('同期（sync）は軽いジョブで、他案件のレンダー中でも走る', () => {
+    expect(JOB_TYPES).toContain('sync');
+    expect(isHeavyJob('sync')).toBe(false);
+    expect(canStartJob(j('b-reel', 'sync'), [j('a-reel', 'render')], 2)).toBe(true);
+    // 同じ案件で何か走っているときは待つ（契約ファイルを取り合わない）
+    expect(canStartJob(j('a-reel', 'sync'), [j('a-reel', 'render')], 2)).toBe(false);
+  });
 });
 
 describe('HEAVY_JOBS', () => {

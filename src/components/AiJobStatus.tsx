@@ -21,6 +21,7 @@ export const AI_JOB_LABEL: Record<string, string> = {
   'mosaic-revert': 'モザイクを外しています',
   'mosaic-setup': 'deface を導入中',
   fonts: 'フォントを PC に取り込み中',
+  sync: 'PC と同期中',
 };
 
 /** これ以上反応が無いと「止まっているかも」と出す秒数（heartbeat は 5 秒ごとに来る） */

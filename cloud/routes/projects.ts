@@ -8,7 +8,7 @@ import {Router} from 'express';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {defaultPersonaId, findPersona} from '../../shared/personas';
 import {briefSkeleton, isSafeSlug, normalizeSlug} from '../../shared/project';
-import {addJob, kvGet, kvSet, listProjects, projectInfo, upsertProject, writeDoc} from '../store';
+import {addJob, kvGet, kvSet, listProjects, projectInfo, setProjectArchived, upsertProject, writeDoc} from '../store';
 
 export const projectsRouter = Router();
 
@@ -72,6 +72,17 @@ projectsRouter.put('/active', async (req, res) => {
     return res.json({slug: norm});
   }
   res.json({slug: (await kvGet<{slug: string | null}>('active-slug'))?.slug ?? null});
+});
+
+// 投稿し終えて編集が要らなくなった案件を一覧から隠す／戻す。**消さない**（PC の案件フォルダもそのまま）
+projectsRouter.put('/:slug/archived', async (req, res) => {
+  if (!isSafeSlug(req.params.slug)) return res.status(400).json({error: `案件名が不正です: ${req.params.slug}`});
+  const slug = normalizeSlug(req.params.slug);
+  if (!(await projectInfo(slug))) return res.status(404).json({error: '案件が無い'});
+  const archived = req.body?.archived;
+  if (typeof archived !== 'boolean') return res.status(400).json({error: 'archived（true / false）が必要'});
+  await setProjectArchived(slug, archived);
+  res.json(await projectInfo(slug));
 });
 
 projectsRouter.get('/:slug', async (req, res) => {

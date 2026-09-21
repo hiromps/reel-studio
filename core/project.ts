@@ -9,13 +9,26 @@ import {CatalogSchema} from '../shared/schema/catalog';
 import {findPersona, getPersona} from '../shared/personas';
 import {resolveClip} from '../shared/validate';
 import {fileStamp} from '../shared/time';
-import {briefSkeleton, CONTRACT_FILES, type ContractName, type EngineDiff, type EngineFamily, type ProjectInfo} from '../shared/project';
+import {
+  briefSkeleton,
+  CONTRACT_FILES,
+  DOC_FILES,
+  emptyProjectMeta,
+  parseProjectMeta,
+  ProjectMetaSchema,
+  withArchived,
+  type ContractName,
+  type EngineDiff,
+  type EngineFamily,
+  type ProjectInfo,
+  type ProjectMeta,
+} from '../shared/project';
 import {readJsonFile, writeJsonAtomic, backupFile} from './json-io';
 import {exec} from './exec';
 
 // 案件の「形」は shared/project.ts が正（クラウド側からも読めるように fs 非依存で置いてある）。
 // ここからは今までどおり core/project.ts の名前で使えるよう再輸出する。
-export {CONTRACT_FILES, type ContractName, type EngineDiff, type EngineFamily, type ProjectInfo};
+export {CONTRACT_FILES, type ContractName, type EngineDiff, type EngineFamily, type ProjectInfo, type ProjectMeta};
 
 export const engineFamily = (dir: string): EngineFamily => {
   const p = path.join(dir, 'src', 'telops.tsx');
@@ -90,6 +103,33 @@ export const syncEngine = (dir: string): {synced: string[]} => {
   return {synced};
 };
 
+// ── 付帯情報（.studio/meta.json）──
+// 一覧の都合だけの値を入れる場所。契約ファイルと違って画面が ETag を握らないので、
+// 「投稿済みで隠す」を押しても編集中の brief / cuts とはぶつからない。
+// パスは DOC_FILES から引く（ワーカーの同期が同じファイルを読み書きするので、ここでずらさない）。
+
+export const projectMetaPath = (dir: string): string => path.join(dir, DOC_FILES.meta);
+
+/** 無い・壊れているときは既定（隠していない）を返す */
+export const readProjectMeta = (dir: string): ProjectMeta => {
+  const file = projectMetaPath(dir);
+  if (!fs.existsSync(file)) return emptyProjectMeta();
+  try {
+    return parseProjectMeta(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch {
+    return emptyProjectMeta();
+  }
+};
+
+export const writeProjectMeta = (dir: string, meta: ProjectMeta): ProjectMeta => {
+  const data = ProjectMetaSchema.parse(meta);
+  writeJsonAtomic(projectMetaPath(dir), data);
+  return data;
+};
+
+/** 一覧から隠す／戻す。中身（素材・契約ファイル・書き出し）は一切触らない */
+export const setProjectArchived = (dir: string, archived: boolean): ProjectMeta => writeProjectMeta(dir, withArchived(readProjectMeta(dir), archived));
+
 export const projectInfo = (dir: string): ProjectInfo => {
   const has = {
     catalog: fs.existsSync(path.join(dir, 'catalog.json')),
@@ -131,6 +171,7 @@ export const projectInfo = (dir: string): ProjectInfo => {
     updatedAt,
     persona,
     format,
+    archivedAt: readProjectMeta(dir).archivedAt ?? undefined,
   };
 };
 

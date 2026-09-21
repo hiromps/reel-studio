@@ -2,7 +2,7 @@ import {Router} from 'express';
 import fs from 'node:fs';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {defaultPersonaId, findPersona} from '../../shared/personas';
-import {cloneProject, createProject, listProjects, projectInfo, resolveProjectDirStrict} from '../../core/project';
+import {cloneProject, createProject, listProjects, projectInfo, resolveProjectDirStrict, setProjectArchived} from '../../core/project';
 import {jobs} from '../jobs';
 import {state} from '../state';
 import {watchProject} from '../watch';
@@ -57,6 +57,16 @@ projectsRouter.put('/active', (req, res) => {
     watchProject(dir); // このタブが開いた案件も見張る（他のタブの案件は見張ったまま）
   }
   res.json({slug: state.activeSlug});
+});
+
+// 投稿し終えて編集が要らなくなった案件を一覧から隠す／戻す。**消さない**（フォルダも中身もそのまま）
+projectsRouter.put('/:slug/archived', (req, res) => {
+  const dir = resolveProjectDirStrict(req.params.slug);
+  if (!fs.existsSync(dir)) return res.status(404).json({error: '案件が無い'});
+  const archived = req.body?.archived;
+  if (typeof archived !== 'boolean') return res.status(400).json({error: 'archived（true / false）が必要'});
+  setProjectArchived(dir, archived);
+  res.json(projectInfo(dir));
 });
 
 projectsRouter.get('/:slug', (req, res) => {

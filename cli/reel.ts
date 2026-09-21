@@ -188,7 +188,8 @@ async function main() {
       if (bool(flags, 'json')) return out(JSON.stringify(list, null, 2));
       out('| slug | persona | format | catalog | brief | cuts | narration | engine | node_modules | updated |');
       out('|---|---|---|---|---|---|---|---|---|---|');
-      for (const p of list) out(`| ${p.slug} | ${p.persona ?? '-'} | ${p.format ?? '-'} | ${p.has.catalog ? '✓' : ''} | ${p.has.brief ? '✓' : ''} | ${p.has.cuts ? '✓' : ''} | ${p.has.narration ? '✓' : ''} | ${p.engine.stale ? 'STALE' : 'ok'} | ${p.nodeModules ? '✓' : '×'} | ${p.updatedAt.slice(0, 16)} |`);
+      // GUI で「投稿済み（隠す）」にした案件は slug に印を付ける（CLI では隠さない）
+      for (const p of list) out(`| ${p.slug}${p.archivedAt ? ' ※非表示' : ''} | ${p.persona ?? '-'} | ${p.format ?? '-'} | ${p.has.catalog ? '✓' : ''} | ${p.has.brief ? '✓' : ''} | ${p.has.cuts ? '✓' : ''} | ${p.has.narration ? '✓' : ''} | ${p.engine.stale ? 'STALE' : 'ok'} | ${p.nodeModules ? '✓' : '×'} | ${p.updatedAt.slice(0, 16)} |`);
       return;
     }
 

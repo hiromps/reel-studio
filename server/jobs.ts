@@ -546,6 +546,12 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         const r = await setupMosaic({gpu: !!p.gpu, onLine, signal});
         return {venvDir: r.venvDir, deface: r.status.deface, onnxruntime: r.status.onnxruntime, gpu: r.status.gpu, message: r.status.message};
       }
+      // クラウドとの同期そのものはワーカー（worker/index.ts）がジョブの前後で行う。
+      // ローカル版では画面が案件フォルダを直接読んでいるので、ここは何もしない
+      case 'sync': {
+        onLine('ローカル版では同期は要りません（この PC のファイルをそのまま読んでいます）');
+        return {ok: true};
+      }
     default:
       throw new Error(`未知のジョブ: ${job.type}`);
   }

@@ -62,6 +62,8 @@ export type ProjectInfo = {
   updatedAt: string;
   persona?: string;
   format?: string;
+  /** 投稿し終えて一覧から隠した日時（ISO）。省略＝一覧に出す */
+  archivedAt?: string;
 };
 
 export type Job = {

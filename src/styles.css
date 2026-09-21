@@ -124,6 +124,16 @@ label > textarea {
   gap: 8px;
   align-items: center;
 }
+/* 「⟳ 最新に」。案件の選択と並ぶので、狭い画面でも折り返して潰れないようにする */
+.status .pull-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+/* 状態のピルは中で折り返さない（狭い画面で「PC オフライ / ン」と割れていた） */
+.status .pill,
+.offlinebar .pill {
+  white-space: nowrap;
+}
 .pill {
   padding: 2px 8px;
   border-radius: 10px;
@@ -220,6 +230,24 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
 }
 .table tr.active {
   background: #1f2a3a;
+}
+/* 投稿済みにして一覧から隠した案件（「隠した案件も表示」のときだけ出る）。
+   開いている案件は隠していても出るので、active の色は残したまま沈ませる */
+.table tr.archived td {
+  color: var(--muted);
+}
+.table tr.archived td b {
+  font-weight: 400;
+}
+/* カードの見出しに置く表示切り替え（「隠した案件も表示」） */
+.card h2 > .list-toggle {
+  float: right;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 .toasts {
   position: fixed;
@@ -2708,6 +2736,65 @@ a.btn-like:hover {
   .card > .table {
     display: block;
     overflow-x: auto;
+  }
+
+  /* ── 案件一覧だけは積み直す ──
+     11 列あるので横スクロールにすると、右端の操作列（開く／投稿済み（隠す））に指が届かない。
+     スマホでは 1 案件＝1 枚のカードにして、ボタンを必ず画面内に出す。
+     見出し行は消し、代わりに各セルの data-label を項目名として出す */
+  .card > .table.projects {
+    display: block;
+    overflow-x: visible;
+  }
+  .table.projects thead {
+    display: none;
+  }
+  .table.projects tbody {
+    display: block;
+  }
+  .table.projects tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+  }
+  .table.projects tr.active {
+    border-color: var(--accent);
+  }
+  .table.projects td {
+    border: 0;
+    padding: 0;
+  }
+  /* まだ無いもの（空のセル）は出さない。どこまで進んだかだけが並ぶ */
+  .table.projects td:empty {
+    display: none;
+  }
+  .table.projects td.p-chip::before {
+    content: attr(data-label) ' ';
+    color: var(--muted);
+    font-size: 12px;
+  }
+  /* slug は見出し、操作は足元。どちらも横幅いっぱいに置く */
+  .table.projects td.p-slug {
+    flex: 1 1 100%;
+    font-size: 15px;
+  }
+  .table.projects td.p-act {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  /* 「隠した案件も表示」は見出しの右に浮かせず、下に 1 行取る（狭いと題名と重なる） */
+  .card h2 > .list-toggle {
+    float: none;
+    width: 100%;
+    margin-top: 6px;
   }
 
   /* ── 下部ナビ ── */

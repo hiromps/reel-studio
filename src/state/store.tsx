@@ -67,6 +67,14 @@ type Store = {
   supportsJob: (type: string) => boolean;
   refreshProjects: () => Promise<void>;
   setActive: (slug: string) => Promise<void>;
+  /** 投稿し終えた案件を一覧から隠す／戻す（消さない。PC とスマホで同じ状態になる） */
+  setArchived: (slug: string, archived: boolean) => Promise<void>;
+  /** 開いている案件のファイルを読み直す（未保存の編集は上書きしない） */
+  reloadActive: (opt?: {quiet?: boolean}) => Promise<void>;
+  /** 「最新に」。クラウドでは PC に今すぐ同期させてから読み直す */
+  pullLatest: () => Promise<void>;
+  /** 「最新に」の実行中（ボタンの二度押しよけ） */
+  pulling: boolean;
   /** 軽量プレビュー（.studio/preview/ の 540x960 を使う）。タブごとの表示設定 */
   light: boolean;
   setLight: (v: boolean) => void;
@@ -78,7 +86,7 @@ type Store = {
   saveFile: <K extends ContractName>(name: K, force?: boolean) => Promise<boolean>;
   loadCaption: () => Promise<void>;
   saveCaption: (text: string) => Promise<boolean>;
-  addJob: (type: string, params?: Record<string, unknown>, slug?: string) => Promise<Job | null>;
+  addJob: (type: string, params?: Record<string, unknown>, slug?: string, opt?: {quiet?: boolean}) => Promise<Job | null>;
   cancelJob: (id: string) => Promise<void>;
   fetchJobLog: (id: string) => Promise<string[]>;
   toast: (text: string, kind?: Toast['kind']) => void;
@@ -123,9 +131,12 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       return false;
     }
   });
+  const [pulling, setPulling] = useState(false);
   const toastId = useRef(0);
   const filesRef = useRef(files);
   filesRef.current = files;
+  const configRef = useRef(config);
+  configRef.current = config;
   const activeRef = useRef(active);
   activeRef.current = active;
   const captionRef = useRef(caption);
@@ -225,6 +236,38 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
     [loadFile, loadCaption],
   );
 
+  const setArchived = useCallback(
+    async (slug: string, archived: boolean) => {
+      try {
+        await api.put(`/api/projects/${encodeURIComponent(slug)}/archived`, {archived});
+        await refreshProjects();
+        toast(archived ? `${slug} を一覧から隠しました（「隠した案件も表示」で戻せます）` : `${slug} を一覧に戻しました`, 'ok');
+      } catch (e) {
+        const err = e as ApiError;
+        // 起動しっぱなしの古いサーバーにはこの口が無い（express が HTML の 404 を返す）
+        const old = err.status === 404 && /cannot put/i.test(err.message);
+        toast(old ? 'この機能は起動中のサーバーにありません。Reel Studio を一度閉じて起動し直してください' : `変更に失敗: ${err.message}`, 'error');
+      }
+    },
+    [refreshProjects, toast],
+  );
+
+  /**
+   * 開いている案件のファイル（契約ファイル 4 つ + caption.txt）を読み直す。
+   * **未保存の編集があるものは読み直さない**（黙って捨てない）。
+   * quiet は SSE の再接続ごとに呼ぶとき用（毎分「読み直していません」と言わない）。
+   */
+  const reloadActive = useCallback(
+    async ({quiet = false}: {quiet?: boolean} = {}): Promise<void> => {
+      if (!activeRef.current) return;
+      const names: ContractName[] = ['catalog', 'brief', 'cuts', 'narration'];
+      const dirty = names.filter((n) => filesRef.current[n].dirty);
+      await Promise.all([...names.filter((n) => !dirty.includes(n)).map((n) => loadFile(n)), loadCaption()]);
+      if (dirty.length && !quiet) toast(`未保存の編集があるので ${dirty.join(', ')} は読み直していません（保存するか取り消してから押してください）`, 'error');
+    },
+    [loadFile, loadCaption, toast],
+  );
+
   const setFile = useCallback(<K extends ContractName>(name: K, data: ContractMap[K], opt: {dirty?: boolean} = {}) => {
     setFiles((f) => ({...f, [name]: {...f[name], data, dirty: opt.dirty ?? true}}));
   }, []);
@@ -255,7 +298,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   const supportsJob = useCallback((type: string) => !config?.jobTypes || config.jobTypes.includes(type), [config]);
 
   const addJob = useCallback(
-    async (type: string, params: Record<string, unknown> = {}, slug?: string) => {
+    async (type: string, params: Record<string, unknown> = {}, slug?: string, opt: {quiet?: boolean} = {}) => {
       if (!supportsJob(type)) {
         toast('この機能は起動中のサーバーにありません。Reel Studio を一度閉じて起動し直してください（画面だけ新しくなっています）', 'error');
         return null;
@@ -270,7 +313,8 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
           if (existing && JOB_STATUS_RANK[existing.status] > JOB_STATUS_RANK[r.data.status]) return j;
           return [r.data, ...j.filter((x) => x.id !== r.data.id)];
         });
-        toast(`ジョブ ${type} を投入`);
+        // quiet は「最新に」のように、押したこと自体が見えているボタン用（知らせを重ねない）
+        if (!opt.quiet) toast(`ジョブ ${type} を投入`);
         return r.data;
       } catch (e) {
         toast(`ジョブ投入に失敗: ${(e as Error).message}`, 'error');
@@ -279,6 +323,28 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
     },
     [toast, supportsJob],
   );
+
+  /**
+   * 「最新に」。クラウド版では **PC の最新がまだ上がっていないことがある**（ワーカーの棚卸しは 5 分ごと）。
+   * 同期ジョブを積んで PC に今すぐ送らせ、そのうえで**いまクラウドにあるもの**を読み直す。
+   * PC から届くのはそのあとなので、ジョブ完了（SSE の job:update）でもう一度読み直す。
+   */
+  const pullLatest = useCallback(async (): Promise<void> => {
+    setPulling(true);
+    try {
+      const cfg = configRef.current;
+      if (cfg?.mode === 'cloud' && activeRef.current) {
+        const job = await addJob('sync', {}, activeRef.current, {quiet: true});
+        if (job && cfg.worker && !cfg.worker.online) toast('PC が繋がっていないので、PC で Reel Studio を起動したときに同期されます', 'info');
+      }
+      await Promise.all([reloadConfig(), refreshProjects()]);
+      await reloadActive();
+    } catch (e) {
+      toast(`最新の取り込みに失敗: ${(e as Error).message}`, 'error');
+    } finally {
+      setPulling(false);
+    }
+  }, [addJob, reloadConfig, refreshProjects, reloadActive, toast]);
 
   const cancelJob = useCallback(async (id: string) => {
     await api.post(`/api/jobs/${id}/cancel`);
@@ -328,6 +394,10 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
     es.addEventListener('hello', () => {
       void api.get<Job[]>('/api/jobs').then((r) => setJobs(r.data)).catch(() => {});
       void refreshProjects().catch(() => {});
+      // **開いている案件のファイルも読み直す。** file:changed は「繋がっている間」の変化しか流れない
+      // （新しい接続はいまの状態を配るだけ）。スマホは画面を閉じるたびに切れるので、これが無いと
+      // 切れていた間に PC が書き戻したキャプション・構成が、案件を開き直すまで古いままになる
+      void reloadActive({quiet: true}).catch(() => {});
     });
     es.addEventListener('job:update', (ev) => {
       const j = JSON.parse((ev as MessageEvent).data) as Job;
@@ -335,6 +405,13 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       // ジョブは全案件ぶん流れてくる。**このタブが開いている案件のものだけ**を通知し、
       // ファイルの読み直しも行う（別の案件のジョブで、いま編集中のファイルを差し替えない）
       if (j.slug !== activeRef.current) return;
+      // 「最新に」で積んだ同期。PC が送り終えたところなので、ここで初めて PC の最新が読める
+      if (j.status === 'done' && j.type === 'sync') {
+        toast('PC の最新を取り込みました', 'ok');
+        void reloadActive();
+        void refreshProjects();
+        return;
+      }
       if (j.status === 'done') toast(`${j.type} 完了`, 'ok');
       if (j.status === 'failed') toast(`${j.type} 失敗: ${j.error ?? ''}`, 'error');
       if (j.status === 'done' && (j.type === 'ai-caption' || j.type === 'tts')) {
@@ -384,11 +461,11 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       } else void loadFile(d.name);
     });
     return () => es.close();
-  }, [loadFile, loadCaption, refreshProjects, toast]);
+  }, [loadFile, loadCaption, refreshProjects, reloadActive, toast]);
 
   const value = useMemo<Store>(
-    () => ({projects, active, files, caption, jobs, logs, toasts, config, isCloud: config?.mode === 'cloud', personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
-    [projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, supportsJob, refreshProjects, setActive, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
+    () => ({projects, active, files, caption, jobs, logs, toasts, config, isCloud: config?.mode === 'cloud', personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, setArchived, reloadActive, pullLatest, pulling, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
+    [projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, supportsJob, refreshProjects, setActive, setArchived, reloadActive, pullLatest, pulling, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
   );
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;
 };

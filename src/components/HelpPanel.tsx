@@ -4,7 +4,7 @@ import React, {useEffect, useState} from 'react';
 import type {TourTab} from './Tour';
 
 const FLOW: {tab: TourTab; label: string; what: string}[] = [
-  {tab: 'projects', label: '① Projects', what: '案件（動画 1 本）を作る・開く。同じ素材で別バージョンも作れる'},
+  {tab: 'projects', label: '① Projects', what: '案件（動画 1 本）を作る・開く。同じ素材で別バージョンも作れる。投稿し終えた案件は「投稿済み（隠す）」で一覧から外せる（消えません）'},
   {tab: 'materials', label: '② Materials', what: '素材フォルダを読み込み、1 本ずつタグを付ける（AI に任せられる）'},
   {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を自動生成する。台本があるなら貼って「台本から組み立てる」'},
   {tab: 'timeline', label: '④ Timeline', what: '映像・テロップ・ナレーション・効果音を 1 つのタイムラインで整えて検証する'},

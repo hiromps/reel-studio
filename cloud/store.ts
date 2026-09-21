@@ -7,7 +7,7 @@
 import {randomUUID} from 'node:crypto';
 import {and, asc, desc, eq, gt, inArray, isNull, sql} from 'drizzle-orm';
 import {stableHash} from '../shared/hash';
-import {CONTRACT_FILES, DOC_NAMES, type DocName, type ProjectInfo} from '../shared/project';
+import {CONTRACT_FILES, DOC_NAMES, parseProjectMeta, withArchived, type DocName, type ProjectInfo, type ProjectMeta} from '../shared/project';
 import {canStartJob, type JobType} from '../shared/jobs';
 import {db} from './db/client';
 import {assets, docs, jobLogs, jobs, kv, personas, projects, type ProjectSnapshot} from './db/schema';
@@ -99,7 +99,7 @@ export const deleteDocs = async (slug: string): Promise<void> => {
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {dir: '', engine: {stale: true, family: 'unknown', files: []}, nodeModules: false, out: {draft: false, final: false, narration: false}};
 
-const toProjectInfo = (row: typeof projects.$inferSelect, docRows: {name: string; updatedAt: Date}[]): ProjectInfo => {
+const toProjectInfo = (row: typeof projects.$inferSelect, docRows: {name: string; updatedAt: Date}[], meta?: ProjectMeta | null): ProjectInfo => {
   const info = row.info ?? EMPTY_SNAPSHOT;
   const names = new Set(docRows.map((d) => d.name));
   const times = [new Date(row.updatedAt).getTime(), ...docRows.map((d) => new Date(d.updatedAt).getTime())];
@@ -113,26 +113,41 @@ const toProjectInfo = (row: typeof projects.$inferSelect, docRows: {name: string
     updatedAt: new Date(Math.max(...times)).toISOString(),
     persona: (row.persona ?? undefined) as ProjectInfo['persona'],
     format: row.format ?? undefined,
+    archivedAt: meta?.archivedAt ?? undefined,
   };
 };
 
 export const listProjects = async (): Promise<ProjectInfo[]> => {
   const rows = await db().select().from(projects).where(isNull(projects.deletedAt));
   if (!rows.length) return [];
-  const docRows = await db()
-    .select({slug: docs.slug, name: docs.name, updatedAt: docs.updatedAt})
-    .from(docs)
-    .where(inArray(docs.slug, rows.map((r) => r.slug)));
+  const slugs = rows.map((r) => r.slug);
+  const docRows = await db().select({slug: docs.slug, name: docs.name, updatedAt: docs.updatedAt}).from(docs).where(inArray(docs.slug, slugs));
+  // 一覧から隠したかどうか。data を引くのはこの doc だけにする（catalog や cuts を一覧のたびに持ってこない）
+  const metaRows = await db().select({slug: docs.slug, data: docs.data}).from(docs).where(and(eq(docs.name, 'meta'), inArray(docs.slug, slugs)));
+  const metaBySlug = new Map(metaRows.map((m) => [m.slug, parseProjectMeta(m.data)]));
   const bySlug = new Map<string, {name: string; updatedAt: Date}[]>();
   for (const d of docRows) bySlug.set(d.slug, [...(bySlug.get(d.slug) ?? []), {name: d.name, updatedAt: d.updatedAt}]);
-  return rows.map((r) => toProjectInfo(r, bySlug.get(r.slug) ?? [])).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  return rows.map((r) => toProjectInfo(r, bySlug.get(r.slug) ?? [], metaBySlug.get(r.slug))).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 };
 
 export const projectInfo = async (slug: string): Promise<ProjectInfo | null> => {
   const [row] = await db().select().from(projects).where(eq(projects.slug, slug)).limit(1);
   if (!row || row.deletedAt) return null;
   const docRows = await db().select({name: docs.name, updatedAt: docs.updatedAt}).from(docs).where(eq(docs.slug, slug));
-  return toProjectInfo(row, docRows);
+  const meta = await readProjectMeta(slug);
+  return toProjectInfo(row, docRows, meta);
+};
+
+// ── 一覧から隠す／戻す ──
+// ローカル版の .studio/meta.json と同じものを docs に持つ。ワーカーの同期が双方向に流すので、
+// PC で隠せばスマホでも、スマホで隠せば PC でも隠れる。
+
+export const readProjectMeta = async (slug: string): Promise<ProjectMeta> => parseProjectMeta((await readDoc(slug, 'meta'))?.data);
+
+export const setProjectArchived = async (slug: string, archived: boolean): Promise<ProjectMeta> => {
+  const next = withArchived(await readProjectMeta(slug), archived);
+  await writeDoc(slug, 'meta', next, {by: 'cloud'});
+  return next;
 };
 
 export const upsertProject = async (slug: string, patch: {persona?: string | null; shopName?: string | null; format?: string | null; info?: ProjectSnapshot}): Promise<void> => {
