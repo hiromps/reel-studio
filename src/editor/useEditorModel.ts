@@ -207,7 +207,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
       const range = defaultRangeFor(c, fps, maxCutSec);
       if (!cuts) {
         const first = makeCut(c, range, 'c01');
-        setCuts(createReel(catalog.dominantFps, brief?.theme ?? spec?.theme, first));
+        setCuts(createReel(catalog.dominantFps, brief?.theme ?? spec?.theme, first, s.config?.telopFont));
         setSelection({kind: 'cut', index: 0});
         return null;
       }
@@ -216,7 +216,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
       setSelection({kind: 'cut', index: Math.min(at, cuts.cuts.length)});
       return null;
     },
-    [catalog, cuts, fps, maxCutSec, brief, spec, setCuts, commitCuts],
+    [catalog, cuts, fps, maxCutSec, brief, spec, s.config?.telopFont, setCuts, commitCuts],
   );
 
   // ---- テロップグループの操作（グループ内の全カットに同じ文言） ----

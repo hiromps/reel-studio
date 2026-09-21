@@ -7,6 +7,7 @@ import {BriefSchema, CatalogSchema, NarrationSchema, ReelDataSchema} from '../..
 import {fileEtag, readJsonLoose, writeJsonAtomic} from '../../core/json-io';
 import {backupsDir, resolveProjectDirStrict, CONTRACT_FILES, type ContractName} from '../../core/project';
 import {validateProject} from '../../core/render';
+import {ensureProjectFont} from '../../core/fonts';
 
 export const filesRouter = Router({mergeParams: true});
 
@@ -45,6 +46,8 @@ filesRouter.put('/:name', (req, res) => {
   const parsed = schemas[name].safeParse(req.body);
   if (!parsed.success) return res.status(400).json({error: '検証に失敗', issues: parsed.error.issues.slice(0, 20)});
   writeJsonAtomic(p, parsed.data, {backupDir: backupsDir(dir)});
+  // 自前フォントを指定されたら、置き場から案件の public/fonts/ へ配る（プレビューがすぐ効く）
+  if (name === 'cuts') ensureProjectFont(dir, (parsed.data as {font?: string}).font);
   const etag = fileEtag(p)!;
   res.setHeader('ETag', etag);
   const validation = name === 'cuts' ? validateProject(dir, {cuts: parsed.data}) : undefined;

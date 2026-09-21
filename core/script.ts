@@ -13,6 +13,7 @@ import {readBrief, readNarration, writeCuts, writeNarration} from './project';
 import {loadCatalog, studioDir} from './catalog';
 import {runAgent} from './agent';
 import {readJsonFile, writeJsonAtomic} from './json-io';
+import {loadSettings} from './settings';
 import {activitySummary, createAgentTracker, progressView} from '../shared/agent-progress';
 import {studioConfig} from '../studio.config';
 import {type ReelData} from '../shared/schema/cuts';
@@ -121,7 +122,7 @@ const loadScriptEnv = (projectDir: string) => {
     maxTelopChars: spec.telop.maxChars,
   };
   const toCuts = (plan: ScriptPlan): ReelData =>
-    scriptPlanToCuts(plan, {catalog, theme: brief.theme ?? persona.theme, specId: spec.id, briefHash: stableHash(brief), catalogHash: stableHash(catalog)});
+    scriptPlanToCuts(plan, {catalog, theme: brief.theme ?? persona.theme, font: loadSettings().telop.font, specId: spec.id, briefHash: stableHash(brief), catalogHash: stableHash(catalog)});
   return {script, catalog, brief, persona, spec, sections, check, toCuts};
 };
 

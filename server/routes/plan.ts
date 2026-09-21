@@ -6,6 +6,7 @@ import {currentOrder, exportOrder, importOrder, loadOrderEnv} from '../../core/o
 import {readBrief, readCuts, resolveProjectDirStrict, writeCuts} from '../../core/project';
 import {validateProject} from '../../core/render';
 import {applyAliases, pendingAliases} from '../../core/alias';
+import {loadSettings} from '../../core/settings';
 
 export const planRouter = Router({mergeParams: true});
 
@@ -33,7 +34,7 @@ planRouter.post('/plan', (req, res) => {
     existing = undefined;
   }
   try {
-    const r = planCuts({catalog, brief, existing, options: {allowReuse: req.body?.allowReuse !== false}});
+    const r = planCuts({catalog, brief, existing, options: {allowReuse: req.body?.allowReuse !== false, font: loadSettings().telop.font}});
     let applied = 0;
     if (req.body?.write) {
       writeCuts(dir, r.cuts);

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {SettingsPatchSchema} from '../../shared/schema/settings';
 import {fishKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
+import {listFonts} from '../../core/fonts';
 import {claudeAvailable, claudeBin, claudeBinInfo, claudeVersion, resetClaudeBin} from '../../core/agent';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
 import {mosaicStatus, resetMosaicStatus} from '../../core/mosaic';
@@ -18,7 +19,7 @@ const view = async () => {
   const info = claudeBinInfo();
   const available = claudeAvailable();
   const version = available ? await claudeVersion(info.bin) : null;
-  return settingsView({bin: info.bin, available, source: info.source, version}, studioConfig.templateDir);
+  return settingsView({bin: info.bin, available, source: info.source, version}, studioConfig.templateDir, listFonts());
 };
 
 settingsRouter.get('/', async (_req, res) => {

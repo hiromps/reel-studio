@@ -23,11 +23,66 @@ try {
 const jpFallback = ', "Yu Mincho", "BIZ UDMincho Medium", "MS Mincho", serif';
 const fontStack = `"${SERIF_FAMILY}"${jpFallback}`;
 
+// ── 自前フォント：案件の public/fonts/ に置いたファイルをテロップに使う ──────
+// cuts.json の `font`（ファイル名）で指定する。読めなければ上の明朝で描く。
+// family の付け方は shared/schema/fonts.ts の fontFamilyOf と同じ規則にしてある。
+export const customFontFamily = (file: string): string => `reel-font-${file.replace(/\.[^.]+$/, '')}`;
+
+const customFonts = new Map<string, Promise<void>>();
+
+const loadCustomFont = (file: string): Promise<void> => {
+  const cached = customFonts.get(file);
+  if (cached) return cached;
+  const p = (async () => {
+    // 重みは範囲で宣言する。可変フォント（VF）はこうしないと太さの軸が動かず、
+    // テロップの font-weight: 700 が効かない（実測。static なフォントはそのまま使われる）
+    const face = new FontFace(customFontFamily(file), `url(${staticFile(`fonts/${file}`)})`, {weight: '100 900'});
+    const loaded = await face.load();
+    (document as Document & {fonts: {add: (f: FontFace) => void}}).fonts.add(loaded);
+  })();
+  // 失敗しても投げっぱなしにしない（呼び出し側は必ず続行する）
+  p.catch(() => undefined);
+  customFonts.set(file, p);
+  return p;
+};
+
+const TelopFontContext = React.createContext<string>(fontStack);
+
+/** そのテロップで使うフォント（自前フォントがあればその family を先頭に置いたもの） */
+export const useTelopFont = (): string => React.useContext(TelopFontContext);
+
+/**
+ * 自前フォントを読み込んでから中身を描く。読み込みの間はレンダーを待たせる
+ * （delayRender。待たせないと 1 枚目だけ明朝で焼き付く）。失敗しても必ず続行する。
+ */
+export const TelopFont: React.FC<{file?: string; children: React.ReactNode}> = ({file, children}) => {
+  const [handle] = React.useState(() => (file ? delayRender(`load-telop-font-${file}`) : null));
+  // レンダーは props が固定なので、待つのは最初の 1 本だけでよい
+  const first = React.useRef(file);
+  React.useEffect(() => {
+    if (handle === null) return;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      continueRender(handle);
+    };
+    loadCustomFont(first.current!).then(finish, finish);
+    return finish; // 外されたときも必ず解放する（レンダーが止まったままにならないように）
+  }, [handle]);
+  // 画面で選び直したとき（プレビュー）。読み込めた時点でブラウザが描き直す
+  React.useEffect(() => {
+    if (file && file !== first.current) void loadCustomFont(file);
+  }, [file]);
+  // 読めなかったときは同梱の明朝 → OS の明朝へ落ちる
+  const stack = file ? `"${customFontFamily(file)}", ${fontStack}` : fontStack;
+  return <TelopFontContext.Provider value={stack}>{children}</TelopFontContext.Provider>;
+};
+
 // ── ビジュアルテーマ（telop-style.md のテーマ表と対応） ─────────────
 export type ThemeName = 'pop' | 'bold' | 'human' | 'stylish';
 
 type Theme = {
-  fontFamily: string;
   fontWeight: number;
   highlight: string; // "yellow"指定時の実色（味・価格・驚き）
   accent: string; // "red"指定時の実色（警告系）
@@ -36,11 +91,10 @@ type Theme = {
   strokeColor: string; // メイン・価格の袋文字フチ色
 };
 
-// フォントは全テーマ共通（Noto Serif JP Bold）。テーマの違いは配色のみ
+// フォントは全テーマ共通（同梱の Noto Serif JP Bold、または cuts.json の font）。テーマの違いは配色のみ
 const THEMES: Record<ThemeName, Theme> = {
   // まひろ基本形
   pop: {
-    fontFamily: fontStack,
     fontWeight: 700,
     highlight: '#FFEA00',
     accent: '#FF2D2D',
@@ -50,7 +104,6 @@ const THEMES: Record<ThemeName, Theme> = {
   },
   // ランキング・デカ盛り・検証
   bold: {
-    fontFamily: fontStack,
     fontWeight: 700,
     highlight: '#FFE600',
     accent: '#FF2D2D',
@@ -60,7 +113,6 @@ const THEMES: Record<ThemeName, Theme> = {
   },
   // 人情ストーリー・老舗。あたたかい配色
   human: {
-    fontFamily: fontStack,
     fontWeight: 700,
     highlight: '#FFD966',
     accent: '#E8613C',
@@ -70,7 +122,6 @@ const THEMES: Record<ThemeName, Theme> = {
   },
   // デート・カフェ・高級系。金の上品な配色
   stylish: {
-    fontFamily: fontStack,
     fontWeight: 700,
     highlight: '#E6C86E',
     accent: '#C0392B',
@@ -139,6 +190,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; hasPrice?: bo
   hasBadge = false,
 }) => {
   const t = THEMES[theme];
+  const fontFamily = useTelopFont();
   // フェードインは付けない。カット頭で即表示し、バッジと立ち上がりを揃える
   // （2026-09-12にユーザー指定。以前は 0.13 秒の spring フェード＋12px スライドだった）
 
@@ -153,7 +205,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; hasPrice?: bo
   const content = text;
 
   const textStyle: React.CSSProperties = {
-    fontFamily: t.fontFamily,
+    fontFamily,
     fontWeight: t.fontWeight,
     fontSize,
     whiteSpace: 'nowrap',
@@ -203,6 +255,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; hasPrice?: bo
 // ── 層3: 価格テロップ（springポップイン・中央上部が標準） ───────────
 export const PriceTelop: React.FC<PriceTelopDef & {theme: ThemeName}> = ({text, side = 'center', theme}) => {
   const t = THEMES[theme];
+  const fontFamily = useTelopFont();
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   // オーバーシュート付きポップイン（約5フレーム）
@@ -221,7 +274,7 @@ export const PriceTelop: React.FC<PriceTelopDef & {theme: ThemeName}> = ({text, 
       <div
         style={{
           marginTop: LAYOUT.priceTop,
-          fontFamily: t.fontFamily,
+          fontFamily,
           fontWeight: t.fontWeight,
           fontSize: LAYOUT.priceFontSize,
           whiteSpace: 'nowrap',
@@ -242,6 +295,7 @@ export const PriceTelop: React.FC<PriceTelopDef & {theme: ThemeName}> = ({text, 
 // 下地は透けるが**文字は透かさない**。背景が明るくても読めるよう、影は濃いめに重ねる。
 export const BadgeTelop: React.FC<{text: string; theme: ThemeName; opacity?: number}> = ({text, theme, opacity}) => {
   const t = THEMES[theme];
+  const fontFamily = useTelopFont();
   // 0〜1 の範囲に丸める（0 で完全に透明＝プレート無し、1 でベタ塗り）
   const bgAlpha = Math.max(0, Math.min(1, opacity ?? LAYOUT.badgeBgAlpha));
 
@@ -256,7 +310,7 @@ export const BadgeTelop: React.FC<{text: string; theme: ThemeName; opacity?: num
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: t.fontFamily,
+          fontFamily,
           fontWeight: t.fontWeight,
           fontSize: LAYOUT.badgeFontSize,
           lineHeight: 1.05,
@@ -284,6 +338,7 @@ export const TateTelop: React.FC<{text: string; outlineColor: string; theme: The
   theme,
 }) => {
   const t = THEMES[theme];
+  const fontFamily = useTelopFont();
   return (
     <div
       style={{
@@ -291,7 +346,7 @@ export const TateTelop: React.FC<{text: string; outlineColor: string; theme: The
         top: LAYOUT.tateTop,
         right: LAYOUT.tateRight,
         writingMode: 'vertical-rl',
-        fontFamily: t.fontFamily,
+        fontFamily,
         fontWeight: t.fontWeight,
         fontSize: LAYOUT.tateFontSize,
         letterSpacing: '0.08em',

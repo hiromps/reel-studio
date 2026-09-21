@@ -21,6 +21,7 @@ import {ttsAvailable, resetFishEnv} from '../core/tts';
 import {mosaicStatus, resetMosaicStatus} from '../core/mosaic';
 import {listProjects, resolveProjectDir} from '../core/project';
 import {loadSettings, mergeSettings, resetSettings, saveSettings, settingsView} from '../core/settings';
+import {listFonts} from '../core/fonts';
 import {loadPersonasFromDisk, savePersonas} from '../core/personas-store';
 import {listPersonas, PersonaSchema, type Persona} from '../shared/personas';
 import {readLibrary, writeLibrary} from '../core/sfx';
@@ -32,7 +33,7 @@ import type {WorkerStatus} from '../cloud/worker-status';
 import {CloudClient, CloudError, cloudConfig} from './client';
 import {ensurePreviewProxies, runCatalogImport, runCreateProject, runIngest} from './cloud-jobs';
 import {acquireWorkerLock, releaseWorkerLock, touchWorkerLock} from './lock';
-import {pushProjectState, syncAssets, syncDocs} from './sync';
+import {pushProjectState, syncAssets, syncDocs, syncFonts} from './sync';
 
 /** ショートカットからの自動起動（手で叩いたときと違い、やることが無ければ静かに終わる） */
 const AUTO = process.argv.slice(2).includes('--auto');
@@ -146,7 +147,7 @@ const applyRemoteChanges = async (client: CloudClient, reply: Awaited<ReturnType
 
 const currentSettingsView = async () => {
   const available = claudeAvailable();
-  return settingsView({bin: claudeBin(), available, source: 'path', version: available ? await claudeVersion() : null}, studioConfig.templateDir);
+  return settingsView({bin: claudeBin(), available, source: 'path', version: available ? await claudeVersion() : null}, studioConfig.templateDir, listFonts());
 };
 
 // ───────────────────────── ジョブの実行 ─────────────────────────
@@ -293,6 +294,11 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
     await client.pushPersonas(listPersonas());
     await client.pushSfx(readLibrary());
     await client.pushSettings(await currentSettingsView());
+    // 自前フォント（スマホのプレビューで PC と同じ絵を出すため）
+    if (blobToken) {
+      const f = await syncFonts(client, blobToken);
+      if (f.uploaded) log(`フォントを ${f.uploaded} 件アップロードしました`);
+    }
   } catch (e) {
     log('設定の同期に失敗:', (e as Error).message);
   }

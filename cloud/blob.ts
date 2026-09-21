@@ -8,9 +8,12 @@
 // 画面からは `/p/<slug>/<mode>/<kind>/<rel>` で引き、cloud/routes/media.ts が 307 で飛ばす。
 import {del, put} from '@vercel/blob';
 
-/** sfx だけは案件に属さない（slug は '_global'）。効果音ライブラリの試聴に使う */
-export type AssetKind = 'uploads' | 'studio' | 'out' | 'qc' | 'narration' | 'sfx';
-export const ASSET_KINDS: readonly AssetKind[] = ['uploads', 'studio', 'out', 'qc', 'narration', 'sfx'];
+/**
+ * sfx と fonts は案件に属さない（slug は '_global'）。
+ * sfx = 効果音ライブラリの試聴、fonts = テロップの自前フォント（PC の <設定の置き場>/fonts/ の写し）
+ */
+export type AssetKind = 'uploads' | 'studio' | 'out' | 'qc' | 'narration' | 'sfx' | 'fonts';
+export const ASSET_KINDS: readonly AssetKind[] = ['uploads', 'studio', 'out', 'qc', 'narration', 'sfx', 'fonts'];
 export const isAssetKind = (v: string): v is AssetKind => (ASSET_KINDS as readonly string[]).includes(v);
 
 export type AssetMode = 'full' | 'light';
@@ -30,6 +33,10 @@ const CONTENT_TYPES: Record<string, string> = {
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
   '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.ttc': 'font/collection',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.json': 'application/json',
 };

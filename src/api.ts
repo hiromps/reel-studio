@@ -47,6 +47,9 @@ export const api = {
       path,
     ),
   del: async <T,>(path: string) => handle<T>(await fetch(path, {method: 'DELETE'}), path),
+  /** ファイルそのものを本文にして送る（フォントの取り込み。名前は path のクエリに入れる） */
+  upload: async <T,>(path: string, file: File) =>
+    handle<T>(await fetch(path, {method: 'POST', headers: {'Content-Type': file.type || 'application/octet-stream'}, body: file}), path),
 };
 
 export type ProjectInfo = {

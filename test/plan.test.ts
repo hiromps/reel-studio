@@ -142,6 +142,22 @@ describe('planCuts — 決定論と制約（F7 / F0 / F1）', () => {
   });
 });
 
+describe('planCuts — テロップのフォント', () => {
+  const catalog = makeCatalog('reunion', richClips());
+  const brief = makeBrief({persona: 'standard', format: 'F7', hook: {clipId: '11', text: '東大阪、9割が知らない'}});
+
+  it('新しく作るときは設定の既定を入れ、未設定なら書かない（同梱の明朝）', () => {
+    expect(planCuts({catalog, brief, options: {...opts, font: 'MyFont.otf'}}).cuts.font).toBe('MyFont.otf');
+    expect(planCuts({catalog, brief, options: opts}).cuts.font).toBeUndefined();
+    expect(planCuts({catalog, brief, options: {...opts, font: null}}).cuts.font).toBeUndefined();
+  });
+
+  it('組み直しても案件で選んだフォントは戻らない（既存 cuts.json が優先）', () => {
+    const existing = {...planCuts({catalog, brief, options: opts}).cuts, font: 'Chosen.ttf'};
+    expect(planCuts({catalog, brief, existing, options: {...opts, font: 'MyFont.otf'}}).cuts.font).toBe('Chosen.ttf');
+  });
+});
+
 describe('planCuts — 固定順（fixed）の回帰', () => {
   it('musch-aki: 19 クリップの順序が保たれ、尺が [0.8, 3.0]、グループ数が尺÷1.8〜2.0 付近', () => {
     const {catalog, order} = catalogFromProject('musch-aki', 'musch-aki', 60);

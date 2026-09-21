@@ -2,6 +2,7 @@
 // フォルダ・音声生成の鍵・裏で走らせる claude の設定を持つ。リポジトリの外に置くので誤コミットが起きない。
 // 優先順位は 環境変数 > settings.json > 既定（core/settings.ts が解決する）。
 import {z} from 'zod';
+import type {FontEntry} from './fonts';
 
 export const VoiceEntrySchema = z.object({
   /** Fish Audio の reference_id（32 桁の 16 進数） */
@@ -40,6 +41,14 @@ const AgentSchema = z.object({
   timeoutMin: z.number().min(1).max(180).default(20),
 });
 
+const TelopSettingsSchema = z.object({
+  /**
+   * 新しく作る動画のテロップに使うフォント（<設定の置き場>/fonts/ の中のファイル名）。
+   * 省略＝同梱の明朝（Noto Serif JP Bold）。案件ごとの指定は cuts.json の font が優先される
+   */
+  font: z.string().min(1).optional(),
+});
+
 const MosaicSettingsSchema = z.object({
   /** deface を入れた python の場所。省略＝<設定の置き場>/deface-venv → PATH の python の順に探す */
   python: z.string().min(1).optional(),
@@ -67,6 +76,8 @@ export const SettingsSchema = z.object({
   paths: PathsSchema.default({}),
   tts: TtsSchema.default({}),
   agent: AgentSchema.default({}),
+  /** テロップ（自前フォント） */
+  telop: TelopSettingsSchema.default({}),
   /** 顔モザイク（deface） */
   mosaic: MosaicSettingsSchema.default({}),
   /** クラウド（PWA）に繋ぐなら。既定は未設定＝ローカル専用 */
@@ -98,6 +109,7 @@ export const SettingsPatchSchema = z
       })
       .strict()
       .optional(),
+    telop: z.object({font: nullable()}).strict().optional(),
     mosaic: z.object({python: nullable()}).strict().optional(),
     cloud: z.object({url: nullable(), token: nullable(), enabled: z.boolean().optional()}).strict().optional(),
   })
@@ -123,6 +135,8 @@ export type SettingsView = {
     cloud: Omit<Settings['cloud'], 'token'> & {token: SecretView};
   };
   paths: Record<PathKey, {value: string; source: ValueSource; exists: boolean}> & {templateDir: string};
+  /** 取り込み済みの自前フォント（<dir>/fonts/）。クラウドではワーカーが上げたものがそのまま出る */
+  fonts: FontEntry[];
   /** 環境変数で固定されているキー（画面では変更不可にする） */
   env: {fishApiKey: boolean; fishModelId: boolean; claudeBin: boolean; agentModel: boolean; mosaicPython: boolean; cloudUrl: boolean; cloudToken: boolean};
   claude: {bin: string; available: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};

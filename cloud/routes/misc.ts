@@ -42,6 +42,9 @@ miscRouter.get('/config', async (_req, res) => {
     stale: false,
     tts: !!fishEnv(),
     claude: w?.claude ?? false,
+    // PC で取り込んだ自前フォント（Timeline のフォント選択が使う）。実体は PC にある
+    fonts: s?.fonts ?? [],
+    telopFont: s?.settings.telop?.font ?? null,
     startedAt: w?.lastSeen ?? new Date().toISOString(),
     uploadsFolders: w?.uploadsFolders ?? [],
     // ── ここからクラウド版だけが返すもの（画面がローカル専用 UI を隠すのに使う） ──
@@ -122,7 +125,8 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
       problem: 'PC のワーカーがまだ繋がっていません',
       settings: {version: 1, paths: {}, tts: {provider: 'fish-audio', modelId: 's2.1-pro-free', voices: [], apiKey: {present: false, masked: '', source: null}}, agent: {model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20}, mosaic: {}} as unknown as SettingsView['settings'],
       paths: {} as SettingsView['paths'],
-      env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, mosaicPython: false},
+      fonts: [],
+      env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, mosaicPython: false, cloudUrl: false, cloudToken: false},
       claude: {bin: '', available: false, source: 'none', version: null},
     } as SettingsView);
   const env = fishEnv();
@@ -175,6 +179,16 @@ miscRouter.get('/settings/mosaic', async (_req, res) => {
 miscRouter.post('/settings/test/mosaic', async (_req, res) => {
   const w = await kvGet<WorkerStatus>('worker');
   res.json(w?.mosaic ?? {ok: false, python: '', source: 'none', venvDir: '', pythonVersion: null, deface: null, onnxruntime: null, providers: [], gpu: false, message: '顔モザイクの確認は PC 側で行われます', checkedAt: new Date().toISOString()});
+});
+
+// ───────────────────────── テロップのフォント ─────────────────────────
+
+/**
+ * 一覧はワーカーが送ってきた見え方（/config の fonts）に出る。取り込みと削除は PC の仕事
+ * （実体は PC の <設定の置き場>/fonts/ にあり、Vercel の Function は本文 4.5MB までなので通せない）
+ */
+miscRouter.all(['/fonts', '/fonts/*'], (_req, res) => {
+  res.status(501).json({error: 'フォントの取り込み・削除は PC 上の Reel Studio で行ってください（スマホからは選ぶだけできます）'});
 });
 
 // ───────────────────────── 効果音 ─────────────────────────

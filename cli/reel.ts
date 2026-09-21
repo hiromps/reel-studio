@@ -514,7 +514,7 @@ async function main() {
       } catch {
         existing = undefined;
       }
-      const r = planCuts({catalog, brief, existing, options: {allowReuse: bool(flags, 'reuse', true)}});
+      const r = planCuts({catalog, brief, existing, options: {allowReuse: bool(flags, 'reuse', true), font: loadSettings().telop.font}});
       if (bool(flags, 'json')) {
         out(JSON.stringify({cuts: r.cuts, aliases: r.aliases, warnings: r.warnings, table: r.table}, null, 2));
       } else {

@@ -3,6 +3,7 @@ import React, {createContext, useCallback, useContext, useEffect, useMemo, useRe
 import {api, type ApiError, type Job, type ProjectInfo} from '../api';
 import type {Brief, Catalog, Narration, ReelData} from '@shared/schema';
 import type {CaptionIssue} from '@shared/caption';
+import type {FontEntry} from '@shared/schema/fonts';
 import {listPersonas, setPersonas, type Persona} from '@shared/personas';
 
 export type ContractName = 'catalog' | 'brief' | 'cuts' | 'narration';
@@ -42,6 +43,10 @@ type Store = {
     claude?: boolean;
     settingsProblem?: string | null;
     personasProblem?: string | null;
+    /** 取り込み済みの自前フォント（Settings で取り込む。Timeline のフォント選択が使う） */
+    fonts?: FontEntry[];
+    /** 新しく作る動画で使う既定のフォント（<設定の置き場>/fonts/ の中のファイル名） */
+    telopFont?: string | null;
     /**
      * cloud = Vercel 上で動いていて、重い処理は自宅 PC のワーカーが行う。
      * 未指定（ローカルのサーバー）は今までどおり全部この PC で動く。

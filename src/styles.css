@@ -1548,6 +1548,46 @@ a.btn-like:hover {
   color: var(--muted);
 }
 
+/* ── テロップの自前フォント（Settings） ── */
+.font-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.font-list > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--panel2);
+}
+.font-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  min-width: 260px;
+}
+.font-pick input {
+  margin: 0;
+}
+/* 見本。そのフォントで描く（読めないときは既定のまま出る） */
+.font-sample {
+  flex: 1;
+  min-width: 200px;
+  font-size: 20px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* トライアルの 1 パターン（冒頭カットぶんの行をまとめる） */
 .hook-variant {
   border: 1px solid var(--line);

@@ -146,8 +146,13 @@ export const newCutId = (cuts: Cut[]): string => {
 /** 素材からカットを 1 つ作る。テロップは付けない（空文字の main を付けると絵コンテのグループ判定で 1 かたまりに見えてしまう） */
 export const makeCut = (clip: Clip, range: {inSec: number; outSec: number}, id: string): Cut => ({id, src: clip.src, inSec: range.inSec, outSec: range.outSec});
 
-/** cuts.json がまだ無い案件で、最初のカットから作る */
-export const createReel = (fps: number, theme: ThemeName | undefined, first: Cut): ReelData => ({fps, ...(theme ? {theme} : {}), cuts: [first]});
+/** cuts.json がまだ無い案件で、最初のカットから作る。font は Settings で選んだ既定のフォント */
+export const createReel = (fps: number, theme: ThemeName | undefined, first: Cut, font?: string | null): ReelData => ({
+  fps,
+  ...(theme ? {theme} : {}),
+  ...(font ? {font} : {}),
+  cuts: [first],
+});
 
 export const insertCutAt = (data: ReelData, cut: Cut, index: number): ReelData => {
   const cuts = [...data.cuts];

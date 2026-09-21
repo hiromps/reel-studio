@@ -189,6 +189,8 @@ export const formatScriptPlan = (plan: ScriptPlan, sections: readonly ScriptSect
 export type ScriptBuildContext = {
   catalog: Pick<Catalog, 'clips' | 'dominantFps'>;
   theme: ReelData['theme'];
+  /** テロップのフォント（Settings で選んだ既定）。省略＝同梱の明朝 */
+  font?: string | null;
   specId: string;
   briefHash: string;
   catalogHash: string;
@@ -218,6 +220,7 @@ export const scriptPlanToCuts = (plan: ScriptPlan, ctx: ScriptBuildContext): Ree
   return ReelDataSchema.parse({
     fps: ctx.catalog.dominantFps,
     theme: ctx.theme,
+    ...(ctx.font ? {font: ctx.font} : {}),
     cuts,
     meta: {
       slots: plan.cuts.map((c, i) => ({cutId: cutIdOf(i), segment: c.section, role: 'info', clipId: c.clipId, textStatus: 'draft', locked: false, qc: []})),

@@ -41,6 +41,11 @@ export type PlanOptions = {
   allowReuse?: boolean;
   /** meta.generated.at に入れる時刻（テストの決定論用） */
   now?: string;
+  /**
+   * テロップのフォント（Settings で選んだ既定）。既に cuts.json があるときは
+   * そちらの指定が優先される（案件ごとに選び直したものを組み直しで戻さない）
+   */
+  font?: string | null;
 };
 
 export type PlanInput = {
@@ -919,9 +924,11 @@ export function planCuts(input: PlanInput): PlanResult {
       freeMeta[k] = v;
     }
   }
+  const font = existing?.font ?? input.options?.font ?? undefined;
   const data: ReelData = {
     fps,
     theme,
+    ...(font ? {font} : {}),
     meta: {
       shop: brief.shop.name,
       format: `${spec.id} ${spec.name}`,

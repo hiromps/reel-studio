@@ -28,6 +28,7 @@ import {projectSlug, readBrief, readCuts, writeBrief, writeCuts} from './project
 import {applyAliases} from './alias';
 import {validateProject} from './render';
 import {writeJsonAtomic} from './json-io';
+import {loadSettings} from './settings';
 
 export type OrderEnv = {dir: string; slug: string; catalog: Catalog; brief: Brief; spec: FormatSpec; persona: Persona};
 
@@ -202,7 +203,7 @@ export const importOrder = (env: OrderEnv, raw: unknown, opt: {write?: boolean; 
   } catch {
     existing = undefined;
   }
-  const plan = planCuts({catalog: env.catalog, brief: nextBrief, existing, options: {allowReuse: opt.allowReuse ?? true, now: opt.now}});
+  const plan = planCuts({catalog: env.catalog, brief: nextBrief, existing, options: {allowReuse: opt.allowReuse ?? true, now: opt.now, font: loadSettings().telop.font}});
   let aliasesApplied = 0;
   let validation: ValidationResult | undefined;
   if (opt.write) {

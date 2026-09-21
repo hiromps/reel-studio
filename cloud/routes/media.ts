@@ -19,8 +19,14 @@ mediaRouter.get('/p/:slug/:mode/:kind/*', async (req, res) => {
   const rel = (req.params as Record<string, string>)[0] ?? '';
   if (!isAssetMode(mode)) return res.status(400).end();
 
-  // フォント（テロップの描画に使う）はアプリの静的ファイル。案件ごとに持たない
+  // フォント（テロップの描画に使う）は案件ごとに持たない。
+  // 自前フォントはワーカーが _global に上げているのでそれを、無ければ同梱の明朝（アプリの静的ファイル）を返す
   if (kind === 'fonts') {
+    const font = await findAsset('_global', 'fonts', 'full', rel);
+    if (font) {
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.redirect(307, font.url);
+    }
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return res.redirect(308, `/fonts/${rel}`);
   }

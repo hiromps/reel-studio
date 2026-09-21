@@ -76,6 +76,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     paths: {...cur.paths},
     tts: {...cur.tts, voices: [...cur.tts.voices]},
     agent: {...cur.agent},
+    telop: {...cur.telop},
     mosaic: {...cur.mosaic},
     cloud: {...cur.cloud},
   };
@@ -98,6 +99,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(agent, 'model', patch.agent.model);
     for (const k of ['tagBatchSize', 'tagConcurrency', 'timeoutMin'] as const) if (patch.agent[k] !== undefined) agent[k] = patch.agent[k];
   }
+  if (patch.telop) setOrClear(next.telop as Record<string, unknown>, 'font', patch.telop.font);
   if (patch.mosaic) setOrClear(next.mosaic as Record<string, unknown>, 'python', patch.mosaic.python);
   if (patch.cloud) {
     const cloud = next.cloud as Record<string, unknown>;
@@ -184,8 +186,11 @@ export const cloudTokenView = (): SecretView => {
   return {present: false, masked: '', source: null};
 };
 
-/** GET /api/settings の本体。claude の情報は呼び出し側（core/agent.ts を知っている層）が足す */
-export const settingsView = (claude: SettingsView['claude'], templateDir: string): SettingsView => {
+/**
+ * GET /api/settings の本体。claude の情報は呼び出し側（core/agent.ts を知っている層）が足す。
+ * fonts も引数で受ける（core/fonts.ts はこのファイルを使う側なので、ここから呼ぶと循環する）
+ */
+export const settingsView = (claude: SettingsView['claude'], templateDir: string, fonts: SettingsView['fonts'] = []): SettingsView => {
   const s = loadSettings();
   const {paths, sources} = resolveAll(s);
   const {apiKey: _omit, ...ttsRest} = s.tts;
@@ -202,6 +207,7 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
     problem: settingsProblem(),
     settings: {...s, tts: {...ttsRest, apiKey: fishKeyView()}, cloud: {...cloudRest, token: cloudTokenView()}},
     paths: pathsView,
+    fonts,
     env: {
       fishApiKey: !!process.env.FISH_API_KEY?.trim(),
       fishModelId: !!process.env.FISH_MODEL_ID?.trim(),

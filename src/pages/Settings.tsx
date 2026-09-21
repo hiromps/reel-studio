@@ -1,7 +1,7 @@
 // Settings：データフォルダ・音声生成（Fish Audio）・AI（Claude Code CLI）・人格。
 // 設定の実体は ~/.reel-studio/（settings.json / personas.json）。鍵は画面に戻ってこない（マスクだけ）。
 // 案件に依存しない画面なので、案件が無くても開ける。
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
@@ -93,6 +93,7 @@ export const SettingsPage: React.FC = () => {
       <FoldersCard view={view} save={save} />
       <TtsCard view={view} save={save} />
       <AgentCard view={view} save={save} />
+      <FontsCard view={view} save={save} reload={load} />
       <MosaicSettingsCard view={view} save={save} />
       <CloudCard view={view} save={save} />
       <NotificationsCard />
@@ -655,6 +656,137 @@ const MosaicSettingsCard: React.FC<{view: SettingsView; save: Save}> = ({view, s
           顔モザイクの設定を保存
         </button>
       </div>
+    </section>
+  );
+};
+
+// ───────────────────────── テロップのフォント ─────────────────────────
+
+/** そのフォントで見本を描く。読み込めないときは既定のフォントのまま（クラウドでは実体が無い） */
+const FontSample: React.FC<{file: string; family: string; text: string}> = ({file, family, text}) => {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(false);
+    let alive = true;
+    // 取り込んだ原本の置き場（クラウドではワーカーが上げた写しに飛ぶ）
+    const face = new FontFace(family, `url(/p/_global/full/fonts/${encodeURIComponent(file)})`);
+    face.load().then(
+      (f) => {
+        if (!alive) return;
+        document.fonts.add(f);
+        setReady(true);
+      },
+      () => undefined, // 読めなければ見本を出さないだけ
+    );
+    return () => {
+      alive = false;
+    };
+  }, [file, family]);
+  return (
+    <div className="font-sample" style={ready ? {fontFamily: `"${family}"`} : undefined} title={ready ? file : '見本を読み込めませんでした'}>
+      {text}
+    </div>
+  );
+};
+
+const SAMPLE_TEXT = 'この一杯が旨い 1,280円';
+
+const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise<void>}> = ({view, save, reload}) => {
+  const s = useStudio();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const fonts = view.fonts ?? [];
+  const selected = view.settings.telop?.font ?? '';
+
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy(true);
+    try {
+      for (const f of [...files]) await api.upload(`/api/fonts?filename=${encodeURIComponent(f.name)}`, f);
+      s.toast(`${files.length} 件のフォントを取り込みました`, 'ok');
+      // 一覧は SettingsView（この画面）と /api/config（Timeline のフォント選択）の両方に出る
+      await reload();
+      await s.reloadConfig();
+    } catch (e) {
+      s.toast(msg(e), 'error');
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  };
+
+  const remove = async (file: string) => {
+    if (!confirm(`「${file}」を置き場から消します。すでに使っている案件（public/fonts/ に配り済み）の見た目は変わりません。よろしいですか？`)) return;
+    setBusy(true);
+    try {
+      await api.del(`/api/fonts/${encodeURIComponent(file)}`);
+      // 既定に選んでいたものを消したときは、サーバー側で既定も外れている
+      s.toast(selected === file ? `${file} を消しました（既定は同梱の明朝に戻しました）` : `${file} を消しました`, 'ok');
+      await reload();
+      await s.reloadConfig();
+    } catch (e) {
+      s.toast(msg(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const choose = async (file: string) => {
+    if (await save({telop: {font: file || null}}, file ? `これから作る動画は「${file}」で描きます` : '同梱の明朝に戻しました')) await s.reloadConfig();
+  };
+
+  return (
+    <section className="card" data-tour="settings-fonts">
+      <h2>テロップのフォント</h2>
+      <p className="hint">
+        自前のフォント（ttf / otf / ttc / woff / woff2）を取り込んで、テロップに使えます。置き場は <span className="mono">{view.dir.replace(/\\/g, '/')}/fonts/</span>。
+        ここで選んだものが<b>これから作る動画</b>の既定になります（作成済みの案件は Timeline の「動画全体 → フォント」で選び直せます）。
+        テロップは太字前提なので、<b>Bold / 太ゴシック・太明朝のフォント</b>を入れると綺麗に出ます。
+        <b>フォントのライセンス（商用利用・埋め込みの可否）は自分で確認してください。</b>
+      </p>
+      {s.isCloud ? (
+        <p className="hint">取り込み・削除は PC 上の Reel Studio で行ってください（スマホからは選ぶだけできます）。</p>
+      ) : (
+        <div className="row">
+          <button className="primary" onClick={() => input.current?.click()} disabled={busy}>
+            {busy ? '取り込み中…' : 'フォントを取り込む'}
+          </button>
+          <input ref={input} type="file" accept=".ttf,.otf,.ttc,.woff,.woff2,font/*" multiple hidden onChange={(e) => void upload(e.target.files)} />
+          <span className="hint">1 ファイル 40MB まで</span>
+        </div>
+      )}
+      <ul className="font-list">
+        <li>
+          <label className="font-pick">
+            <input type="radio" name="telop-font" checked={!selected} onChange={() => void choose('')} disabled={busy} />
+            <span>
+              <b>同梱の明朝（Noto Serif JP Bold）</b>
+              <span className="hint"> — 既定。取り込まなくても使えます</span>
+            </span>
+          </label>
+        </li>
+        {fonts.map((f) => (
+          <li key={f.file}>
+            <label className="font-pick">
+              <input type="radio" name="telop-font" checked={selected === f.file} onChange={() => void choose(f.file)} disabled={busy} />
+              <span>
+                <b>{f.label}</b>
+                <span className="hint">
+                  {' '}
+                  — {(f.sizeBytes / 1024 / 1024).toFixed(1)} MB / {new Date(f.addedAt).toLocaleDateString('ja-JP')}
+                </span>
+              </span>
+            </label>
+            <FontSample file={f.file} family={f.family} text={SAMPLE_TEXT} />
+            {!s.isCloud && (
+              <button className="small" onClick={() => void remove(f.file)} disabled={busy}>
+                消す
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!fonts.length && <p className="hint">まだ取り込んでいません。</p>}
     </section>
   );
 };

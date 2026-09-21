@@ -10,7 +10,8 @@ import {exec} from '../core/exec';
 import {pickFolder} from '../core/pick-folder';
 import {ttsAvailable} from '../core/tts';
 import {claudeAvailable} from '../core/agent';
-import {settingsDir, settingsProblem} from '../core/settings';
+import {loadSettings, settingsDir, settingsProblem} from '../core/settings';
+import {listFonts} from '../core/fonts';
 import {JOB_TYPES} from './jobs';
 import {projectsRouter} from './routes/projects';
 import {filesRouter} from './routes/files';
@@ -25,6 +26,7 @@ import {buildRouter} from './routes/build';
 import {jobsRouter, eventsHandler} from './routes/jobs';
 import {mediaRouter} from './routes/media';
 import {settingsRouter} from './routes/settings';
+import {fontsRouter} from './routes/fonts';
 import {versionRouter} from './routes/version';
 import {personasRouter} from './routes/personas';
 import {loadPersonasFromDisk, personasProblem} from '../core/personas-store';
@@ -112,6 +114,9 @@ app.get('/api/config', (_req, res) => {
     tts: ttsAvailable(),
     // 裏で走らせる claude が見つかっているか
     claude: claudeAvailable(),
+    // 取り込み済みの自前フォントと、新しく作る動画で使う既定（Timeline のフォント選択が使う）
+    fonts: listFonts(),
+    telopFont: loadSettings().telop.font ?? null,
     startedAt: new Date(startedAtMs).toISOString(),
     uploadsFolders: fs.existsSync(studioConfig.uploadsRoot) ? fs.readdirSync(studioConfig.uploadsRoot).filter((d) => fs.statSync(path.join(studioConfig.uploadsRoot, d)).isDirectory()) : [],
   });
@@ -144,6 +149,7 @@ app.use('/api/projects/:slug', buildRouter);
 app.use('/api/sfx', sfxRouter);
 app.use('/api/tts', ttsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/fonts', fontsRouter);
 app.use('/api/version', versionRouter);
 app.use('/api/personas', personasRouter);
 app.use('/api/jobs', jobsRouter);

@@ -10,6 +10,7 @@ import {CropBox} from '../components/CropBox';
 import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
 import {fallbackDuration} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
+import {useStudio} from '../state/store';
 import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
 
@@ -39,6 +40,8 @@ const Counter: React.FC<{text: string; max?: number}> = ({text, max = 13}) => {
 // ───────────────────────── 動画全体 ─────────────────────────
 export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
   const {cuts, validation, patchReel} = m;
+  // 取り込み済みの自前フォント（Settings で取り込んだもの）
+  const fonts = useStudio().config?.fonts ?? [];
   if (!cuts) return <div className="hint">左の素材をタイムラインへドラッグするか、Brief で構成を作ってください</div>;
   return (
     <>
@@ -71,6 +74,19 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
                   {t}
                 </option>
               ))}
+            </select>
+          </label>
+          <label title="テロップのフォント。Settings の「テロップのフォント」で取り込んだものから選べます">
+            フォント
+            <select value={cuts.font ?? ''} onChange={(e) => patchReel({font: e.target.value || undefined})}>
+              <option value="">同梱の明朝（Noto Serif JP）</option>
+              {fonts.map((f) => (
+                <option key={f.file} value={f.file}>
+                  {f.label}
+                </option>
+              ))}
+              {/* 置き場から消したあとでも、いま指定されているものは選択肢に残す */}
+              {cuts.font && !fonts.some((f) => f.file === cuts.font) && <option value={cuts.font}>{cuts.font}（置き場に無い）</option>}
             </select>
           </label>
           <label title="バッジ（エリア名・順位）の下地の濃さ。0 で下地なし、1 でベタ塗り。文字の濃さは変わりません">

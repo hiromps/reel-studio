@@ -1,6 +1,6 @@
 import React from 'react';
 import {AbsoluteFill, OffthreadVideo, Sequence, staticFile} from 'remotion';
-import {BadgeTelop, MainTelop, PriceTelop, TateTelop} from './telops';
+import {BadgeTelop, MainTelop, PriceTelop, TateTelop, TelopFont} from './telops';
 import type {ThemeName} from './telops';
 
 export type MainTelopDef = {
@@ -77,6 +77,9 @@ export type Cut = {
 export type ReelData = {
   fps: number;
   theme?: ThemeName; // pop(既定) | bold | human | stylish
+  // テロップのフォント。public/fonts/ の中のファイル名（例 "MyFont.otf"）。
+  // 省略＝同梱の明朝（Noto Serif JP Bold）。Reel Studio の Settings で取り込んだものが配られる
+  font?: string;
   // 店名・エリアの常駐縦書きテロップ。基本は入れない（省略時は非表示）。
   // エリア訴求は冒頭フックのテロップとキャプション1行目で行う
   tate?: {text: string; outlineColor: string};
@@ -156,15 +159,18 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
   }
 
   return (
-    <AbsoluteFill style={{backgroundColor: 'black'}}>
-      {videoElements}
-      {telopGroups.map((g, i) => (
-        <Sequence key={`telop${i}`} from={g.from} durationInFrames={g.dur} name={`telop${i + 1}`}>
-          <MainTelop theme={theme} {...g.def} hasBadge={g.hasBadge} />
-        </Sequence>
-      ))}
-      {/* 常駐縦書きテロップは tate 指定時のみ（基本は入れない） */}
-      {data.tate ? <TateTelop theme={theme} text={data.tate.text} outlineColor={data.tate.outlineColor} /> : null}
-    </AbsoluteFill>
+    // 自前フォント指定があれば、読み込みを待ってからテロップを描く（未指定なら同梱の明朝）
+    <TelopFont file={data.font}>
+      <AbsoluteFill style={{backgroundColor: 'black'}}>
+        {videoElements}
+        {telopGroups.map((g, i) => (
+          <Sequence key={`telop${i}`} from={g.from} durationInFrames={g.dur} name={`telop${i + 1}`}>
+            <MainTelop theme={theme} {...g.def} hasBadge={g.hasBadge} />
+          </Sequence>
+        ))}
+        {/* 常駐縦書きテロップは tate 指定時のみ（基本は入れない） */}
+        {data.tate ? <TateTelop theme={theme} text={data.tate.text} outlineColor={data.tate.outlineColor} /> : null}
+      </AbsoluteFill>
+    </TelopFont>
   );
 };

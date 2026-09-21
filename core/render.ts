@@ -14,6 +14,7 @@ import {countFrames} from './ffprobe';
 import {makeQcTile} from './thumbnails';
 import {loadCatalog} from './catalog';
 import {engineDiff, syncEngine, readCuts, readBrief, writeCuts} from './project';
+import {ensureProjectFont, type FontDelivery} from './fonts';
 import {pendingAliases, applyAliases} from './alias';
 
 export type RenderProgress = {phase: 'bundle' | 'render' | 'stitch' | 'other'; done: number; total: number; attempt: number};
@@ -108,6 +109,8 @@ export type Preflight = {
   overridden: string[];
   lowMemory: boolean;
   synced: string[];
+  /** 自前フォントの用意（配った / 見つからない）。見つからなくても同梱の明朝で描けるので止めない */
+  font: FontDelivery;
 };
 
 export const preflight = (opt: RenderOptions): Preflight => {
@@ -154,8 +157,10 @@ export const preflight = (opt: RenderOptions): Preflight => {
   } catch {
     /* statfs 非対応環境 */
   }
+  // テロップの自前フォントを案件へ用意する（cuts.json の font）。無くても同梱の明朝で描けるので止めない
+  const font = ensureProjectFont(projectDir, (cuts as {font?: string}).font);
   const lowMemory = opt.lowMemory ?? os.freemem() < 1.2 * 1024 ** 3;
-  return {cuts, validation, issues, overridden, lowMemory, synced};
+  return {cuts, validation, issues, overridden, lowMemory, synced, font};
 };
 
 const parseProgress = (line: string, attempt: number): RenderProgress | null => {
@@ -178,6 +183,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
   }
   const log = opt.onLine ?? (() => {});
   for (const s of pf.synced) log(`engine synced: ${s}`);
+  if (pf.font.copied) log(`テロップのフォントを案件へ配りました: ${pf.font.file}`);
   const outRel = opt.out ?? (opt.draft ? 'out/draft.mp4' : 'out/final.mp4');
   const outAbs = path.isAbsolute(outRel) ? outRel : path.join(projectDir, outRel);
   fs.mkdirSync(path.dirname(outAbs), {recursive: true});
@@ -187,6 +193,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
   const expectedFrames = calcTotalFrames(pf.cuts);
   const logs: string[] = [];
   const warnings: string[] = pf.validation.warnings.map((w) => `${w.code}${w.cutId ? ` [${w.cutId}]` : ''} ${w.message}`);
+  if (pf.font.missing) warnings.push(`テロップのフォント ${pf.font.file} が見つかりません（設定の置き場の fonts/ にも案件の public/fonts/ にも無い）。同梱の明朝で描かれます`);
   let attempts = 0;
   let last: ExecResult | null = null;
 
@@ -286,6 +293,7 @@ export async function renderStill(projectDir: string, opt: {cut?: number; frame?
   const outAbs = path.isAbsolute(outRel) ? outRel : path.join(projectDir, outRel);
   fs.mkdirSync(path.dirname(outAbs), {recursive: true});
   if (engineDiff(projectDir).stale) syncEngine(projectDir);
+  ensureProjectFont(projectDir, (cuts as {font?: string}).font);
   const args = ['still', 'GourmetReel', outAbs, `--frame=${frame}`, `--gl=${opt.gl ?? 'swiftshader'}`, '--overwrite'];
   const r = await exec(process.execPath, [remotionCli(projectDir), ...args], {cwd: projectDir, onLine: (l) => opt.onLine?.(l)});
   if (r.code !== 0 || !fs.existsSync(outAbs)) throw new Error(`still に失敗 (exit ${r.code}):\n${r.stderr.split(/\r?\n/).slice(-20).join('\n')}`);

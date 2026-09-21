@@ -125,6 +125,11 @@ export const ReelDataSchema = z
   .object({
     fps: z.number().positive(),
     theme: ThemeSchema.optional(),
+    /**
+     * テロップのフォント。案件の public/fonts/ にあるファイル名（例 "MyFont.otf"）。
+     * 省略＝同梱の明朝（Noto Serif JP Bold）。実体は <設定の置き場>/fonts/ から配られる（core/fonts.ts）
+     */
+    font: z.string().min(1).optional(),
     tate: z.object({text: z.string(), outlineColor: z.string()}).optional(),
     /** バッジ下地の不透明度（0〜1）。省略時はエンジン既定 0.6。Timeline のスライダーで調整する */
     badgeOpacity: z.number().min(0).max(1).optional(),

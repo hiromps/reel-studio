@@ -15,6 +15,7 @@ import {stableHash} from '../shared/hash';
 import {fileStamp} from '../shared/time';
 import {writeJsonAtomic} from '../core/json-io';
 import {backupsDir, engineDiff, projectInfo, projectSlug} from '../core/project';
+import {fontsDir, listFonts} from '../core/fonts';
 import {buildFacts} from '../core/build';
 import {blobPath, contentTypeOf, type AssetKind, type AssetMode} from '../cloud/blob';
 import type {CloudClient} from './client';
@@ -220,6 +221,45 @@ export const syncAssets = async (client: CloudClient, dir: string, blobToken: st
   }
   if (registered.length) await client.registerAssets(slug, registered);
   return {uploaded: batch.length, skipped: list.length - batch.length, bytes};
+};
+
+// ───────────────────────── 自前フォント ─────────────────────────
+
+/**
+ * テロップの自前フォント（<設定の置き場>/fonts/）をクラウドへ上げる。
+ *
+ * 案件に属さないので slug は `_global`（効果音と同じ扱い）。これが無いと、スマホで見る
+ * プレビューだけ同梱の明朝で描かれてしまい、PC で見えているものと違う絵になる。
+ * レンダー自体は PC で走るので、上げ損ねても完成品の見た目は変わらない。
+ */
+export const syncFonts = async (client: CloudClient, blobToken: string, opt: {onLine?: (l: string) => void} = {}): Promise<AssetSyncReport> => {
+  const dir = fontsDir();
+  const list = listFonts();
+  if (!list.length) return {uploaded: 0, skipped: 0, bytes: 0};
+  const remote = new Map((await client.listAssets('_global')).assets.map((a) => [key(a), a.hash]));
+  const registered: {kind: string; mode: string; relPath: string; url: string; bytes: number; hash: string; contentType: string}[] = [];
+  let uploaded = 0;
+  let bytes = 0;
+  for (const f of list) {
+    const file = path.join(dir, f.file);
+    let hash: string;
+    try {
+      hash = fileHash(file);
+    } catch {
+      continue;
+    }
+    if (remote.get(key({kind: 'fonts', mode: 'full', relPath: f.file})) === hash) continue;
+    const contentType = contentTypeOf(f.file);
+    const r = await put(blobPath('_global', 'fonts', 'full', f.file), fs.readFileSync(file), {access: 'public', contentType, addRandomSuffix: true, token: blobToken});
+    registered.push({kind: 'fonts', mode: 'full', relPath: f.file, url: r.url, bytes: f.sizeBytes, hash, contentType});
+    uploaded++;
+    bytes += f.sizeBytes;
+  }
+  if (registered.length) {
+    await client.registerAssets('_global', registered);
+    opt.onLine?.(`フォントを ${registered.length} 件アップロードしました`);
+  }
+  return {uploaded, skipped: list.length - uploaded, bytes};
 };
 
 // ───────────────────────── 案件の状態 ─────────────────────────
