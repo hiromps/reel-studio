@@ -40,6 +40,11 @@ export const TrialCard: React.FC = () => {
     .map((l) => l.replace(/^\s*-\s*/, '').trim())
     .filter((l) => l && !/preflight に失敗/.test(l));
   const unsupported = !s.supportsJob('trial');
+  // トライアル・二次活用版が自分で作る音声はフック（と締め）だけ。残りのブロックの wav は
+  // 「音声を生成」で先に作っておかないと、レンダーが終わったあと mix で落ちる
+  const narration = s.files.narration.data;
+  const needsTts = (narration?.segments ?? []).filter((seg) => (seg as {needsTts?: boolean}).needsTts || !seg.durSec).length;
+  const audioBlockedBy = narration && needsTts > 0 ? `ナレーション ${needsTts} ブロックの音声がまだありません。上の「音声を生成」を先に実行してください` : null;
   const commonCaption = s.caption.text ?? '';
   const issues = checkHooks(hooks, {caption: commonCaption});
   const span = info?.hookCuts.length ?? hooks.cutCount;
@@ -165,10 +170,15 @@ export const TrialCard: React.FC = () => {
         </label>
       </div>
       <div className="row">
-        <button className="primary" onClick={() => makeTrial(false)} disabled={busy || unsupported || dirty || hooks.variants.length < 2} title={dirty ? 'hooks.json に未保存の変更があります' : hooks.variants.length < 2 ? '2 パターン以上必要です' : `${hooks.variants.length} 本レンダーして、キャプションと一緒に納品します`}>
+        <button
+          className="primary"
+          onClick={() => makeTrial(false)}
+          disabled={busy || unsupported || dirty || hooks.variants.length < 2 || !!audioBlockedBy}
+          title={audioBlockedBy ?? (dirty ? 'hooks.json に未保存の変更があります' : hooks.variants.length < 2 ? '2 パターン以上必要です' : `${hooks.variants.length} 本レンダーして、キャプションと一緒に納品します`)}
+        >
           {busy ? '作成中…' : `${hooks.variants.length || ''} パターンを作る（レンダー→音声→mix→納品）`}
         </button>
-        <button onClick={() => makeTrial(true)} disabled={busy || unsupported || dirty || hooks.variants.length < 2} title="0.25 倍の粗いレンダーで見た目だけ先に確認する（納品しません）">
+        <button onClick={() => makeTrial(true)} disabled={busy || unsupported || dirty || hooks.variants.length < 2 || !!audioBlockedBy} title={audioBlockedBy ?? '0.25 倍の粗いレンダーで見た目だけ先に確認する（納品しません）'}>
           ドラフトで試す
         </button>
         <label className="sb-inline" title="検証の E（F7 の看板温存・画角の連続・フックの型など）を承知でレンダーする。二次活用版にも効きます。素材が無い等の致命的なものは通りません">
@@ -177,6 +187,7 @@ export const TrialCard: React.FC = () => {
         </label>
         {unsupported && <span className="pill warn">サーバーが古いプロセスです。再起動してください</span>}
       </div>
+      {audioBlockedBy && <div className="hint" style={{color: 'var(--warn)'}}>{audioBlockedBy}（トライアルが自分で作るのはフック区間のナレーションだけです）</div>}
       {preflightErrors.length > 0 && !allowErrors && (
         <div className="issues" style={{marginTop: 6}}>
           <div className="hint" style={{color: 'var(--warn)'}}>
@@ -321,10 +332,15 @@ export const TrialCard: React.FC = () => {
           <span className="counter">{[...tailNarration].length}字</span>
         </div>
         <div className="row">
-          <button className="primary" onClick={() => makeWinner(false)} disabled={winnerBusy || busy || dirty || !s.supportsJob('winner')} title={dirty ? 'hooks.json に未保存の変更があります' : 'レンダー→締めの音声→mix→倍速→outputs/ へ（mp4 と新しいキャプション）'}>
+          <button
+            className="primary"
+            onClick={() => makeWinner(false)}
+            disabled={winnerBusy || busy || dirty || !s.supportsJob('winner') || !!audioBlockedBy}
+            title={audioBlockedBy ?? (dirty ? 'hooks.json に未保存の変更があります' : 'レンダー→締めの音声→mix→倍速→outputs/ へ（mp4 と新しいキャプション）')}
+          >
             {winnerBusy ? '作成中…' : '二次活用版を作る（レンダー→音声→mix→倍速→納品）'}
           </button>
-          <button onClick={() => makeWinner(true)} disabled={winnerBusy || busy || dirty || !s.supportsJob('winner')} title="0.25 倍の粗いレンダーで確認（納品しません）">
+          <button onClick={() => makeWinner(true)} disabled={winnerBusy || busy || dirty || !s.supportsJob('winner') || !!audioBlockedBy} title={audioBlockedBy ?? '0.25 倍の粗いレンダーで確認（納品しません）'}>
             ドラフトで試す
           </button>
         </div>

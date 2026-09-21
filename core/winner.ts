@@ -16,9 +16,9 @@ import {countFrames} from './ffprobe';
 import {readHooks} from './trial';
 import {aiWinner} from './ai-trial';
 import {studioConfig} from '../studio.config';
-import {mixScriptPath} from './mix';
+import {missingMixAssets, mixScriptPath} from './mix';
 import {applyHookNarration, applyHookVariant, hookCutIndices, trialCaptionOf} from '../shared/hooks';
-import {DEFAULT_WINNER_SPEED, applyTailNarration, applyTailTelop, checkWinner, spedUpSec, tailTelopOf, type WinnerIssue} from '../shared/winner';
+import {DEFAULT_WINNER_SPEED, applyTailNarration, applyTailTelop, checkWinner, lastNarrationId, spedUpSec, tailTelopOf, type WinnerIssue} from '../shared/winner';
 import {deliverFileName} from '../shared/deliver';
 import {getPersona} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
@@ -136,6 +136,14 @@ export const runWinner = async (projectDir: string, opt: WinnerOptions = {}): Pr
   const prevTelop = tailTelopOf(cuts);
   if (!prevTelop) throw new Error('締めのテロップが見つかりません（末尾のカットに main が無い）');
   const prevNarr = narration ? [...narration.segments].sort((a, b) => a.at - b.at).at(-1)?.text ?? '' : '';
+
+  // ── mix の材料が揃っているかを「AI とレンダーの前に」確かめる（理由は trial.ts のコメント） ──
+  // フックと締めの 2 本はこのあと必ず作り直すので、「これから作るもの」として外す。
+  if (narration?.segments.length) {
+    const willMake = [hookWavId, lastNarrationId(narration)].filter((x): x is string => !!x);
+    const problems = missingMixAssets(projectDir, narration, {ignoreWavIds: willMake});
+    if (problems.length) throw new Error(`二次活用版の前に音の準備が要ります:\n${problems.map((p) => `  ${p}`).join('\n')}`);
+  }
 
   // ── 文言（無いものだけ AI に書かせる） ──
   let tailTelop = (opt.tailTelop ?? '').trim();

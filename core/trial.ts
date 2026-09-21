@@ -12,7 +12,7 @@ import {loadCatalog} from './catalog';
 import {renderProject} from './render';
 import {synthOne} from './tts';
 import {studioConfig} from '../studio.config';
-import {mixScriptPath} from './mix';
+import {missingMixAssets, mixScriptPath} from './mix';
 import {HooksSchema, TRIAL_POSTING_RULES, applyHookNarration, applyHookVariant, checkHooks, hookCutIndices, trialCaptionOf, type HookVariant, type Hooks} from '../shared/hooks';
 import {deliverFileName} from '../shared/deliver';
 import {getPersona} from '../shared/personas';
@@ -90,12 +90,33 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
   const spanEndSec = idx.reduce((s, i) => s + cutDurationSec(cuts.cuts[i]), 0);
   log(`トライアル ${targets.length} パターン（差し替えるのは冒頭 ${idx.length} カット: ${idx.map((i) => i + 1).join('・')}＝${spanEndSec.toFixed(2)} 秒）`);
 
+  const items: TrialItem[] = [];
+  const warnings: string[] = [];
+
+  // ── mix の材料が揃っているかを「レンダーの前に」確かめる ──
+  // トライアルが自分で作る音声は**フック区間の 1 本だけ**で、それ以外のブロックの wav は
+  // 「音声を生成」で先に作っておく必要がある。足りないまま走らせると、1 本 1 分以上かけて
+  // レンダーしたあと mix が exit 1 で落ち、その時間が丸ごと無駄になる。
+  // 2026-09-21: wav を 1 本も作っていない案件で A（ナレーション差し替え無し）を回し、
+  // 80 秒のレンダーのあと「mix に失敗 (exit 1)」とだけ出て原因が分からなかった。
+  if (narration?.segments.length) {
+    const problems = new Set<string>();
+    const reused = new Set<string>(); // 差し替えずに使い回すブロック（＝古い wav がそのまま乗る候補）
+    for (const v of targets) {
+      const {narration: vn, wavId} = applyHookNarration(narration, v, {spanEndSec, charsPerSec: persona.narration.charsPerSecMeasured});
+      for (const p of missingMixAssets(projectDir, vn, {ignoreWavIds: wavId ? [wavId] : []})) problems.add(p);
+      for (const s of vn.segments) if (s.id !== wavId) reused.add(s.id);
+    }
+    if (problems.size) throw new Error(`トライアルの前に音の準備が要ります:\n${[...problems].map((p) => `  ${p}`).join('\n')}`);
+    // wav はあるが文言が変わっている（＝古い音声が乗る）。落ちはしないので警告に留める
+    const stale = narration.segments.filter((s) => reused.has(s.id) && (s as {needsTts?: boolean}).needsTts).map((s) => s.id);
+    if (stale.length) warnings.push(`文言が変わったまま音声を作り直していないブロックがあります: ${stale.join(', ')}（古い音声が乗ります）`);
+  }
+
   fs.mkdirSync(trialDir(projectDir), {recursive: true});
   const outputsDir = studioConfig.outputsDir;
   if (opt.deliver !== false) fs.mkdirSync(outputsDir, {recursive: true});
 
-  const items: TrialItem[] = [];
-  const warnings: string[] = [];
   let done = 0;
 
   for (const v of targets) {
