@@ -2,6 +2,7 @@
 //   create-project … 案件フォルダを PC に作る（新規／複製）
 //   ingest         … スマホから上げた素材を uploads/ に取り込む
 //   catalog-import … タグと slug の取り込み（slug 変更は実ファイルのリネームを伴う）
+//   fonts          … スマホから上げたテロップ用フォントの取り込み・削除
 import fs from 'node:fs';
 import path from 'node:path';
 import {pipeline} from 'node:stream/promises';
@@ -9,6 +10,9 @@ import {Readable} from 'node:stream';
 import {studioConfig} from '../studio.config';
 import {cloneProject, createProject, npmInstall, resolveProjectDir} from '../core/project';
 import {importTags, loadCatalog} from '../core/catalog';
+import {deleteFont, fontsDir, saveFont} from '../core/fonts';
+import {loadSettings, mergeSettings, saveSettings} from '../core/settings';
+import {safeFontFile} from '../shared/schema/fonts';
 import {makePreviewProxy} from '../core/proxy';
 import type {PersonaId} from '../shared/schema/brief';
 import type {JobRunCtx} from '../server/jobs';
@@ -70,6 +74,46 @@ export const runIngest = async (slug: string, p: Record<string, unknown>, ctx: J
   ctx.onLine(`素材フォルダ: ${destDir}`);
   ctx.onLine('次は Materials の「カタログ化」でこのフォルダを読み込んでください');
   return {dir: destDir, folder, saved: saved.length};
+};
+
+/**
+ * テロップの自前フォントを、置き場（<設定の置き場>/fonts/）に入れる／置き場から消す。
+ *
+ * スマホからは Blob に上がってくるので、ここで落として取り込む（中身の検証は saveFont が行う）。
+ * 削除も同じジョブで受ける ── 実体が PC にあり、クラウドからは直接触れないため。
+ */
+export const runFontJob = async (p: Record<string, unknown>, ctx: JobRunCtx): Promise<unknown> => {
+  const remove = typeof p.remove === 'string' ? p.remove : '';
+  if (remove) {
+    const ok = deleteFont(remove);
+    ctx.onLine(ok ? `消しました: ${remove}` : `置き場にありませんでした: ${remove}`);
+    // 既定に選ばれていたら外す（無いフォントを指したままにしない）
+    const cur = loadSettings();
+    if (ok && cur.telop.font === safeFontFile(remove)) {
+      saveSettings(mergeSettings(cur, {telop: {font: null}}));
+      ctx.onLine('既定のフォントを同梱の明朝に戻しました');
+    }
+    return {removed: ok, file: remove};
+  }
+
+  const files = Array.isArray(p.files) ? (p.files as {url: string; name: string}[]) : [];
+  if (!files.length) throw new Error('取り込むフォントがありません');
+  const saved: string[] = [];
+  let i = 0;
+  for (const f of files) {
+    ctx.signal.throwIfAborted();
+    i++;
+    ctx.onProgress({phase: f.name, done: i - 1, total: files.length});
+    const res = await fetch(f.url, {signal: ctx.signal});
+    if (!res.ok) throw new Error(`取り込めません（HTTP ${res.status}）: ${f.name}`);
+    const entry = saveFont(f.name, Buffer.from(await res.arrayBuffer()));
+    saved.push(entry.file);
+    ctx.onLine(`取り込みました: ${entry.file}（${(entry.sizeBytes / 1024 / 1024).toFixed(1)} MB）`);
+  }
+  ctx.onProgress({phase: '完了', done: files.length, total: files.length});
+  ctx.onLine(`置き場: ${fontsDir()}`);
+  ctx.onLine('Settings の「テロップのフォント」か、Timeline の「動画全体 → フォント」から選べます');
+  return {saved, dir: fontsDir()};
 };
 
 /**

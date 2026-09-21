@@ -41,6 +41,8 @@ export const JOB_TYPES = [
   'ingest',
   /** タグ・slug の取り込み（slug 変更は実ファイルのリネームを伴うので PC でしかできない） */
   'catalog-import',
+  /** スマホから上げたテロップ用フォントを PC の置き場に入れる／置き場から消す */
+  'fonts',
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -73,7 +75,7 @@ export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
 ]);
 
 /** 案件に属さないジョブ（案件を開いていなくても投げられる） */
-export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup']);
+export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts']);
 
 export const isHeavyJob = (type: string): boolean => HEAVY_JOBS.has(type as JobType);
 

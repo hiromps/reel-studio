@@ -1,10 +1,11 @@
 // 自前フォント（テロップ用）の置き場と、案件への配り方。
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {deleteFont, ensureProjectFont, fontExists, fontsDir, listFonts, saveFont} from '../core/fonts';
-import {resetSettings} from '../core/settings';
+import {loadSettings, mergeSettings, resetSettings, saveSettings} from '../core/settings';
+import {runFontJob} from '../worker/cloud-jobs';
 import {checkFontUpload, fontFamilyOf, isFontFileName, safeFontFile} from '@shared/schema/fonts';
 import {customFontFamily} from '@engine/telops';
 
@@ -87,6 +88,39 @@ describe('fonts: 置き場', () => {
     fs.writeFileSync(path.join(fontsDir(), 'readme.txt'), 'ライセンスのメモ');
     saveFont('MyFont.ttf', fontBytes());
     expect(listFonts().map((f) => f.file)).toEqual(['MyFont.ttf']);
+  });
+});
+
+describe('fonts: スマホから上げたフォントの取り込み（fonts ジョブ）', () => {
+  const ctx = {onLine: () => undefined, onProgress: () => undefined, signal: new AbortController().signal};
+
+  it('Blob から落として置き場に入れる', async () => {
+    const body = fontBytes('otf', 3000);
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array(body)));
+    vi.stubGlobal('fetch', fetchMock);
+    const r = (await runFontJob({files: [{url: 'https://blob.example/x', name: 'Phone.otf'}]}, ctx)) as {saved: string[]};
+    expect(r.saved).toEqual(['Phone.otf']);
+    expect(listFonts().map((f) => f.file)).toEqual(['Phone.otf']);
+    expect(fs.statSync(path.join(fontsDir(), 'Phone.otf')).size).toBe(3000);
+    vi.unstubAllGlobals();
+  });
+
+  it('フォントでないものは取り込まない', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>404</html>')));
+    await expect(runFontJob({files: [{url: 'https://blob.example/x', name: 'Bad.ttf'}]}, ctx)).rejects.toThrow(/フォントファイルではない/);
+    expect(listFonts()).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('削除も同じジョブで受ける。既定に選んでいたら既定も外す', async () => {
+    saveFont('Phone.otf', fontBytes('otf'));
+    saveSettings(mergeSettings(loadSettings(), {telop: {font: 'Phone.otf'}}));
+    expect(loadSettings().telop.font).toBe('Phone.otf');
+
+    const r = (await runFontJob({remove: 'Phone.otf'}, ctx)) as {removed: boolean};
+    expect(r.removed).toBe(true);
+    expect(listFonts()).toEqual([]);
+    expect(loadSettings().telop.font).toBeUndefined();
   });
 });
 

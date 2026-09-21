@@ -31,7 +31,7 @@ import {runJobBody, type JobRunCtx} from '../server/jobs';
 import type {CloudJob} from '../cloud/store';
 import type {WorkerStatus} from '../cloud/worker-status';
 import {CloudClient, CloudError, cloudConfig} from './client';
-import {ensurePreviewProxies, runCatalogImport, runCreateProject, runIngest} from './cloud-jobs';
+import {ensurePreviewProxies, runCatalogImport, runCreateProject, runFontJob, runIngest} from './cloud-jobs';
 import {acquireWorkerLock, releaseWorkerLock, touchWorkerLock} from './lock';
 import {pushProjectState, syncAssets, syncDocs, syncFonts} from './sync';
 
@@ -195,7 +195,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
 
   try {
     // ジョブが読む契約ファイルを、実行前にクラウドと合わせる
-    if (job.type !== 'create-project' && job.type !== 'ingest' && job.slug !== '_studio') {
+    if (job.type !== 'create-project' && job.type !== 'ingest' && job.type !== 'fonts' && job.slug !== '_studio') {
       const dir = resolveProjectDir(job.slug);
       // 案件が PC に無いなら、ここで止める。先へ進めると「何もしなかったのに成功」になる種類の
       // ジョブ（sync-engine など）があり、原因が分からなくなる
@@ -210,9 +210,21 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
         ? await runCreateProject(job.slug, job.params, ctx)
         : job.type === 'ingest'
           ? await runIngest(job.slug, job.params, ctx)
-          : job.type === 'catalog-import'
-            ? await runCatalogImport(job.slug, job.params, ctx)
-            : await runJobBody({type: job.type as Parameters<typeof runJobBody>[0]['type'], slug: job.slug, params: job.params}, ctx);
+          : job.type === 'fonts'
+            ? await runFontJob(job.params, ctx)
+            : job.type === 'catalog-import'
+              ? await runCatalogImport(job.slug, job.params, ctx)
+              : await runJobBody({type: job.type as Parameters<typeof runJobBody>[0]['type'], slug: job.slug, params: job.params}, ctx);
+
+    // 取り込んだ・消したフォントは、その場でクラウドへ反映する（スマホの一覧と見本に出す）
+    if (job.type === 'fonts' && !abort.signal.aborted) {
+      try {
+        await client.pushSettings(await currentSettingsView());
+        if (blobToken) await syncFonts(client, blobToken, {onLine: ctx.onLine});
+      } catch (e) {
+        ctx.onLine(`※ フォントの反映に失敗: ${(e as Error).message}（次の同期で入ります）`);
+      }
+    }
 
     // カタログ化・モザイクで素材が増えた／差し替わったら、スマホで見るための軽量プレビューを作る。
     // クラウドには原本 4K を上げないので、これが無いと Timeline のプレビューが真っ黒になる

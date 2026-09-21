@@ -8,6 +8,7 @@ import {generateClientTokenFromReadWriteToken} from '@vercel/blob/client';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
 import {SettingsPatchSchema, type SettingsView} from '../../shared/schema/settings';
+import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
 import {SfxSoundSchema, type SfxLibrary} from '../../shared/sfx';
 import {JOB_TYPES} from '../../shared/jobs';
 import {normalizeSlug} from '../../shared/project';
@@ -184,11 +185,46 @@ miscRouter.post('/settings/test/mosaic', async (_req, res) => {
 // ───────────────────────── テロップのフォント ─────────────────────────
 
 /**
- * 一覧はワーカーが送ってきた見え方（/config の fonts）に出る。取り込みと削除は PC の仕事
- * （実体は PC の <設定の置き場>/fonts/ にあり、Vercel の Function は本文 4.5MB までなので通せない）
+ * 一覧はワーカーが送ってきた見え方（/config の fonts）に出る。
+ *
+ * 実体は PC の <設定の置き場>/fonts/ にあるので、スマホからの取り込みは素材と同じ二段構え:
+ * フォントは数 MB〜数十 MB あり Vercel の Function（本文 4.5MB）を通せないため、
+ * **ブラウザから Blob へ直接**上げ、そのあと fonts ジョブを積んで PC に取り込ませる。
  */
-miscRouter.all(['/fonts', '/fonts/*'], (_req, res) => {
-  res.status(501).json({error: 'フォントの取り込み・削除は PC 上の Reel Studio で行ってください（スマホからは選ぶだけできます）'});
+miscRouter.post('/fonts/token', async (req, res) => {
+  const name = safeFontFile(typeof req.body?.filename === 'string' ? req.body.filename : '');
+  if (!name) return res.status(400).json({error: 'filename が必要'});
+  if (!isFontFileName(name)) return res.status(400).json({error: `対応していない拡張子です（${FONT_EXTS.join(' / ')} のいずれか）: ${name}`});
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return res.status(503).json({error: 'BLOB_READ_WRITE_TOKEN が未設定です'});
+  const pathname = blobPath('_global', 'fonts', 'full', `_inbox/${Date.now()}_${name}`);
+  try {
+    const clientToken = await generateClientTokenFromReadWriteToken({
+      token,
+      pathname,
+      allowedContentTypes: ['font/*', 'application/octet-stream', 'application/x-font-ttf', 'application/vnd.ms-opentype'],
+      validUntil: Date.now() + 30 * 60 * 1000,
+      addRandomSuffix: true,
+      maximumSizeInBytes: FONT_MAX_BYTES,
+    });
+    res.json({token: clientToken, pathname});
+  } catch (e) {
+    res.status(500).json({error: (e as Error).message});
+  }
+});
+
+/** 上げ終わったフォントを PC の置き場に入れさせる */
+miscRouter.post('/fonts/ingest', async (req, res) => {
+  const files = Array.isArray(req.body?.files) ? (req.body.files as {url: string; name: string}[]) : [];
+  if (!files.length) return res.status(400).json({error: 'files が必要'});
+  res.json(await addJob('fonts', '_studio', {files}));
+});
+
+/** 置き場から消させる（実体は PC にあるので、こちらもジョブで頼む） */
+miscRouter.delete('/fonts/:file', async (req, res) => {
+  const file = safeFontFile(req.params.file);
+  if (!file) return res.status(400).json({error: 'ファイル名が不正です'});
+  res.json(await addJob('fonts', '_studio', {remove: file}));
 });
 
 // ───────────────────────── 効果音 ─────────────────────────

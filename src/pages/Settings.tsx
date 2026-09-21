@@ -695,15 +695,39 @@ const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise
   const s = useStudio();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{name: string; pct: number; index: number; count: number} | null>(null);
   const fonts = view.fonts ?? [];
   const selected = view.settings.telop?.font ?? '';
+  // クラウドでは PC が取り込む（走っている間は一覧にまだ出ない）
+  const job = s.jobs.find((j) => j.type === 'fonts' && (j.status === 'running' || j.status === 'queued'));
 
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
     setBusy(true);
     try {
-      for (const f of [...files]) await api.upload(`/api/fonts?filename=${encodeURIComponent(f.name)}`, f);
-      s.toast(`${files.length} 件のフォントを取り込みました`, 'ok');
+      if (s.isCloud) {
+        // フォントは Function の本文上限（4.5MB）を超えるので、ブラウザから Blob へ直接上げ、
+        // そのあと PC に取り込ませる（素材アップロードと同じ二段構え）
+        const {put} = await import('@vercel/blob/client');
+        const uploaded: {url: string; name: string}[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          setProgress({name: f.name, pct: 0, index: i + 1, count: files.length});
+          const t = await api.post<{token: string; pathname: string}>('/api/fonts/token', {filename: f.name});
+          const r = await put(t.data.pathname, f, {
+            access: 'public',
+            token: t.data.token,
+            contentType: f.type || 'application/octet-stream',
+            onUploadProgress: (p) => setProgress({name: f.name, pct: Math.round((p.loaded / (p.total || f.size)) * 100), index: i + 1, count: files.length}),
+          });
+          uploaded.push({url: r.url, name: f.name});
+        }
+        await api.post('/api/fonts/ingest', {files: uploaded});
+        s.toast(`${uploaded.length} 件を PC に取り込み中です（終わると一覧に出ます）`, 'ok');
+      } else {
+        for (const f of [...files]) await api.upload(`/api/fonts?filename=${encodeURIComponent(f.name)}`, f);
+        s.toast(`${files.length} 件のフォントを取り込みました`, 'ok');
+      }
       // 一覧は SettingsView（この画面）と /api/config（Timeline のフォント選択）の両方に出る
       await reload();
       await s.reloadConfig();
@@ -711,6 +735,7 @@ const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise
       s.toast(msg(e), 'error');
     } finally {
       setBusy(false);
+      setProgress(null);
       if (input.current) input.current.value = '';
     }
   };
@@ -720,8 +745,9 @@ const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise
     setBusy(true);
     try {
       await api.del(`/api/fonts/${encodeURIComponent(file)}`);
+      if (s.isCloud) s.toast(`${file} を消すよう PC に伝えました`, 'ok');
       // 既定に選んでいたものを消したときは、サーバー側で既定も外れている
-      s.toast(selected === file ? `${file} を消しました（既定は同梱の明朝に戻しました）` : `${file} を消しました`, 'ok');
+      else s.toast(selected === file ? `${file} を消しました（既定は同梱の明朝に戻しました）` : `${file} を消しました`, 'ok');
       await reload();
       await s.reloadConfig();
     } catch (e) {
@@ -744,17 +770,25 @@ const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise
         テロップは太字前提なので、<b>Bold / 太ゴシック・太明朝のフォント</b>を入れると綺麗に出ます。
         <b>フォントのライセンス（商用利用・埋め込みの可否）は自分で確認してください。</b>
       </p>
-      {s.isCloud ? (
-        <p className="hint">取り込み・削除は PC 上の Reel Studio で行ってください（スマホからは選ぶだけできます）。</p>
-      ) : (
-        <div className="row">
-          <button className="primary" onClick={() => input.current?.click()} disabled={busy}>
-            {busy ? '取り込み中…' : 'フォントを取り込む'}
-          </button>
-          <input ref={input} type="file" accept=".ttf,.otf,.ttc,.woff,.woff2,font/*" multiple hidden onChange={(e) => void upload(e.target.files)} />
-          <span className="hint">1 ファイル 40MB まで</span>
+      <div className="row">
+        <button className="primary" onClick={() => input.current?.click()} disabled={busy || !!job}>
+          {busy ? '取り込み中…' : 'フォントを取り込む'}
+        </button>
+        <input ref={input} type="file" accept=".ttf,.otf,.ttc,.woff,.woff2,font/*" multiple hidden onChange={(e) => void upload(e.target.files)} />
+        <span className="hint">1 ファイル 40MB まで{s.isCloud ? '。スマホから上げたものは PC が受け取ります' : ''}</span>
+      </div>
+      {progress && (
+        <div>
+          <div className="hint">
+            {progress.index}/{progress.count} {progress.name} — {progress.pct}%
+          </div>
+          <div className="progress">
+            <div style={{width: `${progress.pct}%`}} />
+          </div>
         </div>
       )}
+      {job && <AiJobStatus job={job} onCancel={(id) => void s.cancelJob(id)} compact lines={3} />}
+      {s.isCloud && !s.config?.worker?.online && <p className="warn-text">PC がオフラインです。取り込み・削除は PC が繋がったときに実行されます。</p>}
       <ul className="font-list">
         <li>
           <label className="font-pick">
