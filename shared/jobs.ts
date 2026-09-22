@@ -28,6 +28,10 @@ export const JOB_TYPES = [
   'sfx-auto',
   'deliver',
   'ai-hooks',
+  /** 参考動画（他の人のバズったリール）を取り込んで型を分析する → reference.json */
+  'ai-reference',
+  /** 分析した型を写した台本（script.md）を書き、そのまま「台本から組み立てる」まで行う */
+  'ai-mimic',
   'trial',
   'winner',
   'build',

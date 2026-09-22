@@ -10,7 +10,7 @@ import {makeProxy, makePreviewProxy, needsProxy} from '../core/proxy';
 import {makeThumbnails, makeQcTile} from '../core/thumbnails';
 import {ffprobe} from '../core/ffprobe';
 import {renderProject, renderStill} from '../core/render';
-import {npmInstall, resolveProjectDir, syncEngine, readCuts, writeCuts} from '../core/project';
+import {npmInstall, resolveProjectDir, resolveProjectDirStrict, syncEngine, readCuts, writeCuts} from '../core/project';
 import {applyAliases} from '../core/alias';
 import {realignAliases} from '../shared/alias';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
@@ -22,6 +22,8 @@ import {runTrial} from '../core/trial';
 import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
+import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, importReferenceVideo, readReference} from '../core/reference';
+import {describeReference} from '../shared/reference';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
 import {applyMosaic, revertMosaic, setupMosaic} from '../core/mosaic';
@@ -253,6 +255,62 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
             `検算で E が出たので書いていません:\n${r.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}\n  結果は Brief の「割り当ての結果」で確認できます`,
           );
         return {written: r.written, cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
+      }
+      // 参考動画（他の人のバズったリール）の型を分析する。url があれば先に取り込む（スマホから上げた Blob）、
+      // copyFrom があれば別案件の分析を複製するだけ（AI は走らせない）
+      case 'ai-reference': {
+        if (typeof p.copyFrom === 'string' && p.copyFrom.trim()) {
+          // 元の案件は work/ の直下に閉じる（ジョブの params は画面から来る値なので、パスは受けない）
+          const r = copyReferenceFrom(dir, resolveProjectDirStrict(p.copyFrom.trim()));
+          onLine(`${p.copyFrom} の分析を写しました`);
+          for (const l of describeReference(r)) onLine(`  ${l}`);
+          return {copied: true, from: p.copyFrom, segments: r.segments.length, cuts: r.cuts.length};
+        }
+        if (typeof p.url === 'string' && p.url) {
+          const name = typeof p.name === 'string' && p.name ? p.name : 'reference.mp4';
+          onLine(`参考動画を取り込みます: ${name}`);
+          const tmp = await fetchReferenceToInbox(dir, p.url, name, signal);
+          const r = await importReferenceVideo(dir, tmp, {originalName: name, move: true});
+          onLine(`取り込みました: ${r.source!.originalName}（${r.source!.durationSec.toFixed(1)} 秒）`);
+        }
+        if (p.analyze === false) {
+          const r = readReference(dir);
+          return {imported: !!r, segments: r?.segments.length ?? 0};
+        }
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const r = await analyzeReference(dir, {
+          model: typeof p.model === 'string' ? p.model : undefined,
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
+        return {segments: r.segments.length, cuts: r.cuts.length, hookType: r.pattern.hookType, summary: r.summary, costUsd: r.costUsd};
+      }
+      // 分析した型を写した台本（script.md）を書き、続けて「台本から組み立てる」を行う
+      case 'ai-mimic': {
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const write = p.write !== false;
+        const r = await aiMimic(dir, {
+          model: typeof p.model === 'string' ? p.model : undefined,
+          assemble: p.assemble !== false,
+          write,
+          force: !!p.force,
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
+        // 組み立てまで頼まれて、E で書けなかったときだけ失敗にする（「見るだけ」は書かないのが正常）
+        if (r.assembled && write && !r.assembled.written)
+          throw new Error(
+            `台本は書きましたが、組み立ての検算で E が出たので cuts.json は書いていません:\n${r.assembled.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}\n  結果は Brief の「割り当ての結果」で確認できます`,
+          );
+        return {
+          sections: r.plan.sections.length,
+          issues: r.issues,
+          unmatched: r.plan.unmatched,
+          costUsd: r.costUsd,
+          assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec} : null,
+        };
       }
       case 'ai-caption': {
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);

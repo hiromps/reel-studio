@@ -3366,3 +3366,101 @@ a.btn-like:hover {
   margin-top: 6px;
   max-height: 160px;
 }
+
+/* ── バズ動画の型を写す（Brief の ReferenceCard） ───────────────────────── */
+.pill.ok {
+  background: #16321f;
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.table-wrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.reference-result {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+}
+.reference-summary {
+  margin: 6px 0 4px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.reference-pattern {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 4px 14px;
+  margin: 4px 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.reference-pattern > div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+.reference-pattern .k {
+  flex: 0 0 64px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.reference-segments td {
+  vertical-align: top;
+  font-size: 12px;
+}
+.reference-segments td:first-child {
+  white-space: nowrap;
+}
+.reference-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 6px;
+}
+.reference-cut {
+  flex: 0 0 96px;
+  width: 96px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.reference-thumb {
+  position: relative;
+  width: 96px;
+  height: 128px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+.reference-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.reference-cut-foot {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.reference-cut .sb-telop {
+  color: var(--fg);
+  height: auto;
+  max-height: 3.75em;
+}
+.reference-rules {
+  margin: 2px 0 6px;
+  font-size: 12px;
+}
+.reference-note {
+  margin: 8px 0 0;
+}
+@media (max-width: 860px) {
+  .reference-pattern {
+    grid-template-columns: 1fr;
+  }
+}

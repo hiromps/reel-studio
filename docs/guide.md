@@ -81,6 +81,8 @@ CLI は Git Bash から `bin/reel <cmd>`（cmd.exe は `bin\reel.cmd`）。
 | `reel draft\|render --project P [--out f] [--gl swiftshader] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries 3] [--force] [--no-sync] [--strict-proxy] [--props f]` | preflight → レンダー（段階リトライ）→ フレーム数検証 → QC タイル |
 | `reel still --project P --cut N [--offset 0.3]` / `--frame F` | 1 フレーム書き出し（カット頭から 0.3 秒後が既定） |
 | `reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]` | トライアル用の**フック案（A は今の形・B/C は別の切り口）とパターン別キャプション**を書かせて `hooks.json` に入れる |
+| `reel ai reference --project P --file <動画> [--model m] [--no-analyze]` | **他の人のバズ動画を取り込んで型を分析**し `reference.json` に入れる（`--no-analyze` は取り込みだけ）。`--show` で分析を表示、`--from <別案件>` で別案件の分析を写す、`--remove` で取り消す |
+| `reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]` | **分析した型を写した台本**を `script.md` に書き、そのまま「台本から組み立てる」まで行う（`--dry` は割り当てを見るだけ、`--no-assemble` は台本だけ） |
 | `reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--force] [--force-errors]` | **フックだけ差し替えた複数版**を作る（レンダー→音声→mix→納品。キャプションもパターンごとに出す） |
 | `reel winner --project P [--id A] [--tail "締め"] [--tail-narration "締めナレ"] [--caption-file f] [--speed 1.1] [--draft] [--no-deliver] [--force] [--force-errors] [--model m]` | **勝ちパターンの二次活用**：締めの一言だけ変えて倍速で書き出し直し、新しいキャプションで納品 |
 | `reel build --project P [--plan] [--steps a,b] [--model m] [--force-errors] [--label 修正版]` | **仕上げ**。案件の状態から残っている工程（キャプション/原稿/音声/レンダー/mix/納品）を順に走らせる |
@@ -150,7 +152,7 @@ brief.json: 店名「焼肉たべる」／人格 hiro／型 F3
 
 ## GUI：はじめて使うとき
 
-初回起動時に**ガイドツアー**（19 ステップ）が自動で開き、各画面の役割をスポットライトで順に説明する。
+初回起動時に**ガイドツアー**（20 ステップ）が自動で開き、各画面の役割をスポットライトで順に説明する。
 閉じたあとは右上の **「? 使い方」**（`?` キーでも開く）から、ツアーの再表示・全体の流れ・タイムラインの見方・
 ショートカット一覧・用語集を見られる。タブは `Ctrl+1〜5` でも切り替えられる。
 
@@ -423,6 +425,75 @@ Brief の **「割り当てを見るだけ」** は、AI に組み立てを作�
 
 そのあとは Timeline で微調整 →「音声を生成」→「ナレーション合成（mix）」で仕上げる。
 **8 割方できた状態から始められる**のが狙いで、残りは人が詰める前提。
+
+## バズ動画の型を写す（`ai-reference` / `ai-mimic`）
+
+**他の人が投稿して伸びたリールがあるとき**、その動画を渡すと「型」を分析し、**同じ型で自分の素材の動画**を作れる。
+場所は Brief 画面の「バズ動画の型を写す」（`ScriptCard` の上）。写すのは**構成・テンポ・テロップの型・フックの掛け方・
+店名の明かし方・締め方**で、参考動画の映像・音声・文言そのものは一切使わない（中身は自分の素材と裏取り済みの事実で作る）。
+
+```
+参考動画 ──取り込み──▶ .studio/reference/source.mp4（クラウドには上げない）
+         ──ffmpeg────▶ シーン検出（カット境界）・カット頭のコマ・コンタクトシート（0.5 秒ごと・3×4）・無音検出（声の区間）
+         ──claude────▶ reference.json：カットごとのテロップ（読めた通り）と映像・区間（役割・目的・テロップの型）・
+                        pattern（フックの型・リビールの秒・締め・テロップとテンポの癖・保存理由）・写すときの規則
+reference.json ＋ 素材のタグ ＋ 店の事実 ＋ 人格 ──claude──▶ script.md（同じ区間・秒数・カット数・テロップの型）
+script.md ──「台本から組み立てる」（ai-script）──▶ cuts.json + narration.json
+```
+
+### 使い方
+
+1. **動画を選ぶ**（ローカルは PC のファイル、スマホからは素材と同じく Blob へ直接上げて PC が受け取る）。
+   取り込むと自動で **「型を分析する」**（`ai-reference`）が走る。3 分までのショート動画だけ受け付ける
+2. 分析結果（尺・カット数・平均カット秒・声の割合、フック・リビール・締め・テロップとテンポの癖、区間の表、
+   カットの一覧、写すときの規則）を見る。「別の案件の分析を使う」で、前に分析した型をそのまま持ってこられる
+3. **「この型で台本を作って組み立てる」**（`ai-mimic`）。参考と**同じ区間数・同じ秒数・同じカット数**で `script.md` を書き、
+   続けて `ai-script` が素材を割り当てて `cuts.json` と `narration.json` を作る。
+   「台本を作って割り当てを見るだけ」なら `script.md` は書くが構成は書き込まず、「割り当ての結果」で承認してから入れる
+4. あとは通常どおり Timeline で微調整 → Render の「仕上げ」
+
+### 分析で何を見ているか
+
+- **シーン検出**（`select='gt(scene,0.25)'`。平均 4 秒超なら 0.12 でもう一度）でカット境界を取り、0.3 秒未満の揺れは同じカットにまとめる。
+  多すぎるときは間隔を広げて 120 カット以下にする（`shared/reference.ts` の `cutBoundaries`）
+- **コンタクトシート**は 1 秒 2 コマを 3 列 × 4 段（1 枚 = 6 秒・コマ 360px）。テロップの文字が読める大きさで、
+  30 秒の動画なら 5 枚の Read で済む。カット頭のコマは画面の一覧用（AI は必要なときだけ見る）
+- **声の区間**は無音検出の補集合。中身は聞けない（文字起こしはしない）が「どこで喋っているか」は分かるので、
+  型を写すときに「参考で声がある区間だけナレーションを書く」に使う
+- AI に渡すのはシートとカット一覧・声の区間だけ。返ってくるのは `--json-schema` で形を固定した JSON で、
+  `mergeAnalysis`（純粋・テストあり）がシーン検出の秒数に重ねて `reference.json` にする。**秒数は AI が変えられない**
+
+### 型を写すときの決まり
+
+- **区間の数・秒数は参考どおり**（`fitMimicToReference` が強制する。AI の丸めやずれで動かない）。カット数も参考のもの
+- テロップは参考の**型**（文の形・文字数・語尾・記号・数字の使い方）を写し、中身はこの店の事実に置き換える。
+  **参考動画のテロップと同じ文言が残っていたら `MIMIC_TELOP_COPIED`（W）**で指摘する。店名・料理名・地名・数字を残さない
+- 映像は参考のショット（寄り／引き・被写体の種類・動き）を写しつつ、**手元の素材にあるもの**を id を添えて指す。無い画は `unmatched`（撮り足しの候補）
+- ナレーションは参考で声がある区間だけ、人格の文体で。無い区間に書かせない（`MIMIC_NARRATION_MISSING` は逆の欠けを W）
+- 人格の規則はそのまま効く（`hookStyle=areaDigit` ならエリア名はバッジへ、締めは `cta` の語族、テロップ 13 文字・句点なし）
+- 検算（`checkMimicPlan`・テストあり）で **E があれば `script.md` を書かない**。前の台本は `.studio/backups/` に残る
+
+| コード | 内容 |
+|---|---|
+| `MIMIC_NO_SECTIONS` / `MIMIC_SECTION_COUNT` / `MIMIC_SECTION_TIME` / `MIMIC_BAD_RANGE`（E） | 区間が無い／参考と数が違う／秒数が違う／区間が逆 |
+| `MIMIC_CUTS_DIFFER`（W） | 参考とカット数が違う |
+| `MIMIC_TELOP_COPIED`（W） | 参考動画のテロップと同じ文言（型だけ写して中身は置き換える） |
+| `MIMIC_TELOP_LONG` / `MIMIC_TELOP_PERIOD`（W） | 文字数・文末の句点 |
+| `MIMIC_NARRATION_MISSING` / `MIMIC_NARRATION_NEWLINE`（W） | 参考では声がある区間に原稿が無い／改行がある |
+
+### ファイルと同期
+
+- `reference.json`（案件直下）が分析結果。取り消すとファイルを消す代わりに**墓標（`source: null`）**を書く
+  ——クラウドとの同期は「ファイルが無い」を伝えられない（無い＝送らない）ので、消したことも 1 つの版として送る
+- 動画とコマは `.studio/reference/`（`source.<ext>` / `frames/NNN.jpg` / `sheets/NN.jpg`）。
+  ワーカーは **コマとシートだけ**を Blob に上げる（動画は上げない）ので、スマホでも分析の一覧が見える
+- 「別の案件の分析を使う」はローカルではその場でコピー、クラウドでは `ai-reference` ジョブ（`copyFrom`）として PC が複製する
+- ジョブは `ai-reference`（`url` があれば先に取り込む／`copyFrom` なら複製だけ／`analyze: false` で取り込みだけ）と
+  `ai-mimic`（`write: false` で見るだけ／`assemble: false` で台本だけ）。どちらも軽いジョブ扱い（ffmpeg は数秒で終わり、あとは AI の待ち時間）
+
+**参考動画の扱い。** 分析のためだけに案件フォルダに置き、動画本体は公開もクラウド同期もしない。
+型（構成・テンポ・見せ方）を学ぶのは正当なやり方だが、映像・音声・文言の流用は他人の投稿の盗用になるので、
+ツールはそこを分けて作ってある（プロンプトでも禁じ、検算でも指摘する）。
 
 ## AI に並べ替えてもらう（`reel order`）
 
@@ -1069,6 +1140,7 @@ outputs/musch_hiro_ナレーション付き_v2.mp4              ← 同名で中
 - `cuts.json` — 既存互換。`id` と `meta.slots` / `meta.telopGroups` / `meta.aliases` / `meta.generated` を追加（Remotion は無視）。スキーマ `shared/schema/cuts.ts`
 - `script.md` — 自然言語の台本（`ai-script` の入力）。無い案件がふつう。AI の割り当ての案は `.studio/script-plan.json`（承認して書き込む前の結果）
 - `hooks.json` — トライアルリールのフック候補（`shared/hooks.ts`）。パターンごとの `angle`（切り口）と `caption`（専用キャプション）を持つ。無い案件がふつう
+- `reference.json` — 参考動画（バズ動画の型を写す元）の分析（`shared/reference.ts`）。カットごとのテロップと映像・区間・型・写すときの規則。動画本体とコマは `.studio/reference/`。無い案件がふつう
 - `narration.json` — 既存契約（narration-tts.md §6）＋ 音の設計（`narrationGainDb` / `ambientGain` / `sfx` / `sfxGainDb` / `sfxDuck`）
 - 派生物は `.studio/`（thumbs / strips / cutframes / backups / logs / tags-export.json / render-result.json / mosaic/originals＝顔モザイク前の元ファイル）
 - `.studio/meta.json` — 一覧の都合だけの値（`archivedAt`＝投稿済みにして一覧から隠した日時）。契約ファイルではないが、PC とスマホで揃うよう docs の `meta` として同期される

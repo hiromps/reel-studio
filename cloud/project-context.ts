@@ -15,6 +15,7 @@ import {parseSections, reviewScriptProposal, scriptPlanToCuts, scriptPlanTotalSe
 import {validateCuts, type ValidationResult} from '../shared/validate';
 import {BriefSchema, CatalogSchema, NarrationSchema, ReelDataSchema, type Brief, type Catalog, type Narration, type ReelData} from '../shared/schema';
 import {HooksSchema, type Hooks} from '../shared/hooks';
+import {ReferenceSchema, type Reference} from '../shared/reference';
 import {ScriptProposalSchema, type ScriptProposal} from '../shared/script';
 import type {DocName} from '../shared/project';
 import {readDocs, type DocRow} from './store';
@@ -30,6 +31,8 @@ export type Ctx = {
   script: string | null;
   hooks: Hooks | null;
   scriptPlan: ScriptProposal | null;
+  /** 参考動画（型を写す元）の分析。取り込んでいない・墓標（source: null）は null */
+  reference: Reference | null;
 };
 
 /** 壊れた doc で画面全体が落ちないように、読めないものは undefined にする */
@@ -59,6 +62,10 @@ export const loadCtx = async (slug: string): Promise<Ctx> => {
     script: text(data('script')),
     hooks: parse(HooksSchema, data('hooks')) ?? null,
     scriptPlan: parse(ScriptProposalSchema, data('scriptPlan')) ?? null,
+    reference: (() => {
+      const r = parse(ReferenceSchema, data('reference'));
+      return r?.source ? r : null;
+    })(),
   };
 };
 

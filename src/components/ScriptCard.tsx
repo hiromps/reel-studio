@@ -57,7 +57,8 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
   const [info, setInfo] = useState<ScriptRes | null>(null);
   const [open, setOpen] = useState(false);
   const dirty = text !== saved;
-  const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'ai-script');
+  // 「バズ動画の型を写す」（ai-mimic）も script.md を書いて組み立てるので、同じく待つ
+  const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'ai-script' || j.type === 'ai-mimic'));
   const unsupported = !s.supportsJob('ai-script');
   const catalog = s.files.catalog.data;
   const untagged = (catalog?.clips ?? []).filter((c) => !c.tags && !c.user.ng).length;
@@ -98,12 +99,13 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
   // 台本は編集中なら読み直さない（走っている間に書いた変更を消さないように）
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
-  const finished = s.jobs.find((j) => j.type === 'ai-script' && j.slug === slug && (j.status === 'done' || j.status === 'failed'));
+  const finished = s.jobs.find((j) => (j.type === 'ai-script' || j.type === 'ai-mimic') && j.slug === slug && (j.status === 'done' || j.status === 'failed'));
   useEffect(() => {
     if (!finished) return;
-    if (!dirtyRef.current) void load();
+    // 型を写す工程は script.md を書き換えるので、編集中でも読み直す（AI が書いた新しい台本の方が正）
+    if (!dirtyRef.current || finished.type === 'ai-mimic') void load();
     void loadProposal();
-  }, [finished?.id, finished?.status, load, loadProposal]);
+  }, [finished?.id, finished?.status, finished?.type, load, loadProposal]);
 
   const approve = async () => {
     if (!slug || !proposal) return;

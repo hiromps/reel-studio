@@ -55,7 +55,14 @@ export const api = {
 export type ProjectInfo = {
   slug: string;
   dir: string;
-  has: {catalog: boolean; brief: boolean; cuts: boolean; narration: boolean};
+  has: {
+    catalog: boolean;
+    brief: boolean;
+    cuts: boolean;
+    narration: boolean;
+    /** 参考動画（バズ動画の型を写す元）を取り込んであるか。「別の案件の分析を使う」の候補 */
+    reference?: boolean;
+  };
   out?: {draft: boolean; final: boolean; narration: boolean};
   engine: {stale: boolean; files: {file: string; status: string}[]};
   nodeModules: boolean;

@@ -3,6 +3,7 @@ import React, {useMemo, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import {ScriptCard} from '../components/ScriptCard';
+import {ReferenceCard} from '../components/ReferenceCard';
 import {EmptyState} from '../components/EmptyState';
 import {useAiModel} from '../hooks/useAiModel';
 import {BriefSchema, type Brief, type FormatId, type SavePriority} from '@shared/schema';
@@ -382,6 +383,9 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
           <textarea value={brief.notes ?? ''} onChange={(e) => set({notes: e.target.value || undefined})} />
         </label>
       </section>
+
+      {/* 他の人のバズ動画の型を写す。台本（script.md）を作るので、ScriptCard の上に置く */}
+      <ReferenceCard aiModel={aiModel} onModel={changeAiModel} />
 
       <ScriptCard aiModel={aiModel} onModel={changeAiModel} />
 

@@ -11,7 +11,14 @@ export type EngineDiff = {stale: boolean; family: EngineFamily; files: {file: st
 export type ProjectInfo = {
   slug: string;
   dir: string;
-  has: {catalog: boolean; brief: boolean; cuts: boolean; narration: boolean};
+  has: {
+    catalog: boolean;
+    brief: boolean;
+    cuts: boolean;
+    narration: boolean;
+    /** 参考動画（型を写す元）を取り込んであるか。「別の案件の分析を使う」の候補に出す */
+    reference?: boolean;
+  };
   /** out/ の書き出し物。GUI が「レンダー前に mix を押す」のを防ぐために見る */
   out: {draft: boolean; final: boolean; narration: boolean};
   engine: EngineDiff;
@@ -60,7 +67,7 @@ export type ContractName = (typeof CONTRACT_FILES)[number];
  * caption.txt / script.md / hooks.json（いずれも画面が読み書きする）を足したもの。
  * テキストのもの（caption / script）は `{text: string}` の形で入れる。
  */
-export const DOC_NAMES = [...CONTRACT_FILES, 'caption', 'script', 'hooks', 'scriptPlan', 'meta'] as const;
+export const DOC_NAMES = [...CONTRACT_FILES, 'caption', 'script', 'hooks', 'scriptPlan', 'meta', 'reference'] as const;
 export type DocName = (typeof DOC_NAMES)[number];
 
 /** docs の名前 → 案件フォルダ内のパス（ワーカーの同期が使う） */
@@ -76,6 +83,8 @@ export const DOC_FILES: Record<DocName, string> = {
   scriptPlan: '.studio/script-plan.json',
   // 一覧の都合だけの値（投稿済みで隠したか）。PC とスマホで揃うよう docs に乗せる
   meta: '.studio/meta.json',
+  // 参考動画の型の分析（shared/reference.ts）。動画そのものとコマは .studio/reference/ にあり、クラウドにはコマだけ上がる
+  reference: 'reference.json',
 };
 
 /** 中身が素のテキストのもの（docs には {text} で入る） */

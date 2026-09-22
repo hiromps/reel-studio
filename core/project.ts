@@ -23,8 +23,9 @@ import {
   type ProjectInfo,
   type ProjectMeta,
 } from '../shared/project';
-import {readJsonFile, writeJsonAtomic, backupFile} from './json-io';
+import {readJsonFile, readJsonLoose, writeJsonAtomic, backupFile} from './json-io';
 import {exec} from './exec';
+import {isReferencePresent} from '../shared/reference';
 
 // 案件の「形」は shared/project.ts が正（クラウド側からも読めるように fs 非依存で置いてある）。
 // ここからは今までどおり core/project.ts の名前で使えるよう再輸出する。
@@ -130,12 +131,24 @@ export const writeProjectMeta = (dir: string, meta: ProjectMeta): ProjectMeta =>
 /** 一覧から隠す／戻す。中身（素材・契約ファイル・書き出し）は一切触らない */
 export const setProjectArchived = (dir: string, archived: boolean): ProjectMeta => writeProjectMeta(dir, withArchived(readProjectMeta(dir), archived));
 
+/** 参考動画（型を写す元）が取り込んであるか。墓標（source: null）は無い扱い。core/reference.ts を読むと循環するのでここで軽く見る */
+const hasReference = (dir: string): boolean => {
+  const file = path.join(dir, DOC_FILES.reference);
+  if (!fs.existsSync(file)) return false;
+  try {
+    return isReferencePresent(readJsonLoose(file));
+  } catch {
+    return false;
+  }
+};
+
 export const projectInfo = (dir: string): ProjectInfo => {
   const has = {
     catalog: fs.existsSync(path.join(dir, 'catalog.json')),
     brief: fs.existsSync(path.join(dir, 'brief.json')),
     cuts: fs.existsSync(path.join(dir, 'cuts.json')),
     narration: fs.existsSync(path.join(dir, 'narration.json')),
+    reference: hasReference(dir),
   };
   let persona: PersonaId | undefined;
   let format: string | undefined;

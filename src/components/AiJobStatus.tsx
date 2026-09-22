@@ -14,6 +14,8 @@ export const AI_JOB_LABEL: Record<string, string> = {
   'ai-facts': 'AI が店舗情報を裏取り中',
   'ai-script': 'AI が台本から組み立て中',
   'ai-hooks': 'AI がトライアル用のフック案とキャプションを作成中',
+  'ai-reference': '参考動画の型を分析中',
+  'ai-mimic': '参考動画の型で台本を作成中（→ 組み立て）',
   winner: '二次活用版を作成中（レンダー→音声→mix→倍速）',
   build: '仕上げを実行中',
   tts: '音声を生成中',

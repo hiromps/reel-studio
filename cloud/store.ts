@@ -8,6 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {and, asc, desc, eq, gt, inArray, isNull, sql} from 'drizzle-orm';
 import {stableHash} from '../shared/hash';
 import {CONTRACT_FILES, DOC_NAMES, parseProjectMeta, withArchived, type DocName, type ProjectInfo, type ProjectMeta} from '../shared/project';
+import {isReferencePresent} from '../shared/reference';
 import {canStartJob, type JobType} from '../shared/jobs';
 import {db} from './db/client';
 import {assets, docs, jobLogs, jobs, kv, personas, projects, type ProjectSnapshot} from './db/schema';
@@ -99,14 +100,14 @@ export const deleteDocs = async (slug: string): Promise<void> => {
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {dir: '', engine: {stale: true, family: 'unknown', files: []}, nodeModules: false, out: {draft: false, final: false, narration: false}};
 
-const toProjectInfo = (row: typeof projects.$inferSelect, docRows: {name: string; updatedAt: Date}[], meta?: ProjectMeta | null): ProjectInfo => {
+const toProjectInfo = (row: typeof projects.$inferSelect, docRows: {name: string; updatedAt: Date}[], meta?: ProjectMeta | null, reference = false): ProjectInfo => {
   const info = row.info ?? EMPTY_SNAPSHOT;
   const names = new Set(docRows.map((d) => d.name));
   const times = [new Date(row.updatedAt).getTime(), ...docRows.map((d) => new Date(d.updatedAt).getTime())];
   return {
     slug: row.slug,
     dir: info.dir || '',
-    has: {catalog: names.has('catalog'), brief: names.has('brief'), cuts: names.has('cuts'), narration: names.has('narration')},
+    has: {catalog: names.has('catalog'), brief: names.has('brief'), cuts: names.has('cuts'), narration: names.has('narration'), reference},
     out: info.out ?? EMPTY_SNAPSHOT.out,
     engine: info.engine ?? EMPTY_SNAPSHOT.engine,
     nodeModules: info.nodeModules ?? false,
@@ -122,12 +123,17 @@ export const listProjects = async (): Promise<ProjectInfo[]> => {
   if (!rows.length) return [];
   const slugs = rows.map((r) => r.slug);
   const docRows = await db().select({slug: docs.slug, name: docs.name, updatedAt: docs.updatedAt}).from(docs).where(inArray(docs.slug, slugs));
-  // 一覧から隠したかどうか。data を引くのはこの doc だけにする（catalog や cuts を一覧のたびに持ってこない）
-  const metaRows = await db().select({slug: docs.slug, data: docs.data}).from(docs).where(and(eq(docs.name, 'meta'), inArray(docs.slug, slugs)));
-  const metaBySlug = new Map(metaRows.map((m) => [m.slug, parseProjectMeta(m.data)]));
+  // 一覧から隠したかどうか・参考動画があるか。data を引くのはこの 2 つの doc だけにする
+  // （catalog や cuts を一覧のたびに持ってこない。reference は墓標＝source: null を「無い」と数えるため中身が要る）
+  const smallRows = await db()
+    .select({slug: docs.slug, name: docs.name, data: docs.data})
+    .from(docs)
+    .where(and(inArray(docs.name, ['meta', 'reference']), inArray(docs.slug, slugs)));
+  const metaBySlug = new Map(smallRows.filter((m) => m.name === 'meta').map((m) => [m.slug, parseProjectMeta(m.data)]));
+  const referenceBySlug = new Set(smallRows.filter((m) => m.name === 'reference' && isReferencePresent(m.data)).map((m) => m.slug));
   const bySlug = new Map<string, {name: string; updatedAt: Date}[]>();
   for (const d of docRows) bySlug.set(d.slug, [...(bySlug.get(d.slug) ?? []), {name: d.name, updatedAt: d.updatedAt}]);
-  return rows.map((r) => toProjectInfo(r, bySlug.get(r.slug) ?? [], metaBySlug.get(r.slug))).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  return rows.map((r) => toProjectInfo(r, bySlug.get(r.slug) ?? [], metaBySlug.get(r.slug), referenceBySlug.has(r.slug))).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 };
 
 export const projectInfo = async (slug: string): Promise<ProjectInfo | null> => {
@@ -135,7 +141,8 @@ export const projectInfo = async (slug: string): Promise<ProjectInfo | null> => 
   if (!row || row.deletedAt) return null;
   const docRows = await db().select({name: docs.name, updatedAt: docs.updatedAt}).from(docs).where(eq(docs.slug, slug));
   const meta = await readProjectMeta(slug);
-  return toProjectInfo(row, docRows, meta);
+  const reference = isReferencePresent((await readDoc(slug, 'reference'))?.data);
+  return toProjectInfo(row, docRows, meta, reference);
 };
 
 // ── 一覧から隠す／戻す ──

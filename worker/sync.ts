@@ -162,6 +162,8 @@ const candidates = (dir: string): Candidate[] => {
   for (const sub of ['thumbs', 'strips', 'cutframes']) {
     for (const rel of walk(path.join(sdir, sub))) out.push({kind: 'studio', mode: 'full', relPath: `${sub}/${rel}`, file: path.join(sdir, sub, rel)});
   }
+  // 参考動画（型を写す元）の分析に使ったコマとコンタクトシート。**動画そのもの（source.*）は上げない**
+  for (const rel of walk(path.join(sdir, 'reference'))) if (/\.(jpg|png)$/i.test(rel)) out.push({kind: 'studio', mode: 'full', relPath: `reference/${rel}`, file: path.join(sdir, 'reference', rel)});
   // 軽量プロキシ（540x960）。スマホの Timeline プレビューの本体
   for (const rel of walk(path.join(sdir, 'preview'))) out.push({kind: 'uploads', mode: 'light', relPath: rel, file: path.join(sdir, 'preview', rel)});
   // 書き出し・QC・ナレーション音声

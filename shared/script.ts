@@ -20,12 +20,14 @@ export type ScriptSection = {
   toSec: number;
 };
 
-// 【0〜3秒】/ 【4〜10秒】/ [0-3秒] / 0:00〜0:03 あたりを拾う。全角・半角どちらも
-const HEAD = /^[\s]*[【\[(]?\s*(\d+(?:[:：]\d+)?)\s*[〜~\-–—]\s*(\d+(?:[:：]\d+)?)\s*秒?\s*[】\])]?\s*(.*)$/;
+// 【0〜3秒】/ 【4〜10秒】/ [0-3秒] / 0:00〜0:03 / 【2.5〜6.2秒】 あたりを拾う。全角・半角どちらも。
+// 小数を読むのは、参考動画の型を写した台本（shared/reference.ts）がシーン検出の秒数をそのまま区間にするため
+const HEAD = /^[\s]*[【\[(]?\s*(\d+(?:[:：]\d+)?(?:[.．]\d+)?)\s*[〜~\-–—]\s*(\d+(?:[:：]\d+)?(?:[.．]\d+)?)\s*秒?\s*[】\])]?\s*(.*)$/;
 
 const toSec = (s: string): number => {
-  const m = /^(\d+)[:：](\d+)$/.exec(s);
-  return m ? Number(m[1]) * 60 + Number(m[2]) : Number(s);
+  const t = s.replace('．', '.');
+  const m = /^(\d+)[:：](\d+(?:\.\d+)?)$/.exec(t);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : Number(t);
 };
 
 /**

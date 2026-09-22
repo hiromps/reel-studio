@@ -9,8 +9,9 @@ import {checkCaption} from '../../shared/caption';
 import {getPersona} from '../../shared/personas';
 import {parseSections, reviewScriptProposal, scriptPlanToNarration, scriptTotalSec} from '../../shared/script';
 import {normalizeSlug, type ContractName, type DocName} from '../../shared/project';
+import {emptyReference} from '../../shared/reference';
 import {loadCtx, scriptEnv, scriptProposalView, validate, type Ctx} from '../project-context';
-import {readDoc, revOfEtag, upsertProject, writeDoc} from '../store';
+import {addJob, readDoc, revOfEtag, upsertProject, writeDoc} from '../store';
 
 export const docsRouter = Router({mergeParams: true});
 
@@ -173,4 +174,35 @@ docsRouter.put('/hooks', async (req, res) => {
   res.json({etag: r.etag, ...hookInfo(await loadCtx(slug), parsed.data.cutCount), issues: checkHooks(parsed.data)});
 });
 
-export const DOC_ROUTE_NAMES: readonly DocName[] = ['catalog', 'brief', 'cuts', 'narration', 'caption', 'script', 'hooks', 'scriptPlan'];
+// ───────────────────────── reference.json（参考動画の型の分析） ─────────────────────────
+// 動画そのものは PC の .studio/reference/ にあり、クラウドには分析結果とコマだけが上がる。
+// スマホからの取り込みは素材と同じ二段構え（Blob へ直接上げて ai-reference ジョブに url を渡す。cloud/routes/misc.ts の /uploads/token）。
+
+docsRouter.get('/reference', async (req, res) => {
+  const ctx = await loadCtx(slugOf(req));
+  const row = ctx.rows.get('reference');
+  noCache(res);
+  if (row?.etag) res.setHeader('ETag', row.etag);
+  res.json({etag: row?.etag ?? null, data: ctx.reference});
+});
+
+/** PC 上のファイルを指す取り込みは PC でしかできない */
+docsRouter.post('/reference/import', (_req, res) => {
+  res.status(501).json({error: '動画ファイルの指定は PC 上の Reel Studio で行ってください（スマホからは「動画を選ぶ」でアップロードできます）'});
+});
+
+/** 別の案件の分析を使う。コマの実体が PC にあるので、複製は PC のジョブで行う */
+docsRouter.post('/reference/copy-from', async (req, res) => {
+  const from = typeof req.body?.from === 'string' ? req.body.from.trim() : '';
+  if (!from) return res.status(400).json({error: 'from（元の案件）が必要'});
+  res.json({job: await addJob('ai-reference', slugOf(req), {copyFrom: normalizeSlug(from)})});
+});
+
+/** 取り消し。ファイルを消す代わりに墓標（source: null）を書き、ワーカーの同期で PC 側も消える */
+docsRouter.delete('/reference', async (req, res) => {
+  const slug = slugOf(req);
+  await writeDoc(slug, 'reference', emptyReference(), {by: 'cloud'});
+  res.json({etag: null, data: null});
+});
+
+export const DOC_ROUTE_NAMES: readonly DocName[] = ['catalog', 'brief', 'cuts', 'narration', 'caption', 'script', 'hooks', 'scriptPlan', 'reference'];

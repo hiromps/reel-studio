@@ -18,6 +18,9 @@
 //   reel ai facts --project P [--force] [--model m]                              （店舗情報をWebで裏取り→brief.facts。Instagram優先）
 //   reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]      （裏取り→caption.txt）
 //   reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]  （トライアル用のフック案＋パターン別キャプション→hooks.json）
+//   reel ai reference --project P --file <動画> [--model m] [--no-analyze]        （他の人のバズ動画を取り込んで型を分析→reference.json）
+//   reel ai reference --project P [--show] | --from <別案件slug> | --remove           （分析を表示 / 別案件の分析を写す / 取り消す）
+//   reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]        （分析した型を写した台本→script.md→そのまま組み立て。--dry は割り当てを見るだけ）
 //   reel sfx scan | list                                                        （効果音ライブラリの棚卸し）
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
 //   reel sfx auto --project P [--max n] [--gap s] [--exclude role,role] [--dry]   （cuts.json から自動配置）
@@ -58,6 +61,8 @@ import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatal
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
+import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, importReferenceVideo, readReference} from '../core/reference';
+import {describeReference} from '../shared/reference';
 import {localDate} from '../shared/time';
 import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
@@ -433,7 +438,56 @@ async function main() {
         return;
       }
 
-      err('reel ai tag | reel ai order | reel ai telop | reel ai script | reel ai narration | reel ai facts | reel ai caption | reel ai hooks | reel ai edit "<直したいこと>"');
+      // 他の人のバズ動画の型を分析する（取り込み → ffmpeg → claude → reference.json）
+      if (sub === 'reference') {
+        const file = str(flags, 'file');
+        const from = str(flags, 'from');
+        if (bool(flags, 'remove')) {
+          deleteReference(dir);
+          out('参考動画の取り込みと分析を取り消しました');
+          return;
+        }
+        if (from) {
+          const r = copyReferenceFrom(dir, resolveProjectDir(from));
+          out(`${from} の分析を写しました`);
+          for (const l of describeReference(r)) out(`  ${l}`);
+          return;
+        }
+        if (file) {
+          const r = await importReferenceVideo(dir, path.resolve(file));
+          out(`取り込みました: ${r.source!.originalName}（${r.source!.durationSec.toFixed(1)} 秒）`);
+          if (!bool(flags, 'analyze', true)) return;
+        }
+        if (bool(flags, 'show') || (!file && !claudeAvailable())) {
+          const r = readReference(dir);
+          if (!r) throw new Error('参考動画がありません（reel ai reference --project P --file <動画>）');
+          for (const l of describeReference(r)) out(l);
+          return;
+        }
+        const r = await analyzeReference(dir, {model, onLine: (l) => err(l)});
+        out(`分析: ${r.segments.length} 区間 / ${r.cuts.length} カット（$${r.costUsd.toFixed(3)}）`);
+        for (const l of describeReference(r)) out(l);
+        out(`次: reel ai mimic --project ${path.basename(dir)}（型を写した台本を書いて組み立てる）`);
+        return;
+      }
+
+      // 分析した型を写した台本 → script.md → 組み立て
+      if (sub === 'mimic') {
+        const r = await aiMimic(dir, {model, assemble: bool(flags, 'assemble', true), write: !bool(flags, 'dry'), force: bool(flags, 'force'), onLine: (l) => err(l)});
+        out(`script.md: ${r.plan.sections.length} 区間（$${r.costUsd.toFixed(3)}）`);
+        for (const i of r.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
+        for (const u of r.plan.unmatched) out(`  ? 素材が無い: ${u}`);
+        if (r.assembled) {
+          const a = r.assembled;
+          out(`組み立て: ${a.plan.cuts.length} カット / ${a.totalSec.toFixed(2)} 秒 / ナレーション ${a.plan.narration.length} ブロック`);
+          for (const l of a.lines) out(l);
+          for (const i of a.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
+          if (!a.written) out(bool(flags, 'dry') ? '（書いていません。この案で書き込むなら reel ai script --project P --apply）' : '（書いていません）');
+        } else out(`（組み立てはしていません。reel ai script --project ${path.basename(dir)} で組み立てます）`);
+        return;
+      }
+
+      err('reel ai tag | reel ai order | reel ai telop | reel ai script | reel ai narration | reel ai facts | reel ai caption | reel ai hooks | reel ai reference | reel ai mimic | reel ai edit "<直したいこと>"');
       process.exitCode = 1;
       return;
     }

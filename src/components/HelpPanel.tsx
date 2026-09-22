@@ -6,7 +6,7 @@ import type {TourTab} from './Tour';
 const FLOW: {tab: TourTab; label: string; what: string}[] = [
   {tab: 'projects', label: '① Projects', what: '案件（動画 1 本）を作る・開く。同じ素材で別バージョンも作れる。投稿し終えた案件は「投稿済み（隠す）」で一覧から外せる（消えません）'},
   {tab: 'materials', label: '② Materials', what: '素材フォルダを読み込み、1 本ずつタグを付ける（AI に任せられる）'},
-  {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を自動生成する。台本があるなら貼って「台本から組み立てる」'},
+  {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を自動生成する。台本があるなら貼って「台本から組み立てる」。他の人のバズ動画を渡して型を写すこともできる'},
   {tab: 'timeline', label: '④ Timeline', what: '映像・テロップ・ナレーション・効果音を 1 つのタイムラインで整えて検証する'},
   {tab: 'render', label: '⑤ Render', what: '「仕上げ」で原稿 → 音声 → レンダー → 合成 → 納品まで一気に。声の設定・効果音・キャプション・トライアルもここ'},
   {tab: 'settings', label: '⑥ Settings', what: 'データフォルダ・Fish Audio の API キー・claude の場所と既定モデル・人格（文体・声・キャプションの型）。最初に一度だけ'},
@@ -119,10 +119,16 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
               <p className="hint">
                 Brief の「台本から組み立てる」に台本を貼る → cuts と narration ができる → Timeline で確認・微調整 → Render の「仕上げ」を押す。この 3 手で完成動画が outputs/ に出ます。
               </p>
+              <h3>バズった動画の型を写す場合</h3>
+              <p className="hint">
+                Brief の「バズ動画の型を写す」に他の人の伸びたリールを渡す → 型（区間・カット数・テロップの型・フック・締め）を分析 →「この型で台本を作って組み立てる」で自分の素材の cuts と narration ができる。
+                写すのは型だけで、映像・音声・文言そのものは使いません。
+              </p>
               <h3>Claude に任せられるところ</h3>
               <ul className="tour-list">
                 <li>素材のタグ付け（Materials の「AI にタグ付けしてもらう」。裏で Claude が起動してサムネイルを 1 枚ずつ見ます）</li>
                 <li>台本からの組み立て（Brief。素材のタグと台本を突き合わせて cuts と narration を作ります）</li>
+                <li>バズ動画の型の分析と、その型を写した台本（Brief の「バズ動画の型を写す」）</li>
                 <li>テロップの文言・ナレーション原稿・並べ替え・自由な直し（Timeline の「AI ▾」）</li>
                 <li>キャプションと店舗情報の裏取り（Render）</li>
                 <li className="hint">いずれも API 課金が発生します。モデルは横のプルダウンで選べます（opus が既定）。AI の文言は下書き扱いなので必ず読み直してください</li>

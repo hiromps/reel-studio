@@ -122,6 +122,20 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
+    id: 'reference',
+    tab: 'brief',
+    target: 'reference',
+    title: '④″ バズった動画の型を写す',
+    body: (
+      <>
+        <p>
+          他の人の伸びたリールを渡すと、区間・カット数・テロップの型・フックの掛け方・締め方を分析し、<b>その型で自分の素材の台本</b>を書いて組み立てます。
+        </p>
+        <p className="hint">写すのは構成とテンポだけ。参考動画の映像・音声・文言はそのまま使いません。</p>
+      </>
+    ),
+  },
+  {
     id: 'brief-plan',
     tab: 'brief',
     target: 'brief-plan',
