@@ -49,7 +49,7 @@ import {loadSettings, maskSecret, mergeSettings, personasFile, saveSettings, set
 import {readLegacyFishEnv} from '../core/legacy-env';
 import {claudeBinInfo} from '../core/agent';
 import {loadPersonasFromDisk} from '../core/personas-store';
-import {PATH_KEYS, type SettingsPatch} from '../shared/schema/settings';
+import {DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type SettingsPatch} from '../shared/schema/settings';
 import {listPersonas} from '../shared/personas';
 import {planCuts, PlanError} from '../shared/plan';
 import {formatValidation} from '../shared/validate';
@@ -166,6 +166,14 @@ async function main() {
       const key = v.settings.tts.apiKey;
       out(`Fish Audio   ${key.present ? `鍵あり ${key.masked}（${key.source === 'env' ? '環境変数' : '設定ファイル'}）` : '鍵なし'} / model ${v.settings.tts.modelId} / 追加ボイス ${v.settings.tts.voices.length} 件`);
       out(`claude       ${v.claude.bin}（${v.claude.source}${v.claude.available ? '' : '・見つからない'}）/ 既定モデル ${v.settings.agent.model}`);
+      const ig = v.settings.instagram;
+      out(
+        `Instagram    ${
+          ig.mcpKey.present
+            ? `Smartgram MCP 鍵あり ${ig.mcpKey.masked}（${ig.mcpKey.source === 'env' ? '環境変数' : '設定ファイル'}）/ ${ig.mcpUrl ?? DEFAULT_INSTAGRAM_MCP_URL}${ig.account ? ` / 実行アカウント @${ig.account}` : ' / 実行アカウントは自動'}`
+            : '未設定（裏取りは Web 検索のみ）'
+        }`,
+      );
       out(`人格         ${listPersonas().map((p) => p.id).join(', ')} ← ${personasFile()}`);
       const cloud = v.settings.cloud;
       out(

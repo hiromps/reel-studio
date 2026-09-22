@@ -84,7 +84,10 @@ export const CaptionCard: React.FC<{aiModel: string}> = ({aiModel}) => {
         <button className="small" onClick={factsOnly} disabled={busy || !s.supportsJob('ai-facts')} title="キャプションは書かず、店舗情報だけ調べて brief.json に入れます">
           店舗情報だけ調べる
         </button>
-        <span className="hint">Instagram &gt; Google マップの順で信用します（素材映像から読めた事実はそれより強い）</span>
+        <span className="hint">
+          Instagram &gt; Google マップの順で信用します（素材映像から読めた事実はそれより強い）
+          {s.config?.instagramMcp ? '。Instagram は Smartgram MCP 経由で直接読みます' : '。Settings の「Instagram の情報取得」に Smartgram の鍵を入れると、Instagram をログイン壁に阻まれずに読めます'}
+        </span>
       </div>
       {lastFacts && (lastFacts.conflicts?.length || lastFacts.unresolved?.length) && (
         <div className="issues" style={{marginTop: 6}}>

@@ -18,6 +18,7 @@ import {studioConfig} from '../studio.config';
 import {exec} from '../core/exec';
 import {claudeAvailable, claudeBin, claudeVersion, resetClaudeBin} from '../core/agent';
 import {ttsAvailable, resetFishEnv} from '../core/tts';
+import {resetInstagramMcpEnv} from '../core/instagram-mcp';
 import {mosaicStatus, resetMosaicStatus} from '../core/mosaic';
 import {listProjects, resolveProjectDir} from '../core/project';
 import {loadSettings, mergeSettings, resetSettings, saveSettings, settingsView} from '../core/settings';
@@ -106,6 +107,7 @@ const applyRemoteChanges = async (client: CloudClient, reply: Awaited<ReturnType
       try {
         saveSettings(mergeSettings(loadSettings(), parsed.data));
         resetFishEnv();
+        resetInstagramMcpEnv();
         resetClaudeBin();
         resetMosaicStatus();
         log('設定をクラウドからの指示で更新しました');

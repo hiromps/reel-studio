@@ -20,6 +20,7 @@ import {readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaptio
 import {validateProject} from './render';
 import {runAgent, type AgentEvent, type AgentRun} from './agent';
 import {agentAddDirs, captionGuideLabel, materializePersonaDocs, promptPath} from './persona-docs';
+import {instagramMcpEnv, instagramMcpForAgent, instagramToolLabel, isInstagramMcpTool} from './instagram-mcp';
 import {activitySummary, createAgentTracker, fmtElapsed, progressView, type ProgressLabels} from '../shared/agent-progress';
 
 const enumOf = (v: readonly string[]) => ({type: 'string', enum: [...v]});
@@ -758,6 +759,8 @@ export type AiFactsResult = {
  *   4. その他（食べログ・ぐるなび等）
  *
  * エージェントには WebSearch / WebFetch を渡すが、書き込み系は渡さない（反映はこの関数が行う）。
+ * Smartgram の MCP（Settings「Instagram の情報取得」）が設定されていれば、それも渡して Instagram を
+ * ログイン壁に阻まれずに読ませる（core/instagram-mcp.ts。読むだけのツールに絞ってある）。
  */
 export async function aiFacts(
   projectDir: string,
@@ -769,6 +772,31 @@ export async function aiFacts(
   const catalog = loadCatalog(projectDir);
   const known = Object.entries(brief.facts);
   const fromFootage = catalog?.facts ?? [];
+  const ig = instagramMcpEnv();
+  const mcp = ig ? instagramMcpForAgent(ig) : null;
+
+  // Instagram の読み方。MCP があれば直接読ませ、無ければ従来どおり Web 検索頼み
+  const instagramSteps = mcp
+    ? [
+        '進め方（Instagram は MCP ツール mcp__smartgram__… で直接読める。ログイン壁の影響を受けない）:',
+        `- MCP ツールの username 引数には${
+          ig?.account
+            ? `「${ig.account}」を渡す（設定で固定されている。エラーになったら list_instagram_accounts で isActive: true のものに切り替える）`
+            : '、まず list_instagram_accounts で登録アカウントを確認し、isActive: true のものを 1 つ選んで以後ずっと同じものを渡す'
+        }`,
+        '- 店の公式アカウントを search_users（query は店名。ヒットしなければエリア名を添える。WebSearch「店名 エリア instagram」で探してもよい）で探し、get_profile（target にそのハンドル）で自己紹介文・外部リンクを読む。**自己紹介や投稿に住所かエリアが出ていて、この店だと確認できたものだけ採る**',
+        '- get_user_posts（target にそのハンドル、count は 12 まで）で最近の投稿のキャプションから営業時間・定休日・メニュー・価格・予約の案内を拾う。固定投稿やプロフィールの方が新しければそちらを採る',
+        '- MCP の呼び出しは合計 6 回程度まで（1 時間あたりの上限がある）。Instagram で分からない項目だけ WebSearch / WebFetch で Google マップやその他を当たる',
+        '- Instagram で確認した項目の sourceUrl は https://www.instagram.com/<ハンドル>/ にする',
+        '- **Instagram と Google マップで食い違ったら Instagram を採り、conflicts に「どちらが何と言っていたか」を残す**',
+      ]
+    : [
+        '進め方:',
+        '- まず WebSearch で店の公式 Instagram アカウントを探す（「店名 エリア instagram」等）。見つけたら WebFetch でプロフィールを読む',
+        '- Instagram のページがログイン壁で読めないことがある。その場合は検索結果のスニペットや、Instagram の投稿を引用している記事から拾ってよい（出典は instagram のままでよいが confidence は low にする）',
+        '- Instagram で分からない項目だけ Google マップやその他で補う',
+        '- **Instagram と Google マップで食い違ったら Instagram を採り、conflicts に「どちらが何と言っていたか」を残す**',
+      ];
 
   const prompt = [
     'グルメ動画のキャプションに載せる店舗情報を、Web で裏取りしてほしい。',
@@ -785,11 +813,7 @@ export async function aiFacts(
     '3. Google マップ',
     '4. その他（食べログ・ぐるなび・ホットペッパー等）',
     '',
-    '進め方:',
-    '- まず WebSearch で店の公式 Instagram アカウントを探す（「店名 エリア instagram」等）。見つけたら WebFetch でプロフィールを読む',
-    '- Instagram のページがログイン壁で読めないことがある。その場合は検索結果のスニペットや、Instagram の投稿を引用している記事から拾ってよい（出典は instagram のままでよいが confidence は low にする）',
-    '- Instagram で分からない項目だけ Google マップやその他で補う',
-    '- **Instagram と Google マップで食い違ったら Instagram を採り、conflicts に「どちらが何と言っていたか」を残す**',
+    ...instagramSteps,
     '- 同名・近隣の別店舗を掴まないよう、住所かエリアが一致することを必ず確認する',
     '',
     '守ること:',
@@ -809,7 +833,7 @@ export async function aiFacts(
     .filter(Boolean)
     .join('\n');
 
-  log(`店舗情報の裏取り: ${brief.shop.name}（${brief.shop.area}）／Instagram 優先（model=${opt.model ?? studioConfig.agent.model}）`);
+  log(`店舗情報の裏取り: ${brief.shop.name}（${brief.shop.area}）／Instagram 優先（${mcp ? `Smartgram MCP 経由${ig?.account ? `・@${ig.account}` : ''}` : 'Web 検索のみ'}・model=${opt.model ?? studioConfig.agent.model}）`);
   opt.onProgress?.(0, 0, 'claude を起動しています');
   let seen = 0;
   let lastPhase = '検索中';
@@ -822,8 +846,10 @@ export async function aiFacts(
     prompt,
     schema: FACTS_SCHEMA,
     model: opt.model ?? studioConfig.agent.model,
-    // 調査なので Web を読ませる。書き込み系は渡さない（brief.json への反映はこの関数が行う）
-    allowedTools: ['Read', 'Glob', 'WebSearch', 'WebFetch'],
+    // 調査なので Web を読ませる。書き込み系は渡さない（brief.json への反映はこの関数が行う）。
+    // Smartgram MCP があれば、その読み取り専用ツールも許可する
+    allowedTools: ['Read', 'Glob', 'WebSearch', 'WebFetch', ...(mcp?.allowedTools ?? [])],
+    mcp: mcp ? {config: mcp.config, env: mcp.env} : undefined,
     timeoutMs: studioConfig.agent.timeoutMs,
     onLine: log,
     onEvent: (e) => {
@@ -832,6 +858,7 @@ export async function aiFacts(
       if (e.kind !== 'tool') return;
       if (e.name === 'WebSearch') step(`検索中「${String((e.input as {query?: string}).query ?? '')}」`.slice(0, 64));
       else if (e.name === 'WebFetch') step(`確認中 ${String((e.input as {url?: string}).url ?? '').replace(/^https?:\/\//, '').slice(0, 44)}`);
+      else if (isInstagramMcpTool(e.name)) step(instagramToolLabel(e.name, e.input).slice(0, 64));
       else if (e.name === 'StructuredOutput') step('結果を書き出しています');
     },
     signal: opt.signal,

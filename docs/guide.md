@@ -67,7 +67,7 @@ CLI は Git Bash から `bin/reel <cmd>`（cmd.exe は `bin\reel.cmd`）。
 | `reel ai narration --project P [--model m]` | 完成したテロップと映像を見てナレーション原稿を書かせる（`narration.json`） |
 | `reel ai script --project P [--model m] [--force] [--dry]` | **`script.md` の台本から** cuts + narration を組み立てる（`--dry` は書かずに割り当ての案だけ `.studio/script-plan.json` に残す） |
 | `reel ai script --project P --apply` | `--dry` で残した案を**承認して書き込む**（AI は走らせない。台本が変わっていたり E があれば書かない） |
-| `reel ai facts --project P [--force] [--model m]` | 店の住所・営業時間を Web で裏取りして `brief.facts` に入れる（**Instagram 優先**） |
+| `reel ai facts --project P [--force] [--model m]` | 店の住所・営業時間を Web で裏取りして `brief.facts` に入れる（**Instagram 優先**。Settings に Smartgram の鍵があれば Instagram は MCP 経由で直接読む） |
 | `reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]` | 裏取り → 人格の SKILL.md Step 4 と過去の実例を読んで `caption.txt` を書かせる |
 | `reel sfx scan` / `reel sfx list` | 効果音ライブラリ（`sfx/`）の棚卸し・一覧 |
 | `reel sfx role <file> <役割> [--trim s] [--fade s] [--gain dB] [--label 名]` | どの音をどの役割に使うか（自動配置はこれを見る） |
@@ -263,6 +263,27 @@ hookStyle=areaDigit の人格のフックは「エリア＋一桁数字」型だ
 書いてもらう」を押すと自動で先に走る。チェックを外せば手持ちの情報だけで書く）。
 このときだけエージェントに `WebSearch` / `WebFetch` を渡す（書き込み系は渡さない）。
 
+**Instagram は Smartgram の MCP 経由で読む（鍵があるとき）。** Instagram のページは `WebFetch` だと
+ログイン壁で読めないことが多く、検索スニペット頼みだった。Settings の「Instagram の情報取得」に
+[Smartgram](https://app.smartgram.jp/) の MCP 用 API キーを入れると、`ai-facts` はそのサーバー
+（`growgram-insights`）を `--mcp-config` で claude に渡し、登録済みアカウント経由で店の公開アカウントを直接読ませる。
+
+- 許可するのは読むだけのツール 5 つ（`list_instagram_accounts` / `search_users` / `get_profile` /
+  `get_user_posts` / `get_api_usage`。`shared/instagram-mcp.ts` の `INSTAGRAM_MCP_TOOLS`）。
+  HikerAPI のトークンを消費する `get_user_stories` / `download_reel_video` や、投稿・フォローの操作は渡さない
+- 進め方はプロンプトで固定: `search_users`（店名）で公式アカウントを探す → `get_profile`（自己紹介・外部リンク）→
+  `get_user_posts`（最近 12 件のキャプションから営業時間・定休日・価格）。**自己紹介や投稿に住所かエリアが出ていて
+  この店だと確認できたものだけ採る**。呼び出しは合計 6 回程度まで（Smartgram 側に 1 時間あたりの上限がある）
+- MCP ツールの `username` 引数は「API を実行する Smartgram 登録済みアカウント」。Settings の「実行アカウント」が
+  あればそれ、無ければ `list_instagram_accounts` で `isActive: true` のものを選ばせる
+- **鍵は argv にもファイルにも出さない。** `--mcp-config` の JSON には `${SMARTGRAM_MCP_KEY}` と書き、値は
+  子プロセスの環境変数で渡す（Claude Code が展開する。`core/instagram-mcp.ts` の `instagramMcpForAgent`）。
+  鍵の置き場は Fish Audio と同じ `settings.json`（環境変数 `SMARTGRAM_MCP_KEY` が優先）
+- 接続テスト（Settings・`POST /api/settings/test/instagram`）は claude を通さず、この Node から JSON-RPC
+  （`initialize` → `tools/list` → `list_instagram_accounts`）を直接叩く。Instagram 本体にはアクセスしない
+- 鍵が無ければ従来どおり（`WebSearch` / `WebFetch` だけ）。ログの 1 行目に「Smartgram MCP 経由」か
+  「Web 検索のみ」かが出る
+
 **出典の優先順位（上が強い。食い違ったら上を採る）:**
 
 1. **素材映像・店内の掲示**（`catalog.facts`）— Web より強い。Web の価格が改定前で、素材の
@@ -302,11 +323,12 @@ IG ハンドルが取れ、住所と電話は集約サイト経由（Google マ�
 会話字幕（`subs`）のカットは対象外。書いたものは `meta.slots[].textStatus` が `draft` になる——**AI の文言は下書き扱いで、人が読み直す前提**。
 
 **エージェントには書き込みをさせない。** `--allowedTools Read Glob`（裏取りのときだけ `WebSearch` /
-`WebFetch` を追加）だけを与え、権限プロンプトが出たら
+`WebFetch`、さらに Smartgram の鍵があれば `mcp__smartgram__*` の読み取りツールを追加）だけを与え、権限プロンプトが出たら
 自動で拒否する（`--permission-prompts none`）。返ってくるのは `--json-schema` で形を固定した JSON だけで、
 契約ファイルへの反映は `core/ai.ts` が zod 検証を通してから `importTags` / `importOrder` で行う。
 ワークスペースの MCP サーバーは読み込まない（`--strict-mcp-config`）——タグ付けには 1 つも要らず、
-システムプロンプトが数万トークン膨らむだけなので。
+システムプロンプトが数万トークン膨らむだけなので。裏取りで Smartgram を使うときも、`--mcp-config` で
+明示したその 1 つだけが読み込まれる（`runAgent` の `mcp` オプション）。
 
 **作業中は「動いているか」が見える。** `claude -p` を `--output-format stream-json` で走らせ、
 起動（`system/init`）・思考（`thinking`）・本文・ツール呼び出し・最終結果の書き出し（`StructuredOutput`）を

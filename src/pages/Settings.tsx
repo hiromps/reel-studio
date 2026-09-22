@@ -6,7 +6,7 @@ import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
 import {UpdateCard} from '../components/UpdateCard';
-import {PATH_KEYS, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
@@ -93,6 +93,7 @@ export const SettingsPage: React.FC = () => {
       <FoldersCard view={view} save={save} />
       <TtsCard view={view} save={save} />
       <AgentCard view={view} save={save} />
+      <InstagramCard view={view} save={save} />
       <FontsCard view={view} save={save} reload={load} />
       <MosaicSettingsCard view={view} save={save} />
       <CloudCard view={view} save={save} />
@@ -446,6 +447,139 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         <span style={{flex: 1}} />
         <button className="primary" onClick={submit} disabled={!dirty}>
           AI の設定を保存
+        </button>
+      </div>
+    </section>
+  );
+};
+
+// ───────────────────────── Instagram の情報取得（Smartgram MCP） ─────────────────────────
+
+type InstagramTest = TestResult & {accounts?: InstagramAccount[]; server?: string; tools?: string[]; url?: string};
+
+/**
+ * 店舗情報の裏取りで、店の公式 Instagram を Smartgram の MCP サーバー経由で読むための鍵。
+ * 無ければ従来どおり Web 検索だけで裏取りする（Instagram はログイン壁で読めないことが多い）。
+ * 古いワーカーが送ってきた見え方には instagram が無いことがあるので、無くても開けるようにしておく
+ */
+const InstagramCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
+  const ig = view.settings.instagram ?? {mcpKey: {present: false, masked: '', source: null}};
+  const key = ig.mcpKey;
+  const env = {url: !!view.env.instagramMcpUrl, key: !!view.env.instagramMcpKey, account: !!view.env.instagramAccount};
+  const fromView = useCallback(() => ({mcpUrl: ig.mcpUrl ?? '', account: ig.account ?? ''}), [ig.mcpUrl, ig.account]);
+  const [form, setForm] = useState(fromView);
+  const [typed, setTyped] = useState('');
+  useEffect(() => {
+    setForm(fromView());
+    setTyped('');
+  }, [fromView]);
+  const [test, setTest] = useState<InstagramTest | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const dirty = typed.trim() !== '' || form.mcpUrl.trim() !== (ig.mcpUrl ?? '') || form.account.trim() !== (ig.account ?? '');
+  const urlValid = !form.mcpUrl.trim() || /^https?:\/\/\S+$/.test(form.mcpUrl.trim());
+
+  const submit = async () => {
+    const ok = await save(
+      {
+        instagram: {
+          ...(typed.trim() ? {mcpKey: typed.trim()} : {}),
+          mcpUrl: form.mcpUrl.trim(),
+          account: form.account.trim().replace(/^@/, ''),
+        },
+      },
+      'Instagram の情報取得の設定を保存しました',
+    );
+    if (ok) setTyped('');
+  };
+  const clearKey = () => void save({instagram: {mcpKey: ''}}, 'MCP の鍵を消しました');
+  const runTest = async () => {
+    setTesting(true);
+    setTest(null);
+    try {
+      const r = await api.post<InstagramTest>('/api/settings/test/instagram', {mcpKey: typed.trim() || undefined, mcpUrl: form.mcpUrl.trim() || undefined});
+      setTest(r.data);
+    } catch (e) {
+      setTest({ok: false, message: msg(e)});
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <section className="card" data-tour="settings-instagram">
+      <h2>Instagram の情報取得（Smartgram MCP）</h2>
+      <p className="hint">
+        キャプションを書く前の「店舗情報の裏取り」で、店の公式 Instagram（プロフィール・投稿）を{' '}
+        <a href="https://app.smartgram.jp/" target="_blank" rel="noreferrer">
+          Smartgram
+        </a>{' '}
+        の MCP サーバー経由で読みます（任意。無ければ Web 検索だけで裏取りしますが、Instagram はログイン壁で読めないことが多い）。
+        Smartgram に登録済みのアカウントから公開アカウントを見るだけで、投稿・フォローなどの操作はしません。環境変数 SMARTGRAM_MCP_KEY があればそちらが優先されます。
+      </p>
+      <div className="form">
+        <label className="full">
+          MCP 用 API キー
+          <span className="btns">
+            <input
+              type="password"
+              autoComplete="off"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={key.present ? `設定済み ${key.masked}（${key.source === 'env' ? '環境変数 SMARTGRAM_MCP_KEY' : '設定ファイル'}）` : '未設定（growgram_mcp_… で始まる鍵）'}
+              disabled={env.key}
+              style={{flex: 1, minWidth: 320}}
+            />
+            <button className="small" onClick={() => void runTest()} disabled={testing || (!typed.trim() && !key.present)}>
+              {testing ? '確認中…' : '接続テスト'}
+            </button>
+            {key.present && key.source === 'settings' && (
+              <button className="small danger" onClick={clearKey}>
+                鍵を消す
+              </button>
+            )}
+          </span>
+        </label>
+        <label className="full" title="Smartgram の MCP サーバー。空なら本番の URL">
+          MCP サーバーの URL（任意）
+          <input value={form.mcpUrl} onChange={(e) => setForm({...form, mcpUrl: e.target.value})} placeholder={DEFAULT_INSTAGRAM_MCP_URL} disabled={env.url} />
+        </label>
+        <label className="full" title="MCP ツールの username に渡す、Smartgram に登録済みのアカウント。空なら claude が一覧から有効なものを選びます">
+          実行アカウント（任意）
+          <input list="instagram-accounts" value={form.account} onChange={(e) => setForm({...form, account: e.target.value})} placeholder="空＝自動（接続テストで候補が出ます）" disabled={env.account} />
+          <datalist id="instagram-accounts">
+            {(test?.accounts ?? []).map((a) => (
+              <option key={a.username} value={a.username}>
+                {a.active ? '有効' : '無効'}
+                {a.fullName ? `・${a.fullName}` : ''}
+              </option>
+            ))}
+          </datalist>
+        </label>
+        {test && (
+          <span>
+            <span className={`pill${test.ok ? '' : ' err'}`}>{test.message}</span>
+          </span>
+        )}
+      </div>
+      {test?.accounts && test.accounts.length > 0 && (
+        <ul className="hint" style={{marginTop: 6}}>
+          {test.accounts.map((a) => (
+            <li key={a.username}>
+              <button className="small" onClick={() => setForm({...form, account: a.username})} disabled={env.account} title="この username を実行アカウントにする">
+                @{a.username}
+              </button>{' '}
+              {a.fullName ?? ''}
+              {typeof a.followers === 'number' ? `（フォロワー ${a.followers.toLocaleString()}）` : ''} <span className={`pill${a.active ? '' : ' warn'}`}>{a.active ? '有効' : '無効'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="row">
+        {(env.url || env.key || env.account) && <span className="hint">環境変数（SMARTGRAM_MCP_URL / SMARTGRAM_MCP_KEY / SMARTGRAM_ACCOUNT）で固定されている項目は画面から変えられません</span>}
+        <span style={{flex: 1}} />
+        <button className="primary" onClick={() => void submit()} disabled={!dirty || !urlValid} title={urlValid ? undefined : 'URL は https:// から始めてください'}>
+          Instagram の設定を保存
         </button>
       </div>
     </section>

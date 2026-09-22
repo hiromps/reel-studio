@@ -56,6 +56,7 @@ API キーは要りません。ログイン済みの Claude Code がそのまま
 | ffmpeg / ffprobe（PATH に通っていること） | 素材の解析・サムネイル・プロキシ・合成 | `ffmpeg -version` |
 | Claude Code（`claude` が PATH にあり、ログイン済み） | タグ付け・テロップ・原稿・キャプション | `claude --version` |
 | Fish Audio の API キー（任意） | ナレーション音声の生成 | Settings の「接続テスト」 |
+| Smartgram の MCP 用 API キー（任意） | 店舗情報の裏取りで店の公式 Instagram を読む（ログイン壁を回避） | Settings の「Instagram の情報取得」 |
 | Python 3.10 以上（任意） | 素材の顔モザイク（[deface](https://github.com/ORB-HD/deface) を専用の venv に入れる） | Settings の「顔モザイク（deface）」 |
 
 Windows 11 で開発・運用しています。macOS / Linux でも動く作りですが、フォルダ選択ダイアログ（Settings・Materials の「フォルダを選ぶ」）は Windows 専用で、他 OS ではパスを手で入力してください。
@@ -108,12 +109,17 @@ npm run update      # git pull → 依存の導入 → 画面のビルド をま
    人格の既定ボイス以外に選びたいモデル（他の人の公開モデルなど）は「追加ボイス」に reference_id を登録します。
 3. **AI（Claude Code CLI）** — `claude` の検出結果とバージョンが出ます。PATH に無ければ実行ファイルの場所を指定できます。
    既定モデル（opus / sonnet / haiku）とタグ付けの並列数もここ。
-4. **テロップのフォント** — 自前のフォント（ttf / otf / ttc / woff / woff2）を取り込むと、テロップをそのフォントで描けます。
+4. **Instagram の情報取得（Smartgram MCP）** — キャプションを書く前の「店舗情報の裏取り」で、店の公式 Instagram を
+   [Smartgram](https://app.smartgram.jp/) の MCP サーバー経由で読めるようにします（任意）。MCP 用 API キーを入れて「接続テスト」。
+   無ければ Web 検索だけで裏取りしますが、Instagram はログイン壁で読めないことが多く、検索スニペット頼みになります。
+   鍵は Fish Audio と同じく平文で `settings.json` に保存され（画面には末尾 4 桁だけ）、環境変数 `SMARTGRAM_MCP_KEY` があればそちらが優先されます。
+   「実行アカウント」は Smartgram に登録済みのアカウント名で、空なら AI が一覧から有効なものを選びます。
+5. **テロップのフォント** — 自前のフォント（ttf / otf / ttc / woff / woff2）を取り込むと、テロップをそのフォントで描けます。
    置き場は `~/.reel-studio/fonts/`。ここで選んだものが**これから作る動画**の既定になり、案件ごとの変更は
    Timeline の「動画全体 → フォント」で行います（`cuts.json` の `font`）。テロップは太字前提なので **Bold / 太ゴシック・太明朝**が向いています。
    取り込まなければ同梱の Noto Serif JP Bold（SIL OFL 1.1・商用可）のままです。
    **持ち込むフォントのライセンス（商用利用・埋め込みの可否）は利用者が確認してください。**
-5. **人格（persona）** — 「誰の声・文体で作るか」のまとまり。文体・締めの文言・フックの型・ボイス・話速・
+6. **人格（persona）** — 「誰の声・文体で作るか」のまとまり。文体・締めの文言・フックの型・ボイス・話速・
    キャプションの型（markdown）をここで決めると、AI のテロップ・ナレーション・キャプションに効きます。
    同梱のサンプル 3 つ（スタンダード／発見型／カジュアル）はボイス未設定なので、**Fish Audio のボイスを入れてから**使ってください。
    自分の Claude Code スキル（`SKILL.md` と `references/hashtag-bank.md`）を型として使いたい人格は「外部のスキルフォルダ」に絶対パスを入れます。

@@ -79,6 +79,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     telop: {...cur.telop},
     mosaic: {...cur.mosaic},
     cloud: {...cur.cloud},
+    instagram: {...cur.instagram},
   };
   const setOrClear = (obj: Record<string, unknown>, key: string, v: unknown) => {
     if (v === undefined) return;
@@ -106,6 +107,12 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(cloud, 'url', patch.cloud.url);
     setOrClear(cloud, 'token', patch.cloud.token);
     if (patch.cloud.enabled !== undefined) cloud.enabled = patch.cloud.enabled;
+  }
+  if (patch.instagram) {
+    const ig = next.instagram as Record<string, unknown>;
+    setOrClear(ig, 'mcpUrl', patch.instagram.mcpUrl);
+    setOrClear(ig, 'mcpKey', patch.instagram.mcpKey);
+    setOrClear(ig, 'account', patch.instagram.account);
   }
   return SettingsSchema.parse(next);
 };
@@ -186,6 +193,15 @@ export const cloudTokenView = (): SecretView => {
   return {present: false, masked: '', source: null};
 };
 
+/** Instagram の情報取得（Smartgram MCP）の鍵の在り処（値は返さない） */
+export const instagramKeyView = (): SecretView => {
+  const env = process.env.SMARTGRAM_MCP_KEY?.trim();
+  if (env && !env.startsWith('${')) return {present: true, masked: maskSecret(env), source: 'env'};
+  const conf = loadSettings().instagram.mcpKey?.trim();
+  if (conf) return {present: true, masked: maskSecret(conf), source: 'settings'};
+  return {present: false, masked: '', source: null};
+};
+
 /**
  * GET /api/settings の本体。claude の情報は呼び出し側（core/agent.ts を知っている層）が足す。
  * fonts も引数で受ける（core/fonts.ts はこのファイルを使う側なので、ここから呼ぶと循環する）
@@ -197,6 +213,8 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
   void _omit;
   const {token: _omitToken, ...cloudRest} = s.cloud;
   void _omitToken;
+  const {mcpKey: _omitMcpKey, ...instagramRest} = s.instagram;
+  void _omitMcpKey;
   const pathsView = {} as SettingsView['paths'];
   for (const k of PATH_KEYS) pathsView[k] = {value: paths[k], source: sources[k], exists: fs.existsSync(paths[k])};
   pathsView.templateDir = templateDir;
@@ -205,7 +223,12 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
     file: settingsFile(),
     exists: fs.existsSync(settingsFile()),
     problem: settingsProblem(),
-    settings: {...s, tts: {...ttsRest, apiKey: fishKeyView()}, cloud: {...cloudRest, token: cloudTokenView()}},
+    settings: {
+      ...s,
+      tts: {...ttsRest, apiKey: fishKeyView()},
+      cloud: {...cloudRest, token: cloudTokenView()},
+      instagram: {...instagramRest, mcpKey: instagramKeyView()},
+    },
     paths: pathsView,
     fonts,
     env: {
@@ -216,6 +239,9 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
       mosaicPython: !!process.env.REEL_STUDIO_MOSAIC_PYTHON?.trim(),
       cloudUrl: !!process.env.REEL_CLOUD_URL?.trim(),
       cloudToken: !!process.env.REEL_WORKER_TOKEN?.trim(),
+      instagramMcpUrl: !!process.env.SMARTGRAM_MCP_URL?.trim(),
+      instagramMcpKey: !!process.env.SMARTGRAM_MCP_KEY?.trim(),
+      instagramAccount: !!process.env.SMARTGRAM_ACCOUNT?.trim(),
     },
     claude,
   };

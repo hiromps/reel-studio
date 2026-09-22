@@ -41,6 +41,8 @@ type Store = {
     tts?: boolean;
     /** 裏で走らせる claude が見つかっているか */
     claude?: boolean;
+    /** 店舗情報の裏取りで Instagram を Smartgram MCP 経由で読めるか（Settings に鍵があるか） */
+    instagramMcp?: boolean;
     settingsProblem?: string | null;
     personasProblem?: string | null;
     /** 取り込み済みの自前フォント（Settings で取り込む。Timeline のフォント選択が使う） */

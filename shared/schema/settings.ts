@@ -68,6 +68,23 @@ const CloudSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
+/** Smartgram の MCP サーバー（Instagram の情報取得）の既定 URL */
+export const DEFAULT_INSTAGRAM_MCP_URL = 'https://app.smartgram.jp/api/mcp';
+
+/**
+ * Instagram の情報取得（Smartgram の MCP サーバー）。店舗情報の裏取りで、店の公式 Instagram を
+ * ログイン壁に阻まれずに読むために、裏で走らせる claude に MCP サーバーとして渡す。
+ * 鍵が無ければ従来どおり WebSearch / WebFetch だけで裏取りする。
+ */
+const InstagramSchema = z.object({
+  /** MCP サーバーの URL（Streamable HTTP）。省略＝Smartgram の本番（DEFAULT_INSTAGRAM_MCP_URL） */
+  mcpUrl: z.string().url().optional(),
+  /** Smartgram が発行する MCP 用の API キー（growgram_mcp_… で始まる）。平文で保存する（画面やログには出さない） */
+  mcpKey: z.string().min(8).optional(),
+  /** API を実行する登録済みアカウントの username。省略＝claude が一覧から有効なものを選ぶ */
+  account: z.string().min(1).optional(),
+});
+
 export const SettingsSchema = z.object({
   version: z.literal(1),
   /** 案件・素材・納品・効果音の親フォルダ。省略＝<アプリ>/data */
@@ -82,6 +99,8 @@ export const SettingsSchema = z.object({
   mosaic: MosaicSettingsSchema.default({}),
   /** クラウド（PWA）に繋ぐなら。既定は未設定＝ローカル専用 */
   cloud: CloudSchema.default({}),
+  /** Instagram の情報取得（Smartgram MCP）。既定は未設定＝Web 検索だけで裏取り */
+  instagram: InstagramSchema.default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -112,9 +131,13 @@ export const SettingsPatchSchema = z
     telop: z.object({font: nullable()}).strict().optional(),
     mosaic: z.object({python: nullable()}).strict().optional(),
     cloud: z.object({url: nullable(), token: nullable(), enabled: z.boolean().optional()}).strict().optional(),
+    instagram: z.object({mcpUrl: nullable(), mcpKey: nullable(), account: nullable()}).strict().optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
+
+/** Smartgram に登録済みの Instagram アカウント（接続テストが返す。MCP ツールの username に渡す候補） */
+export type InstagramAccount = {username: string; active: boolean; fullName?: string; followers?: number};
 
 export type PathKey = 'dataRoot' | 'workDir' | 'uploadsRoot' | 'outputsDir' | 'sfxDir';
 export const PATH_KEYS: PathKey[] = ['dataRoot', 'workDir', 'uploadsRoot', 'outputsDir', 'sfxDir'];
@@ -130,15 +153,27 @@ export type SettingsView = {
   exists: boolean;
   /** 設定ファイルが壊れている等の問題（無ければ null）。壊れていても既定値で動く */
   problem: string | null;
-  settings: Omit<Settings, 'tts' | 'cloud'> & {
+  settings: Omit<Settings, 'tts' | 'cloud' | 'instagram'> & {
     tts: Omit<Settings['tts'], 'apiKey'> & {apiKey: SecretView};
     cloud: Omit<Settings['cloud'], 'token'> & {token: SecretView};
+    instagram: Omit<Settings['instagram'], 'mcpKey'> & {mcpKey: SecretView};
   };
   paths: Record<PathKey, {value: string; source: ValueSource; exists: boolean}> & {templateDir: string};
   /** 取り込み済みの自前フォント（<dir>/fonts/）。クラウドではワーカーが上げたものがそのまま出る */
   fonts: FontEntry[];
   /** 環境変数で固定されているキー（画面では変更不可にする） */
-  env: {fishApiKey: boolean; fishModelId: boolean; claudeBin: boolean; agentModel: boolean; mosaicPython: boolean; cloudUrl: boolean; cloudToken: boolean};
+  env: {
+    fishApiKey: boolean;
+    fishModelId: boolean;
+    claudeBin: boolean;
+    agentModel: boolean;
+    mosaicPython: boolean;
+    cloudUrl: boolean;
+    cloudToken: boolean;
+    instagramMcpUrl: boolean;
+    instagramMcpKey: boolean;
+    instagramAccount: boolean;
+  };
   claude: {bin: string; available: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};
 };
 

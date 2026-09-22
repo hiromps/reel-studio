@@ -9,6 +9,7 @@ import {engineDiff, listProjects} from '../core/project';
 import {exec} from '../core/exec';
 import {pickFolder} from '../core/pick-folder';
 import {ttsAvailable} from '../core/tts';
+import {instagramMcpAvailable} from '../core/instagram-mcp';
 import {claudeAvailable} from '../core/agent';
 import {loadSettings, settingsDir, settingsProblem} from '../core/settings';
 import {listFonts} from '../core/fonts';
@@ -113,6 +114,8 @@ app.get('/api/config', (_req, res) => {
     stale: sourceMtimeMs() > startedAtMs,
     // 音声生成（Fish Audio）が使えるか。鍵そのものは返さない
     tts: ttsAvailable(),
+    // 店舗情報の裏取りで Instagram を Smartgram MCP 経由で読めるか（鍵の有無だけ）
+    instagramMcp: instagramMcpAvailable(),
     // 裏で走らせる claude が見つかっているか
     claude: claudeAvailable(),
     // 取り込み済みの自前フォントと、新しく作る動画で使う既定（Timeline のフォント選択が使う）

@@ -2,11 +2,12 @@
 import {Router} from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import {SettingsPatchSchema} from '../../shared/schema/settings';
-import {fishKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
+import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema} from '../../shared/schema/settings';
+import {fishKeyView, instagramKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
 import {listFonts} from '../../core/fonts';
 import {claudeAvailable, claudeBin, claudeBinInfo, claudeVersion, resetClaudeBin} from '../../core/agent';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
+import {instagramMcpEnv, probeInstagramMcp, resetInstagramMcpEnv} from '../../core/instagram-mcp';
 import {mosaicStatus, resetMosaicStatus} from '../../core/mosaic';
 import {resolveProjectDir} from '../../core/project';
 import {studioConfig} from '../../studio.config';
@@ -44,6 +45,7 @@ settingsRouter.put('/', async (req, res) => {
     return res.status(400).json({error: (e as Error).message});
   }
   resetFishEnv();
+  resetInstagramMcpEnv();
   resetClaudeBin();
   resetMosaicStatus();
   // 「いまの案件」が新しいフォルダに無ければ忘れる（無い案件を見張り続けない）
@@ -62,6 +64,22 @@ settingsRouter.post('/test/tts', async (req, res) => {
   if (!key) return res.json({ok: false, message: 'API キーが未設定です'});
   const r = await probeFishKey(key, {signal: AbortSignal.timeout(15_000)});
   res.json({...r, source: typed ? 'input' : fishKeyView().source});
+});
+
+/**
+ * Smartgram の MCP に鍵が通り、裏取りに使うツールが揃っているか。本文の mcpKey / mcpUrl（入力中の値）が
+ * あればそれを、無ければ保存済み／環境変数のものを試す。鍵は返さない。登録アカウントの一覧を返す
+ */
+settingsRouter.post('/test/instagram', async (req, res) => {
+  const typedKey = typeof req.body?.mcpKey === 'string' ? req.body.mcpKey.trim() : '';
+  const typedUrl = typeof req.body?.mcpUrl === 'string' ? req.body.mcpUrl.trim() : '';
+  const saved = instagramMcpEnv();
+  const apiKey = typedKey || saved?.apiKey || '';
+  const url = typedUrl || saved?.url || DEFAULT_INSTAGRAM_MCP_URL;
+  if (!apiKey) return res.json({ok: false, message: 'MCP 用の API キーが未設定です'});
+  if (!/^https?:\/\//.test(url)) return res.json({ok: false, message: `MCP サーバーの URL が不正です: ${url}`});
+  const r = await probeInstagramMcp({url, apiKey}, {signal: AbortSignal.timeout(25_000)});
+  res.json({...r, url, source: typedKey ? 'input' : instagramKeyView().source});
 });
 
 /** claude --version が動くか。本文の bin があればそれを試す */

@@ -7,7 +7,8 @@ import {Router} from 'express';
 import {generateClientTokenFromReadWriteToken} from '@vercel/blob/client';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
-import {SettingsPatchSchema, type SettingsView} from '../../shared/schema/settings';
+import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type SettingsView} from '../../shared/schema/settings';
+import {probeInstagramMcp} from '../../shared/instagram-mcp';
 import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
 import {SfxSoundSchema, type SfxLibrary} from '../../shared/sfx';
 import {JOB_TYPES} from '../../shared/jobs';
@@ -43,6 +44,8 @@ miscRouter.get('/config', async (_req, res) => {
     stale: false,
     tts: !!fishEnv(),
     claude: w?.claude ?? false,
+    // 裏取りは PC の claude が走らせるので、鍵の有無も PC の設定（ワーカーが送ってきた見え方）で判断する
+    instagramMcp: !!s?.settings.instagram?.mcpKey?.present,
     // PC で取り込んだ自前フォント（Timeline のフォント選択が使う）。実体は PC にある
     fonts: s?.fonts ?? [],
     telopFont: s?.settings.telop?.font ?? null,
@@ -124,10 +127,17 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
       file: '',
       exists: false,
       problem: 'PC のワーカーがまだ繋がっていません',
-      settings: {version: 1, paths: {}, tts: {provider: 'fish-audio', modelId: 's2.1-pro-free', voices: [], apiKey: {present: false, masked: '', source: null}}, agent: {model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20}, mosaic: {}} as unknown as SettingsView['settings'],
+      settings: {
+        version: 1,
+        paths: {},
+        tts: {provider: 'fish-audio', modelId: 's2.1-pro-free', voices: [], apiKey: {present: false, masked: '', source: null}},
+        agent: {model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20},
+        mosaic: {},
+        instagram: {mcpKey: {present: false, masked: '', source: null}},
+      } as unknown as SettingsView['settings'],
       paths: {} as SettingsView['paths'],
       fonts: [],
-      env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, mosaicPython: false, cloudUrl: false, cloudToken: false},
+      env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, mosaicPython: false, cloudUrl: false, cloudToken: false, instagramMcpUrl: false, instagramMcpKey: false, instagramAccount: false},
       claude: {bin: '', available: false, source: 'none', version: null},
     } as SettingsView);
   const env = fishEnv();
@@ -160,6 +170,23 @@ miscRouter.post('/settings/test/tts', async (req, res) => {
   const key = typed || fishEnv()?.apiKey || '';
   if (!key) return res.json({ok: false, message: 'API キーが未設定です（Vercel の環境変数 FISH_API_KEY）'});
   res.json({...(await probeFishKey(key, {signal: AbortSignal.timeout(15_000)})), source: typed ? 'input' : 'env'});
+});
+
+/**
+ * Smartgram の MCP は HTTPS なのでクラウドからも直接叩ける。ただし保存済みの鍵は PC にしか無いので、
+ * 入力中の鍵があるときだけ試す（保存済みの鍵での確認は PC 側の Settings で）
+ */
+miscRouter.post('/settings/test/instagram', async (req, res) => {
+  const typedKey = typeof req.body?.mcpKey === 'string' ? req.body.mcpKey.trim() : '';
+  const typedUrl = typeof req.body?.mcpUrl === 'string' ? req.body.mcpUrl.trim() : '';
+  const url = typedUrl || DEFAULT_INSTAGRAM_MCP_URL;
+  if (!typedKey) {
+    const s = await kvGet<SettingsView>('settings-view');
+    const present = !!s?.settings.instagram?.mcpKey?.present;
+    return res.json({ok: present, url, source: present ? 'settings' : null, message: present ? 'PC に鍵が保存されています（鍵そのものでの確認は PC 側の Settings で行ってください）' : 'MCP 用の API キーが未設定です'});
+  }
+  if (!/^https?:\/\//.test(url)) return res.json({ok: false, message: `MCP サーバーの URL が不正です: ${url}`});
+  res.json({...(await probeInstagramMcp({url, apiKey: typedKey}, {signal: AbortSignal.timeout(25_000)})), url, source: 'input'});
 });
 
 miscRouter.post('/settings/test/claude', async (_req, res) => {

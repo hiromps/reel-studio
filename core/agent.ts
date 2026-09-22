@@ -7,6 +7,8 @@
 // - 権限プロンプトが出たら自動で拒否（--permission-prompts none）。GUI からは答えられないため。
 // - ワークスペースの MCP サーバーは読み込まない（--strict-mcp-config）。起動が遅くなるうえ
 //   システムプロンプトが数万トークン膨らみ、タグ付けには 1 つも要らない。
+//   呼び出し側が明示した MCP サーバー（opt.mcp。店舗情報の裏取りの Smartgram など）だけを
+//   --mcp-config で渡す。鍵は JSON に書かず、子プロセスの環境変数で渡して ${VAR} で展開させる。
 // - 認証はユーザーの既存ログインをそのまま使う（API キーの設定は不要）。--bare は OAuth を
 //   読まない仕様なので使わない。
 import fs from 'node:fs';
@@ -92,6 +94,12 @@ export type AgentOptions = {
   addDirs?: string[];
   /** 既定 Read + Glob。書き込み系は絶対に足さないこと */
   allowedTools?: string[];
+  /**
+   * 追加で読み込ませる MCP サーバー（--mcp-config）。--strict-mcp-config なので、ここに書いたものだけが
+   * 読み込まれる。鍵は config に書かず env で渡す（config 側は ${VAR} で参照し、Claude Code が展開する）。
+   * そのサーバーのツールを使わせるには allowedTools に mcp__<server>__<tool> を足すこと
+   */
+  mcp?: {config: Record<string, unknown>; env?: Record<string, string>};
   timeoutMs?: number;
   onLine?: (line: string) => void;
   /** 作業の途中経過（起動・思考・ツール呼び出し・出力・書き出し・定期の heartbeat）。進捗表示に使う */
@@ -114,12 +122,8 @@ type CliResult = {
   api_error_status?: unknown;
 };
 
-/**
- * claude -p を 1 回走らせて構造化出力を受け取る。
- * stdout だけを JSON として読む（stderr が混ざると壊れるため exec の結果を分けて扱う）。
- */
-export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun<T>> {
-  const bin = claudeBin();
+/** claude に渡す引数。テストで形を確かめられるよう runAgent から切り出してある */
+export const agentArgs = (opt: AgentOptions): string[] => {
   const args = [
     '-p',
     opt.prompt,
@@ -135,8 +139,20 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
     'none',
     '--strict-mcp-config',
   ];
+  // --mcp-config は JSON 文字列でもファイルでもよい。文字列で渡す（鍵は入っていない前提。env で渡す）
+  if (opt.mcp) args.push('--mcp-config', JSON.stringify(opt.mcp.config));
   if (opt.model) args.push('--model', opt.model);
   for (const d of opt.addDirs ?? []) args.push('--add-dir', d);
+  return args;
+};
+
+/**
+ * claude -p を 1 回走らせて構造化出力を受け取る。
+ * stdout だけを JSON として読む（stderr が混ざると壊れるため exec の結果を分けて扱う）。
+ */
+export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun<T>> {
+  const bin = claudeBin();
+  const args = agentArgs(opt);
 
   // stdout は 1 行 1 JSON。type=result が最終結果で、それ以外は途中経過
   //   system/init … モデルが動き出した ／ assistant … 思考・本文・ツール呼び出し ／ user … ツールの結果
@@ -175,6 +191,8 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
 
   const execOpt: ExecOptions = {
     cwd: opt.cwd,
+    // MCP の鍵はここでだけ子プロセスに渡る（argv にもログにも出ない）
+    env: opt.mcp?.env,
     timeoutMs: opt.timeoutMs ?? 20 * 60_000,
     signal: opt.signal,
     onLine: (line, stream) => (stream === 'stdout' ? takeLine(line) : opt.onLine?.(line)),
