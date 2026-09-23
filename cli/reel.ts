@@ -818,7 +818,7 @@ async function main() {
 
     case 'fit': {
       const dir = projectFromFlags(flags);
-      const r = fitProject(dir, {
+      const r = await fitProject(dir, {
         write: !bool(flags, 'dry'),
         minCutSec: num(flags, 'min'),
         maxCutSec: num(flags, 'max'),

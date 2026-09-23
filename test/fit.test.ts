@@ -96,16 +96,69 @@ describe('fitCutsToNarration', () => {
     expect(b.notes.some((n) => n.includes('重ねて使った'))).toBe(true);
     // 重ねて使えば時間は埋まる（同じ場面が繰り返るだけ）
     expect(b.blocks[0].shortSec).toBe(0);
-    // 素材が 1 カットぶん（0.8 秒）にも満たなければ映像が音声より短いまま → 注記
+    // 素材が 1 カットぶん（0.8 秒）にも満たなければ映像が音声より短いまま → 注記（スローや別クリップの流用はしない）
     const c = fitCutsToNarration(reel([cut('c01', 'a.mp4', 0, 0.5, 'A')]), narr([{id: 'n1', at: 0, durSec: 1.0, text: 'あ'}]), {clipDurationOf: () => 0.5});
-    expect(c.cuts.cuts.every((x) => x.outSec <= 0.5)).toBe(true);
+    expect(c.cuts.cuts.every((x) => x.outSec <= 0.5 && x.playbackRate === undefined)).toBe(true);
     expect(c.blocks[0].shortSec).toBeGreaterThan(0);
-    expect(c.notes.some((n) => n.includes('足りません'))).toBe(true);
+    expect(c.notes.some((n) => n.includes('足りず'))).toBe(true);
   });
 
-  it('素材の長さが分からなければ元の区間の中だけで刻む', () => {
+  it('いまあるクリップは全部残す（1 文の下に 2 クリップあれば 2 カットのまま）', () => {
+    // 伍感のフック: 0.90 秒＋1.13 秒の 2 クリップ（同じテロップ）に 1.14 秒の音声。以前は 1 カットに切り詰めて片方を落としていた
+    const data = reel([cut('c02', 'a.mp4', 0.983, 1.883, 'H', {badge: '北新地'}), cut('c29', 'b.mp4', 5.2, 6.333, 'H')]);
+    const r = fitCutsToNarration(data, narr([{id: '01_hook', at: 0, durSec: 1.144, text: 'あ'}]), {clipDurationOf: clip6});
+    expect(r.cuts.cuts.map((c) => c.src)).toEqual(['a.mp4', 'b.mp4']);
+    expect(r.notes.some((n) => n.includes('2 本のうち 2 本を残して'))).toBe(true);
+    // 映像は音声以上（被らない）。フックは 0.8 秒、もう 1 本は 0.6 秒を下回らない
+    expect(r.blocks[0].videoSec).toBeGreaterThanOrEqual(1.144);
+    expect(frames(r.cuts)[0]).toBeGreaterThanOrEqual(Math.ceil(0.8 * FPS));
+    expect(frames(r.cuts)[1]).toBeGreaterThanOrEqual(Math.ceil(0.6 * FPS));
+    noE(r.cuts);
+  });
+
+  it('材料が足りていれば、担うクリップ全部で音声を覆う（伍感の「デート向きの店内」）', () => {
+    // 0.73 秒（catalog に無い＝長さ不明）＋ 0.67 秒の 2 クリップに 1.144 秒の音声。以前は 1 カットに決めて前者だけ使い、
+    // 長さ不明で伸ばせず 0.43 秒足りないまま → 次の「まつさかぎゅう」が食い込んだ
+    const data = reel([cut('c10', 'dji-d.mp4', 2.35, 3.083, 'D'), cut('c19', 'k.mp4', 0, 0.667, 'D'), cut('c21', 'm.mp4', 0, 1, 'M')]);
+    const n = narr([{id: '09_new', at: 0, durSec: 1.144, text: 'あ'}, {id: '10_new', at: 1.4, durSec: 1.531, text: 'い'}]);
+    const r = fitCutsToNarration(data, n, {clipDurationOf: (src) => (src === 'dji-d.mp4' ? undefined : 6)});
+    expect(r.blocks[0].cutCount).toBe(2);
+    expect(r.blocks[0].shortSec).toBe(0);
+    expect(r.blocks[0].videoSec).toBeGreaterThanOrEqual(1.144);
+    expect(checkNarration(r.narration, {estimate: () => 1})).toEqual([]);
+  });
+
+  it('素材が尽きたら元のクリップのトリミングを広げる（後ろ → 頭）。それでも足りなければ次のナレーションを後ろへ送って被らない', () => {
+    // 素材 2.0 秒のうち 1.0〜1.5 を採っている。2.0 秒の音声 → 後ろへ 0.5、頭へ 1.0 広げて素材を丸ごと（0〜2.0）使う
+    // （3 カットに刻まれるが、つなげると 0〜2.0 を連続で通る＝同じ場面の重ね使いは無い）
+    const a = fitCutsToNarration(reel([cut('c01', 'a.mp4', 1.0, 1.5, 'A')]), narr([{id: 'n1', at: 0, durSec: 2.0, text: 'あ'}]), {clipDurationOf: () => 2.0});
+    expect(a.blocks[0].shortSec).toBe(0);
+    expect(a.cuts.cuts[0].inSec).toBe(0);
+    expect(a.cuts.cuts[a.cuts.cuts.length - 1].outSec).toBe(2);
+    for (let i = 1; i < a.cuts.cuts.length; i++) expect(a.cuts.cuts[i].inSec).toBeCloseTo(a.cuts.cuts[i - 1].outSec, 2);
+    expect(a.cuts.cuts.every((c) => c.playbackRate === undefined)).toBe(true);
+    expect(a.notes.some((n) => n.includes('重ねて使った'))).toBe(false);
+    expect(a.notes.some((n) => n.includes('素材の残り'))).toBe(true);
+    // 素材が 0.5 秒しか無いのに 1.0 秒の音声 ×2 → 1 本目は 0.5 秒足りない → 2 本目の at をその分だけ後ろへ。被りは無い
+    const b = fitCutsToNarration(
+      reel([cut('c01', 'a.mp4', 0, 0.5, 'A'), cut('c02', 'b.mp4', 0, 2, 'B')]),
+      narr([{id: 'n1', at: 0, durSec: 1.0, text: 'あ'}, {id: 'n2', at: 0.5, durSec: 1.0, text: 'い'}]),
+      {clipDurationOf: (src) => (src === 'a.mp4' ? 0.5 : 6)},
+    );
+    expect(b.blocks[0].shortSec).toBeCloseTo(0.5, 2);
+    expect(b.narration.segments[1].at).toBeCloseTo(b.blocks[0].videoSec + 0.5, 2);
+    expect(b.narration.segments[1].at).toBeGreaterThanOrEqual(1.0);
+    expect(checkNarration(b.narration, {estimate: () => 1}).filter((x) => x.includes('重なります') || x.includes('はみ出します'))).toEqual([]);
+    expect(b.notes.some((n) => n.includes('後ろへ送りました'))).toBe(true);
+    expect(b.notes.some((n) => n.includes('catalog に無い'))).toBe(false);
+  });
+
+  it('素材の長さが分からなければ、後ろへは元の区間までしか伸ばさない（頭は素材の 0 秒まで広げてよい）', () => {
     const r = fitCutsToNarration(reel([cut('c01', 'a.mp4', 1, 2, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]));
-    expect(r.cuts.cuts.every((c) => c.inSec >= 1 && c.outSec <= 2)).toBe(true);
+    expect(r.cuts.cuts.every((c) => c.inSec >= 0 && c.outSec <= 2)).toBe(true);
+    expect(r.cuts.cuts[0].inSec).toBe(0);
+    // 0〜2 の 2 秒しか無いので 3.1 秒は埋まらない → 重ねて使い、それでも足りないぶんは注記
+    expect(r.notes.some((n) => n.includes('重ねて使った'))).toBe(true);
   });
 
   it('テロップが 1 カットしか無いところは 0.8 秒に伸ばす（読めない E を出さない）', () => {

@@ -8,18 +8,21 @@
 // 方針:
 // - **音声が正。** ブロック i の映像区間 ＝ その wav の実測尺（切り上げでフレームに乗せる）。ブロックは前から詰めて置き、
 //   narration の at はブロックの頭に置き直す（音声は作り直さない）
-// - 区間の中は 0.75〜0.8 秒（中央 0.775）のカットに刻む。カット数 = round(区間 ÷ 0.775)。
-//   1 秒前後の短いブロックは 1 カットにしかできない（0.6 秒未満のカットは作らない）。そのぶん**動画全体の平均**が
-//   0.75〜0.8 秒に入るよう、刻める余地のある長いブロックでカット数を増減して釣り合いを取る
-// - 素材は**いまのカット列から**取る（新しい素材を勝手に選ばない）。いまのタイムラインで、そのナレーションの窓
-//   （at 〜 次の at）に掛かっているカットをそのブロックの材料にし、テロップ・バッジ・切り出しは元カットから引き継ぐ。
-//   窓をまたぐカットは**取り分の大きい側のブロックがそのテロップを担う**（端切れの側は材料としてだけ使い、
-//   足りなければ捨てる。両側で 0.8 秒ずつ確保すると映像が音声より膨らむため）
-// - テロップは 1 つも落とさない（同じ文言が続く範囲＝run ごとに、担うブロックで最低 1 カット）。0.8 秒未満だと読めない
-//   （TELOP_MIN_DISPLAY の E）ので、1 カットしか無い run とフック（先頭）は 0.8 秒に伸ばす
+// - **いまあるクリップは全部残す。** ブロックのカット数は「そのブロックに掛かっているクリップの数」を下回らない
+//   （1.1 秒の文の下に 2 クリップあれば 0.55 秒ずつ）。以前は 0.775 秒で割った数に切り詰めてクリップを落としていた
+//   （伍感のフックで 2 本のうち 1 本が消えた。2026-09-23）
+// - 区間の中は 0.75〜0.8 秒（中央 0.775）のカットに刻む。クリップが足りなければ同じ素材の中で場所をずらして増やす。
+//   0.6 秒未満のカットは増やさない。そのぶん**動画全体の平均**が 0.75〜0.8 秒に入るよう、刻める余地のある
+//   長いブロックでカット数を増減して釣り合いを取る
+// - **映像が音声より短いブロックは作らない**（次のナレーションが食い込むため）。素材が尽きたら元のクリップの
+//   トリミングを広げる（後ろへ伸ばし、後ろが無ければ頭を前へ）。それでも足りなければ次のナレーションを後ろへ送って
+//   被りだけは避ける。スロー再生や別クリップの流用はしない（ユーザー指示 2026-09-23。伍感の「まつさかぎゅう」が
+//   前の文に食い込んだのがきっかけ）
+// - 窓をまたぐカットは**取り分の大きい側のブロックがそのテロップとクリップを担う**（端切れの側は材料としてだけ使い、
+//   足りなければ捨てる。両側で確保すると映像が音声より膨らむため）
+// - テロップは 1 つも落とさない。0.8 秒未満だと読めない（TELOP_MIN_DISPLAY の E）ので、1 カットしか無い
+//   テロップとフック（先頭）は 0.8 秒に伸ばす
 // - 会話（subs）とロック済みのカットは刻まない（尺も倍速もそのまま）
-// - 同じ素材から複数カットを取るときは、素材の中で場所をずらして「切り替わった」ように見せる（ジャンプカット）。
-//   素材が足りなければ元の範囲の外（素材の長さまで）を使い、それでも足りなければ同じ場面を重ねて使って注記する
 import {ReelDataSchema, type Cut, type ReelData, type Slot} from './schema/cuts';
 import type {Narration, NarrationSegment} from './schema/narration';
 import {cutFrames, cutRanges, round3, totalSec} from './timeline';
@@ -27,9 +30,6 @@ import {CUT_TOO_SHORT_SEC, HOOK_TOO_SHORT_SEC, TELOP_UNREADABLE_SEC} from './val
 
 /** 1 カットの目標尺（秒）。平均がこの範囲に入るように刻む（ユーザー指示: 平均 0.75〜0.8 秒） */
 export const FIT_DEFAULTS = {minCutSec: 0.75, maxCutSec: 0.8} as const;
-
-/** 素材不足の埋め合わせで 1 カットをこれ以上には伸ばさない（長くなりすぎると刻んだ意味が無い） */
-const SLOT_MAX_SEC = 1.5;
 
 export type FitOptions = {
   /** 1 カットの目標尺の下限（秒）。既定 0.75 */
@@ -50,13 +50,13 @@ export type FitBlock = {
   id: string;
   /** 音声の長さ（秒） */
   audioSec: number;
-  /** 新しい配置秒（ブロックの頭） */
+  /** 新しい配置秒（ブロックの頭。前の音声が長引いたぶん後ろにずれることがある） */
   at: number;
   /** 映像の長さ（秒）。音声以上になるのが普通（フレーム切り上げ・テロップの最低表示） */
   videoSec: number;
   /** このブロックのカット数（会話・ロック済みも含む） */
   cutCount: number;
-  /** 素材が足りず、映像が音声より短い秒数。0 なら収まった */
+  /** 素材が尽きて、映像が音声より短い秒数（この分だけ次のナレーションが後ろへずれる）。0 なら収まった */
   shortSec: number;
 };
 
@@ -76,9 +76,9 @@ export type FitResult = {
 };
 
 type Item = {cut: Cut; index: number; start: number; end: number; protected: boolean};
-/** 既存カットのうち、あるブロックの材料にする部分（素材内の秒）。primary = このブロックがそのカットのテロップを担う */
+/** 既存カットのうち、あるブロックの材料にする部分（素材内の秒）。primary = このブロックがそのカットを担う（必ず 1 カット残す） */
 type Portion = {item: Item; from: number; to: number; primary: boolean};
-type FreeRun = {kind: 'free'; text: string | null; portions: Portion[]; durSec: number; mustShow: boolean};
+type FreeRun = {kind: 'free'; text: string | null; portions: Portion[]; durSec: number; minSlots: number; mustShow: boolean};
 type FixedRun = {kind: 'fixed'; item: Item};
 type Run = FreeRun | FixedRun;
 type PlannedSlot = {runIndex: number; portion: Portion; frames: number; guarded: boolean; mustShow: boolean};
@@ -191,7 +191,7 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
     return entries;
   });
 
-  // 窓をまたぐカットは、取り分の大きいブロックがそのテロップを担う（primary）。他のブロックでは材料としてだけ使う
+  // 窓をまたぐカットは、取り分の大きいブロックがそのクリップとテロップを担う（primary）。他のブロックでは材料としてだけ使う
   {
     const best = new Map<number, {bi: number; len: number}>();
     entriesOfBlock.forEach((entries, bi) => {
@@ -207,7 +207,8 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
     });
   }
 
-  // 同じ文言が続く部分は 1 つの run（エンジンの telopGroups と同じ判定）。テロップ無しは 1 部分 1 run
+  // 同じ文言が続く部分は 1 つの run（エンジンの telopGroups と同じ判定）。テロップ無しは 1 部分 1 run。
+  // run の最低カット数 = 担うクリップの数（クリップを落とさない）
   const runsOfBlock: Run[][] = entriesOfBlock.map((entries) => {
     const runs: Run[] = [];
     for (const e of entries) {
@@ -218,11 +219,13 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
       const text = e.portion.item.cut.main?.text ?? null;
       const last = runs[runs.length - 1];
       const len = e.portion.to - e.portion.from;
+      const keep = e.portion.primary ? 1 : 0;
       if (last && last.kind === 'free' && last.text !== null && text !== null && sameTelop(last.portions[0].item.cut, e.portion.item.cut)) {
         last.portions.push(e.portion);
         last.durSec += len;
+        last.minSlots += keep;
         last.mustShow = last.mustShow || e.portion.primary;
-      } else runs.push({kind: 'free', text, portions: [e.portion], durSec: len, mustShow: text !== null && e.portion.primary});
+      } else runs.push({kind: 'free', text, portions: [e.portion], durSec: len, minSlots: keep, mustShow: text !== null && e.portion.primary});
     }
     return runs;
   });
@@ -231,7 +234,6 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
   const targetFrames = ((minCut + maxCut) / 2) * fps;
   const shortFrames = Math.ceil(CUT_TOO_SHORT_SEC * fps - 1e-6);
   const guardFrames = Math.ceil(Math.max(TELOP_UNREADABLE_SEC, HOOK_TOO_SHORT_SEC) * fps - 1e-6);
-  const maxSlotFrames = Math.round(SLOT_MAX_SEC * fps);
   const leadFrames = Math.max(0, Math.round((opt.leadSec ?? 0) * fps));
   const tailFrames = Math.max(0, Math.round((opt.tailSec ?? 0) * fps));
   const clipDur = (src: string): number | undefined => {
@@ -241,40 +243,29 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
   /** この部分で使ってよい素材の終端。素材の長さが分かればそこまで、分からなければ元カットの範囲まで */
   const availToOf = (p: Portion): number => Math.max(p.to, clipDur(p.item.cut.src) ?? p.item.cut.outSec);
 
-  const newCuts: Cut[] = [];
-  const sourceIndexOf: number[] = []; // 新カット → 元カットの index
-  const badgeDone = new Set<number>(); // バッジは元カット 1 つにつき最初の 1 カットだけ
-  const blocks: FitBlock[] = [];
-  let cursorFrames = 0;
-  let extended = 0;
-  let repeated = 0;
-  let jumps = 0;
-  let guardedCount = 0;
-  let fixedCount = 0;
-  let dropped = 0;
-
-  // ブロックごとに、何カットに刻むか（k）を先に決める。担うテロップのある run は最低 1、
-  // 短くなりすぎる（CUT_TOO_SHORT の 0.6 秒未満）なら減らす
+  // ブロックごとに、何カットに刻むか（k）を先に決める。担うクリップ 1 つにつき最低 1、
+  // 増やして 0.6 秒（CUT_TOO_SHORT）を切るなら増やさない
   const plan = segs.map((seg, bi) => {
     const runs = runsOfBlock[bi];
     const wantFrames = audioFramesOf(seg) + (bi === 0 ? leadFrames : 0) + (bi === segs.length - 1 ? tailFrames : 0);
     const fixedFrames = runs.reduce((n, r) => n + (r.kind === 'fixed' ? cutFrames(r.item.cut, fps) : 0), 0);
     const freeRuns = runs.filter((r): r is FreeRun => r.kind === 'free');
     const freeFrames = wantFrames - fixedFrames;
-    const must = freeRuns.filter((r) => r.mustShow).length;
-    const kMin = freeRuns.length ? Math.max(1, must) : 0;
+    const keep = freeRuns.reduce((n, r) => n + r.minSlots, 0);
+    const kMin = freeRuns.length ? Math.max(1, keep) : 0;
     let k = 0;
     if (freeRuns.length) {
       const k0 = freeFrames > 0 ? Math.round(freeFrames / targetFrames) : 0;
       k = Math.max(kMin, k0);
       while (k > kMin && freeFrames / k < shortFrames) k--;
     }
-    return {runs, wantFrames, fixedFrames, freeRuns, freeFrames, kMin, k, fixedCount: runs.length - freeRuns.length};
+    return {runs, fixedFrames, freeRuns, freeFrames, kMin, k, fixedCount: runs.length - freeRuns.length, wantFrames};
   });
 
   // 動画全体の平均が 0.75〜0.8 秒に入るように k を増減する（ブロック単位の丸めだけだと、1 秒台のブロックが
   // 多いとき平均が 0.9 秒近くに寄る）。増やすのは「増やしても 0.6 秒を切らない」ブロックから、
-  // 増やしたあとのカットが長い順。減らすのは、いまのカットが短いブロックから。目標に近づくあいだだけ動かす
+  // 増やしたあとのカットが長い順。減らすのは、いまのカットが短いブロックから（担うクリップの数までは減らさない）。
+  // 目標に近づくあいだだけ動かす
   {
     const totalWant = plan.reduce((n, p) => n + p.wantFrames, 0);
     const count = () => plan.reduce((n, p) => n + p.k + p.fixedCount, 0);
@@ -315,16 +306,39 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
     }
   }
 
+  const newCuts: Cut[] = [];
+  const sourceIndexOf: number[] = []; // 新カット → 元カットの index
+  const badgeDone = new Set<number>(); // バッジは元カット 1 つにつき最初の 1 カットだけ
+  const blocks: FitBlock[] = [];
+  let cursorFrames = 0;
+  /** 前のブロックの音声が映像より長引いたぶん（フレーム）。次のブロックの頭に足して、ナレーションの被りを作らない */
+  let carry = 0;
+  let extended = 0;
+  let repeated = 0;
+  let jumps = 0;
+  let guardedCount = 0;
+  let fixedCount = 0;
+  let dropped = 0;
+  let stretched = 0;
+  /** 素材が足りなかったブロックで、長さの分からない（catalog に無い）素材 */
+  const unknownLen = new Set<string>();
+
   segs.forEach((seg, bi) => {
-    const {runs, wantFrames, fixedFrames, freeRuns, freeFrames, k} = plan[bi];
+    const {runs, fixedFrames, freeRuns, k} = plan[bi];
     const audioSec = audioOf(seg);
+    // このブロックの映像が覆うべき長さ = 前の音声の残り + 自分の音声（+ 先頭・末尾の余白）
+    const offsetFrames = carry + (bi === 0 ? leadFrames : 0);
+    const needFrames = offsetFrames + audioFramesOf(seg);
+    const wantFrames = needFrames + (bi === segs.length - 1 ? tailFrames : 0);
+    const freeFrames = wantFrames - fixedFrames;
     const perRun = allocateByWeight(
       freeRuns.map((r) => r.durSec),
       k,
-      freeRuns.map((r) => (r.mustShow ? 1 : 0)),
+      freeRuns.map((r) => r.minSlots),
     );
 
-    // run → 部分（元カット）→ スロット。担うテロップが 1 カットしか無い run は読めるよう 0.8 秒を守る
+    // run → 部分（元カット）→ スロット。担う部分は必ず 1 つ以上、残りは長さ比例。
+    // 担うテロップが 1 カットしか無い run は読めるよう 0.8 秒を守る
     const planned: PlannedSlot[] = [];
     freeRuns.forEach((r, ri) => {
       const n = perRun[ri];
@@ -332,7 +346,7 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
       const perPortion = allocateByWeight(
         r.portions.map((p) => p.to - p.from),
         n,
-        r.portions.map(() => (n >= r.portions.length ? 1 : 0)),
+        r.portions.map((p) => (p.primary ? 1 : 0)),
       );
       r.portions.forEach((p, pi) => {
         for (let j = 0; j < perPortion[pi]; j++) planned.push({runIndex: ri, portion: p, frames: 0, guarded: r.mustShow && n === 1, mustShow: r.mustShow});
@@ -386,56 +400,79 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
           ends.push(cursor + d);
           cursor += d + gap;
         }
-      } else if (portion.from + needed <= availTo + 1e-6) {
-        if (portion.from + needed > portion.item.cut.outSec + 1e-6) extended++;
-        let cursor = portion.from;
-        for (const d of ds) {
-          starts.push(cursor);
-          ends.push(cursor + d);
-          cursor += d;
-        }
       } else {
-        repeated++;
-        const avail = availTo - portion.from;
-        ds.forEach((d, j) => {
-          const room = Math.max(0, avail - d);
-          const st = portion.from + (n > 1 ? (room * j) / (n - 1) : 0);
-          starts.push(st);
-          ends.push(Math.min(st + d, availTo));
-        });
+        // 足りないぶんは元のクリップのトリミングを広げる：後ろへ（素材の終端まで）→ 頭を前へ（素材の 0 秒まで）
+        const forwardEnd = Math.min(availTo, portion.from + needed);
+        const start = Math.max(0, portion.from - (needed - (forwardEnd - portion.from)));
+        if (start < portion.from - 1e-6 || forwardEnd > portion.item.cut.outSec + 1e-6) extended++;
+        if (forwardEnd - start + 1e-6 >= needed) {
+          let cursor = start;
+          for (const d of ds) {
+            starts.push(cursor);
+            ends.push(cursor + d);
+            cursor += d;
+          }
+        } else {
+          // 素材そのものが足りない → 同じ場面を重ねて使う（注記する）
+          repeated++;
+          const avail = forwardEnd - start;
+          ds.forEach((d, j) => {
+            const room = Math.max(0, avail - d);
+            const st = start + (n > 1 ? (room * j) / (n - 1) : 0);
+            starts.push(st);
+            ends.push(Math.min(st + d, forwardEnd));
+          });
+        }
       }
       slots.forEach((s, j) => {
         const inSec = round3(starts[j]);
-        // 素材が尽きて縮んだときはその分だけ（最低 1 フレーム）
+        // 素材が尽きて縮んだときはその分だけ（最低 1 フレーム）。足りないぶんはあとでスローで埋める
         const frames = ends[j] - starts[j] + 1e-6 >= s.frames / fps ? s.frames : Math.max(1, Math.floor((availTo - inSec) * fps + 1e-6));
         placed.push({...s, frames, inSec, outSec: outFor(inSec, frames, fps)});
       });
     }
 
-    // 縮んで 0.6 秒に満たない端切れは捨てる（同じ run に他のカットがある・担うテロップでない なら文言は残る）
+    // 担わない端切れ（別のブロックが担うクリップの余り）が縮んで 0.6 秒に満たなければ捨てる。担うクリップは捨てない
     for (const p of placed) {
-      if (p.frames >= shortFrames) continue;
-      const siblings = placed.filter((q) => q !== p && q.runIndex === p.runIndex && q.frames > 0).length;
-      if (!p.mustShow || siblings > 0) {
-        p.frames = 0;
-        dropped++;
-      }
+      if (p.frames >= shortFrames || p.portion.primary) continue;
+      p.frames = 0;
+      dropped++;
     }
 
-    // 素材が尽きて足りないぶんは、各部分の最後のカットを素材の残りへ伸ばして埋める
-    let deficit = wantFrames - fixedFrames - placed.reduce((n, p) => n + p.frames, 0);
-    if (deficit > 0) {
+    // 素材が尽きて足りないぶんは、元のクリップのトリミングを広げて埋める（スローや別クリップの流用はしない）。
+    // (1) 各部分の最後のカットを素材の後ろへ伸ばす → (2) 各部分の最初のカットの頭を前へ広げる
+    const sum = () => placed.reduce((n, p) => n + p.frames, 0);
+    if (wantFrames - fixedFrames - sum() > 0) {
       const seen = new Set<Portion>();
-      for (let i = placed.length - 1; i >= 0 && deficit > 0; i--) {
+      for (let i = placed.length - 1; i >= 0; i--) {
+        const deficit = wantFrames - fixedFrames - sum();
+        if (deficit <= 0) break;
         const p = placed[i];
         if (p.frames <= 0 || seen.has(p.portion)) continue;
         seen.add(p.portion); // 部分の中で最後に残っているカットだけ伸ばす（途中を伸ばすと次と重なる）
         const room = Math.floor((availToOf(p.portion) - p.outSec) * fps + 1e-6);
-        const add = Math.min(room, deficit, Math.max(0, maxSlotFrames - p.frames));
+        const add = Math.min(room, deficit);
         if (add <= 0) continue;
         p.frames += add;
         p.outSec = outFor(p.inSec, p.frames, fps);
-        deficit -= add;
+        stretched++;
+      }
+    }
+    if (wantFrames - fixedFrames - sum() > 0) {
+      const seen = new Set<Portion>();
+      for (let i = 0; i < placed.length; i++) {
+        const deficit = wantFrames - fixedFrames - sum();
+        if (deficit <= 0) break;
+        const p = placed[i];
+        if (p.frames <= 0 || seen.has(p.portion)) continue;
+        seen.add(p.portion); // 部分の中で最初に残っているカットだけ頭を広げる（素材の 0 秒まで）
+        const room = Math.floor(p.inSec * fps + 1e-6);
+        const add = Math.min(room, deficit);
+        if (add <= 0) continue;
+        p.frames += add;
+        p.inSec = Math.max(0, round3(p.inSec - add / fps));
+        p.outSec = outFor(p.inSec, p.frames, fps);
+        stretched++;
       }
     }
 
@@ -464,18 +501,22 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
         if (src.badge) badgeDone.add(p.portion.item.index);
         newCuts.push(c);
         sourceIndexOf.push(p.portion.item.index);
-        cursorFrames += p.frames;
+        cursorFrames += cutFrames(c, fps);
         blockCuts++;
       }
     }
     const videoFrames = cursorFrames - blockStart;
+    // それでも足りなければ、次のナレーションをその分だけ後ろへ送る（映像に対して遅れるが、被らない）
+    const shortFrames_ = Math.max(0, needFrames - videoFrames);
+    carry = shortFrames_;
+    if (shortFrames_ > 0) for (const p of placed) if (p.frames > 0 && clipDur(p.portion.item.cut.src) === undefined) unknownLen.add(p.portion.item.cut.src);
     blocks.push({
       id: seg.id,
       audioSec: round3(audioSec),
-      at: round3((blockStart + (bi === 0 ? leadFrames : 0)) / fps),
+      at: round3((blockStart + offsetFrames) / fps),
       videoSec: round3(videoFrames / fps),
       cutCount: blockCuts,
-      shortSec: round3(Math.max(0, wantFrames - videoFrames) / fps),
+      shortSec: round3(shortFrames_ / fps),
     });
   });
 
@@ -531,24 +572,29 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
 
   // ── 説明 ──
   const audioTotal = round3(segs.reduce((n, s) => n + audioOf(s), 0));
+  const kept = new Set(sourceIndexOf).size;
+  const lostClips = cuts.cuts.filter((_, i) => !items[i].protected && !sourceIndexOf.includes(i));
   const notes: string[] = [];
   notes.push(`ナレーション ${segs.length} ブロック（音声 計 ${audioTotal.toFixed(2)} 秒）に合わせて、${before.cutCount} カット / ${before.totalSec.toFixed(2)} 秒 → ${after.cutCount} カット / ${after.totalSec.toFixed(2)} 秒（平均 ${after.avgCutSec.toFixed(2)} 秒）にしました`);
-  for (const b of blocks) notes.push(`  ${b.id}: 音声 ${b.audioSec.toFixed(2)}s → 映像 ${b.videoSec.toFixed(2)}s（${b.cutCount} カット・${b.at.toFixed(2)}s から）${b.shortSec ? ` ! 素材が ${b.shortSec.toFixed(2)} 秒足りません` : ''}`);
+  for (const b of blocks) notes.push(`  ${b.id}: 音声 ${b.audioSec.toFixed(2)}s → 映像 ${b.videoSec.toFixed(2)}s（${b.cutCount} カット・${b.at.toFixed(2)}s から）${b.shortSec ? ` ! 素材が ${b.shortSec.toFixed(2)} 秒足りず、次のナレーションをその分だけ後ろへ送りました` : ''}`);
+  notes.push(`  元のクリップ ${cuts.cuts.length} 本のうち ${kept} 本を残しています${lostClips.length ? `（! 残せなかった: ${lostClips.map((c) => c.id ?? c.src).join('・')}）` : ''}`);
   if (fixedCount) notes.push(`  会話・ロック済みの ${fixedCount} カットは刻んでいません`);
   if (guardedCount) notes.push(`  テロップが 1 カットしか無い所とフックは、読めるよう ${TELOP_UNREADABLE_SEC} 秒に伸ばしています（${guardedCount} か所）`);
   if (jumps) notes.push(`  同じ素材の中で場所をずらして続けた所が ${jumps} か所あります（ジャンプカット）`);
   if (extended) notes.push(`  元の区間の外（素材の残り）を使った所が ${extended} か所あります`);
-  if (dropped) notes.push(`  素材が尽きて ${CUT_TOO_SHORT_SEC} 秒に満たなかった端切れを ${dropped} か所捨てました（文言は他のカットに残っています）`);
+  if (dropped) notes.push(`  別のブロックが担うクリップの端切れを ${dropped} か所捨てました（クリップそのものは残っています）`);
+  if (stretched) notes.push(`  素材が足りないぶんは、元のクリップのトリミングを広げて埋めました（${stretched} か所）`);
   if (repeated) notes.push(`  ! 素材が短く、同じ場面を重ねて使った所が ${repeated} か所あります。Timeline で別の素材に差し替えてください`);
+  if (unknownLen.size) notes.push(`  ! ${[...unknownLen].join('・')} は catalog に無いので素材の長さが分からず、元のカットの範囲までしか使えませんでした（Materials で読み込み直すと直ります）`);
   if (borrowed.length) notes.push(`  ! ${borrowed.join('・')} は、いまのタイムラインに対応する映像が無かったので隣のカットを借りました`);
   const short = blocks.filter((b) => b.shortSec > 0);
-  if (short.length) notes.push(`  ! ${short.map((b) => b.id).join('・')} は素材が尽きて音声より短いままです（次のナレーションと重なります）。素材を足すか文を短くしてください`);
+  if (short.length) notes.push(`  ! ${short.map((b) => b.id).join('・')} は素材が尽きて映像が音声より短いので、続くナレーションを後ろへ送りました（被りはありませんが映像より遅れます）。素材を足すか文を短くしてください`);
   if (noAudio.length) notes.push(`  ! ${noAudio.join('・')} は音声が無いので文字数からの見積もりで合わせました。音声を作ったらもう一度合わせてください`);
   if (sfxMoved) notes.push(`  効果音 ${sfxMoved} 個の位置をブロックに合わせて動かしました`);
   if (after.avgCutSec > maxCut + 0.05) {
     const single = blocks.filter((b) => b.cutCount === 1).length;
     notes.push(`  ! 平均 ${after.avgCutSec.toFixed(2)} 秒は目標の ${minCut}〜${maxCut} 秒より長めです${single ? `（1 秒前後の短いナレーション ${single} 本は 1 カットにしかできません。文をつなげて 1 ブロックを長くすると刻めます）` : ''}`);
-  } else if (after.avgCutSec < minCut - 0.05) notes.push(`  ! 平均 ${after.avgCutSec.toFixed(2)} 秒は目標の ${minCut}〜${maxCut} 秒より短めです（テロップの多いブロックで刻みが細かくなっています）`);
+  } else if (after.avgCutSec < minCut - 0.05) notes.push(`  ! 平均 ${after.avgCutSec.toFixed(2)} 秒は目標の ${minCut}〜${maxCut} 秒より短めです（クリップの多いブロックを全部残しているためです）`);
   notes.push('  音声は作り直していません（narration の at をブロックの頭に置き直しただけ）');
 
   return {ok: true, blockers: [], cuts: nextCuts, narration: nextNarration, blocks, before, after, notes};

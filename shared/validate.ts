@@ -217,7 +217,8 @@ export function validateCuts(input: unknown, ctx: ValidateContext = {}): Validat
       E({code: 'CUT_TOO_LONG', cutId: id, cutIndex: i, message: `${dur.toFixed(2)} 秒（上限 ${maxCutSec} 秒。倍速か分割）`, fix: {type: 'trimTo', payload: {outSec: Math.round((c.inSec + maxCutSec * (rate ?? 1)) * 1000) / 1000}}});
     }
     const shortLimit = role === 'hook' ? HOOK_TOO_SHORT_SEC : CUT_TOO_SHORT_SEC;
-    if (dur < shortLimit) W({code: 'CUT_TOO_SHORT', cutId: id, cutIndex: i, message: `${dur.toFixed(2)} 秒（目安 ${shortLimit} 秒以上）`});
+    // ちょうど境の値（0.983〜1.583 = 0.5999…）が浮動小数の誤差で引っかからないよう 1ms の余裕を持たせる
+    if (dur + 0.001 < shortLimit) W({code: 'CUT_TOO_SHORT', cutId: id, cutIndex: i, message: `${dur.toFixed(2)} 秒（目安 ${shortLimit} 秒以上）`});
 
     // ── テロップ（カット単位） ──
     if (c.main) {
