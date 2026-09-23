@@ -394,6 +394,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
             else n.playbackRate = f.payload.playbackRate;
           }
           if (f.type === 'orientation' && n.main) n.main = {...n.main, orientation: f.payload.orientation};
+          if (f.type === 'setText' && n.main) n.main = {...n.main, text: f.payload.text};
           if (f.type === 'removeKey') delete (n as Record<string, unknown>)[f.payload.key];
           return n;
         }),

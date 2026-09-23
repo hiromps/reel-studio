@@ -11,7 +11,7 @@
 import {z} from 'zod';
 import {AngleSchema, ClipKindSchema} from './schema/catalog';
 import {SlotRoleSchema, ThemeSchema} from './schema/cuts';
-import {countChars} from './telop-text';
+import {countChars, normalizeEllipsis} from './telop-text';
 
 /** 参考動画として受け付ける長さ（ショート動画なので 3 分あれば足りる。長いと分析の画が増えすぎる） */
 export const REFERENCE_MAX_SEC = 180;
@@ -519,7 +519,7 @@ export const renderMimicScript = (plan: MimicPlan, ref: Reference, opt: {shopNam
     const lines = [`【${fmtSec(s.fromSec)}〜${fmtSec(s.toSec)}秒】${t(s.label) || `区間${i + 1}`}`];
     if (t(s.video)) lines.push(`映像： ${t(s.video)}`);
     if (s.cutCount > 0) lines.push(`カット割り： ${s.cutCount} カット${t(s.cutSec) ? `（1 カット ${t(s.cutSec)} 秒）` : ''}`);
-    lines.push(`テロップ： ${t(s.telop)}`);
+    lines.push(`テロップ： ${normalizeEllipsis(t(s.telop))}`);
     if (s.orientation === 'horizontal') lines.push('テロップの向き： 横書き');
     if (t(s.badge)) lines.push(`バッジ： ${t(s.badge)}`);
     if (t(s.narration)) lines.push(`ナレーション： ${t(s.narration).replace(/\s*\n\s*/g, ' ')}`);

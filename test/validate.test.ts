@@ -58,6 +58,16 @@ describe('validateCuts — 壊れた cuts を検出する', () => {
     expect(e).toBeDefined();
     expect(e.fix).toEqual({type: 'trimTo', payload: {outSec: 3}});
   });
+  it('TELOP_ELLIPSIS_FORM: 「…」は W で、fix.setText が「・・・」に揃えた文言を持つ', () => {
+    const d = base();
+    d.cuts.push({src: 'uploads/02_b.mp4', inSec: 0, outSec: 1.5, main: {text: 'その名も…'}});
+    d.cuts.push({src: 'uploads/03_c.mp4', inSec: 0, outSec: 1.5, main: {text: 'その名も・・・'}});
+    const r = validateCuts(d, {spec: FORMAT_SPECS.F0});
+    const w = r.warnings.filter((i) => i.code === 'TELOP_ELLIPSIS_FORM');
+    expect(w).toHaveLength(1);
+    expect(w[0]).toMatchObject({cutIndex: 1, fix: {type: 'setText', payload: {text: 'その名も・・・'}}});
+    expect(codes(r.errors)).not.toContain('TELOP_ELLIPSIS_FORM');
+  });
   it('TELOP_PLACEHOLDER / TELOP_PERIOD / TELOP_FORBIDDEN_CHARS / TELOP_TOO_LONG', () => {
     const d = base();
     d.cuts.push(

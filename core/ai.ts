@@ -12,7 +12,7 @@ import type {ValidationResult} from '../shared/validate';
 import {checkOrder, formatOrderCheck, orderPrinciples} from '../shared/order';
 import {checkCaption, formatCaptionIssues, type CaptionIssue} from '../shared/caption';
 import {cutDurationSec, telopGroupsOf, totalSec} from '../shared/timeline';
-import {countChars, isPlaceholder, minDisplaySec} from '../shared/telop-text';
+import {countChars, isPlaceholder, minDisplaySec, normalizeEllipsis} from '../shared/telop-text';
 import {importTags, loadCatalog, saveCatalog, studioDir, type TagImport} from './catalog';
 import {buildOrderExport, exportOrder, importOrder, loadOrderEnv, type OrderEnv, type OrderImportResult} from './order';
 import {ensureCutFrame} from './cut-frames';
@@ -431,6 +431,7 @@ export async function aiTelop(
     '- 金額は書かない（キャプション側で書く）',
     '- 保存・いいね・シェア・コメントを促す文言は書かない',
     `- 「・・・」による焦らしは全体で ${rule.maxEllipsis} 回まで。山場の直前に絞る`,
+    '- 三点リーダーは必ず**全角の中黒 3 文字「・・・」**で書く（「…」「……」「...」は使わない）',
     '- 同じ言い回し・同じ語尾を続けない',
     persona.hookStyle === 'areaDigit'
       ? [
@@ -474,7 +475,7 @@ export async function aiTelop(
       skipped.push(`${g.id}: 一覧に無い id`);
       continue;
     }
-    const text = g.text.trim();
+    const text = normalizeEllipsis(g.text.trim()); // 三点リーダーは「・・・」に揃える
     if (!text) {
       // 空文字は「このカットにはテロップを出さない」という意思表示として扱う。
       // 速いカット割りではテロップを出さないカットが要る（全カットに文字を置くと読めない）
@@ -1192,7 +1193,7 @@ export async function aiEdit(
     '判断に絵が要るカットは「画」のパスを Read で見る（1 枚ずつ）。cuts.json / narration.json / brief.json / catalog.json / caption.txt（店の情報の要約。ナレーションを肉付けする材料。金額・ハッシュタグ・URL・住所は読まない）も Read で読める。',
     '',
     '守ること:',
-    `- テロップ: ${spec.telop.maxChars} 文字以内・文末に句点を付けない・半角括弧と絵文字は使わない・金額は書かない・保存やいいねを促さない`,
+    `- テロップ: ${spec.telop.maxChars} 文字以内・文末に句点を付けない・半角括弧と絵文字は使わない・金額は書かない・保存やいいねを促さない・三点リーダーは全角 3 文字の「・・・」（「…」は使わない）`,
     `- テロップの文体: ${persona.tone}`,
     `- ナレーション: **そのブロックの区間に出ているテロップの内容に沿って書く**（一字一句同じにはせず、言い換え・主語や理由の補足・キャプションや裏取り済みの事実で肉付けする）。上の「目安 N 文字」を超えると次のブロックに食い込む。語尾を連続させない。固有名詞や数字の単位は TTS が誤読しないようひらがなに開く（「牛すじ」→「ぎゅうすじ」、「350g」→「350グラム」。テロップは漢字のままでよい）`,
     ...persona.narrationRules.map((r) => `- ナレーション: ${r}`),
@@ -1274,7 +1275,7 @@ export async function aiEdit(
     const before = nextCuts.cuts[idx[0]].main?.text ?? '';
     for (const i of idx) {
       const c = nextCuts.cuts[i];
-      c.main = {...(c.main ?? {}), text: t.text};
+      c.main = {...(c.main ?? {}), text: normalizeEllipsis(t.text)};
       if (t.orientation === 'horizontal') c.main.orientation = 'horizontal';
       else if (t.orientation === 'vertical') delete c.main.orientation;
     }

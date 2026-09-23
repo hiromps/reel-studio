@@ -57,6 +57,12 @@ describe('scriptPlanToCuts / scriptPlanToNarration', () => {
     expect(cuts.meta?.slots?.map((s) => s.segment)).toEqual(['【0〜3秒】フック', '【3〜6秒】店舗紹介']);
   });
 
+  it('テロップの三点リーダーは「・・・」に揃えて cuts.json に入れる（AI は「…」で返してくる）', () => {
+    const p = plan({cuts: [{clipId: '01', inSec: 0.5, outSec: 3.5, telop: 'その名も…', section: '【0〜3秒】フック'}]});
+    const cuts = scriptPlanToCuts(p, buildCtx);
+    expect(cuts.cuts[0].main?.text).toBe('その名も・・・');
+  });
+
   it('ナレーションは全ブロック要生成。無ければ null', () => {
     const n = NarrationSchema.parse(scriptPlanToNarration(plan(), {voiceId: '0'.repeat(32), voiceTitle: 'v', speed: 1.2}));
     expect(n.videoSec).toBe(6);

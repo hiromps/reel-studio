@@ -9,7 +9,7 @@
 import {z} from 'zod';
 import type {ReelData} from './schema/cuts';
 import type {Narration} from './schema/narration';
-import {countChars} from './telop-text';
+import {countChars, normalizeEllipsis} from './telop-text';
 import {cutDurationSec} from './timeline';
 
 /** フック区間の segment id（format-specs 共通で 1_hook） */
@@ -124,7 +124,7 @@ export const applyHookVariant = (
 
   idx.forEach((cutIndex, i) => {
     const c = next.cuts[cutIndex];
-    const text = (v.telops[i] ?? '').trim();
+    const text = normalizeEllipsis((v.telops[i] ?? '').trim()); // 三点リーダーは「・・・」に揃える
     if (text) {
       c.main = {...(c.main ?? {}), text};
       changes.push(`${i + 1}枚目「${text}」`);

@@ -8,6 +8,7 @@ import {isDefaultCrop, ReelDataSchema, type Cut, type ReelData} from './schema/c
 import type {Catalog} from './schema/catalog';
 import type {Narration} from './schema/narration';
 import {stableHash} from './hash';
+import {normalizeEllipsis} from './telop-text';
 import {cutRanges, totalSec} from './timeline';
 
 /** 台本から読み取った 1 区間（【0〜3秒】フック のような見出し） */
@@ -344,7 +345,8 @@ export const scriptPlanToCuts = (plan: ScriptPlan, ctx: ScriptBuildContext): Ree
     };
     // 素材側で決めた「ここを見せる」（切り出し）を引き継ぐ
     if (!isDefaultCrop(clip?.crop)) cut.crop = {...clip!.crop!};
-    if (c.telop.trim()) cut.main = {text: c.telop.trim(), ...(c.orientation === 'horizontal' ? {orientation: 'horizontal' as const} : {})};
+    // 三点リーダーは「・・・」に揃える（AI は「…」で返してくることがある）
+    if (c.telop.trim()) cut.main = {text: normalizeEllipsis(c.telop.trim()), ...(c.orientation === 'horizontal' ? {orientation: 'horizontal' as const} : {})};
     if (c.badge?.trim()) cut.badge = c.badge.trim();
     return cut;
   });

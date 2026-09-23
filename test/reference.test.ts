@@ -258,6 +258,12 @@ describe('renderMimicScript', () => {
     expect(text).toContain('テロップ： \n');
     expect(text).toContain('# - 湯気の寄り');
   });
+
+  it('テロップの三点リーダーは「・・・」に揃えて書く（AI が「…」で返しても台本の時点で直す）', () => {
+    const text = renderMimicScript(plan({sections: [{...plan().sections[0], telop: 'その名も…'}]}), analyzed());
+    expect(text).toContain('テロップ： その名も・・・');
+    expect(text).not.toContain('…');
+  });
 });
 
 describe('parseSections の小数', () => {

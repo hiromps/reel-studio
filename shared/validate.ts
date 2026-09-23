@@ -11,11 +11,13 @@ import {
   ellipsisCount,
   forbiddenChars,
   hasExactPrice,
+  hasNonStandardEllipsis,
   hasTrailingPeriod,
   isPlaceholder,
   leadingArea,
   looksLikeAreaDigitHook,
   minDisplaySec,
+  normalizeEllipsis,
 } from './telop-text';
 
 export type Severity = 'E' | 'W';
@@ -25,7 +27,9 @@ export type Fix =
   | {type: 'alias'; payload: {src: string}}
   | {type: 'setRate'; payload: {playbackRate: number | null}}
   | {type: 'orientation'; payload: {orientation: 'vertical' | 'horizontal'}}
-  | {type: 'removeKey'; payload: {key: string}};
+  | {type: 'removeKey'; payload: {key: string}}
+  /** main.text を置き換える（三点リーダーの表記揃え等） */
+  | {type: 'setText'; payload: {text: string}};
 
 export type Issue = {
   code: string;
@@ -231,6 +235,8 @@ export function validateCuts(input: unknown, ctx: ValidateContext = {}): Validat
         if (len > telopRule.maxChars + 5) E({code: 'TELOP_TOO_LONG', cutId: id, cutIndex: i, message: `${len} 文字（${telopRule.maxChars} 文字以内。自動縮小の限界も超える）: ${t}`});
         else if (len > telopRule.maxChars) W({code: 'TELOP_OVER_MAX_CHARS', cutId: id, cutIndex: i, message: `${len} 文字（目安 ${telopRule.maxChars} 文字以内。自動縮小される）: ${t}`});
         if (hasTrailingPeriod(t)) E({code: 'TELOP_PERIOD', cutId: id, cutIndex: i, message: `末尾に句点: ${t}`});
+        // 三点リーダーは全角 3 文字の「・・・」に揃える（ユーザーの規則。「…」は縦書きで細く見える）
+        if (hasNonStandardEllipsis(t)) W({code: 'TELOP_ELLIPSIS_FORM', cutId: id, cutIndex: i, message: `三点リーダーは「・・・」（全角 3 文字）で書く: ${t}`, fix: {type: 'setText', payload: {text: normalizeEllipsis(t)}}});
         const fb = forbiddenChars(t);
         if (fb.length) E({code: 'TELOP_FORBIDDEN_CHARS', cutId: id, cutIndex: i, message: `禁則文字 ${fb.join('')}（半角括弧・絵文字）: ${t}`});
         const rules = segmentRules(spec, slotOf(c)?.segment);

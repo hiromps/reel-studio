@@ -38,7 +38,22 @@ export const minDisplaySec = (text: string, opt: {secPerChar?: number; floorSec?
   return Math.max(floorSec, countChars(text) * secPerChar);
 };
 
-export const ellipsisCount = (text: string): number => (text.match(/・・・|…/g) ?? []).length;
+/** テロップの三点リーダーは**全角の中黒 3 つ**で書く（ユーザーの規則。縦書きで「…」は細く見えて消える） */
+export const ELLIPSIS = '・・・';
+
+// 三点リーダーの書き方の揺れ。AI も人も「…」「……」「...」「‥」「･･･」「・・」を混ぜてくる
+const ELLIPSIS_VARIANTS_RE = /[…‥⋯]+|(?:\.\s*){2,}|[．]{2,}|[。]{2,}|[･]{2,}|[・]{2,}/g;
+
+/**
+ * 三点リーダーの書き方を「・・・」に揃える。単独の「・」（「焼肉・ホルモン」のような区切り）は触らない。
+ * テロップを書き出す場所（台本・cuts.json・AI の返答の取り込み）で必ず通す。
+ */
+export const normalizeEllipsis = (text: string): string => text.replace(ELLIPSIS_VARIANTS_RE, ELLIPSIS);
+
+/** 「・・・」以外の書き方の三点リーダーが混ざっているか（検証の W 用） */
+export const hasNonStandardEllipsis = (text: string): boolean => normalizeEllipsis(text) !== text;
+
+export const ellipsisCount = (text: string): number => (normalizeEllipsis(text).match(/・・・/g) ?? []).length;
 
 /**
  * 「エリア名＋一桁数字」型のフックか（persona.hookStyle = areaDigit の人格）。
