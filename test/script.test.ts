@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {checkScriptPlan, parseSections, scriptTotalSec, sectionDurations, type ScriptPlan} from '@shared/script';
+import {checkScriptPlan, parseSections, repairScriptPlan, scriptTotalSec, sectionDurations, type ScriptPlan} from '@shared/script';
 import {ReelDataSchema} from '@shared/schema';
 import {stableHash} from '@shared/hash';
 
@@ -168,5 +168,119 @@ describe('組み立てた cuts が ReelDataSchema を通る', () => {
     expect(
       build({tool: 'reel-studio/script', at: '2026-09-13T00:00:00.000Z', briefHash: stableHash({a: 1}), catalogHash: stableHash({b: 2}), specId: 'F0'}).success,
     ).toBe(true);
+  });
+});
+
+// AI の返答のうち機械的に直せる E は、AI を走らせ直さずに直す（1 回 5〜7 分・課金があるため）
+describe('repairScriptPlan', () => {
+  const ctx = {sections, clipDurations: durations};
+  // 台本どおり 20 秒（3 + 6 + 9）に埋めた組み立て
+  const full = (narration: ScriptPlan['narration']) =>
+    plan(
+      [
+        cut({outSec: 3}),
+        cut({clipId: '02', inSec: 0, outSec: 6, section: sections[1].heading}),
+        cut({clipId: '03', inSec: 0, outSec: 9, section: sections[2].heading}),
+      ],
+      narration,
+    );
+
+  it('直すところが無ければ何も変えない', () => {
+    const p = full([{id: '01_hook', at: 0, text: 'よみ'}]);
+    const r = repairScriptPlan(p, ctx);
+    expect(r.fixes).toEqual([]);
+    expect(r.plan).toEqual(p);
+    expect(checkScriptPlan(r.plan, ctx).filter((i) => i.severity === 'E')).toEqual([]);
+  });
+
+  it('動画尺より後ろのナレーションは、台本の区間 → 実際の映像の位置 に写す（実際に起きた 06_close の件）', () => {
+    // 台本は 【11〜20秒】 まであるが、カットの合計は 13.5 秒しか無い。締めのナレーションは台本の秒（14 秒）で書かれている
+    const p = plan(
+      [cut({outSec: 3}), cut({clipId: '02', inSec: 0, outSec: 6, section: sections[1].heading}), cut({clipId: '03', inSec: 0, outSec: 4.5, section: sections[2].heading})],
+      [
+        {id: '01_hook', at: 0, text: 'よみ'},
+        {id: '06_close', at: 14, text: '締めのひとこと'},
+      ],
+    );
+    expect(checkScriptPlan(p, ctx).some((i) => i.code === 'SCRIPT_NARR_AFTER_END')).toBe(true);
+    const r = repairScriptPlan(p, ctx);
+    // 【11〜20秒】の 14 秒 = 区間の 1/3。実際のその区間は 9.0〜13.5 秒なので 9 + 4.5/3 = 10.5 秒
+    expect(r.plan.narration.map((n) => [n.id, n.at])).toEqual([
+      ['01_hook', 0],
+      ['06_close', 10.5],
+    ]);
+    expect(r.fixes).toHaveLength(1);
+    expect(r.fixes[0]).toContain('06_close');
+    expect(r.fixes[0]).toContain('動画尺（13.5 秒）より後ろ');
+    expect(r.fixes[0]).toContain('10.5 秒に動かしました');
+    expect(checkScriptPlan(r.plan, ctx).filter((i) => i.severity === 'E')).toEqual([]);
+  });
+
+  it('台本の終わりよりさらに後ろなら、最後の区間の頭に置く。前のブロックより前には戻さない', () => {
+    const p = plan(
+      [cut({outSec: 3}), cut({clipId: '02', inSec: 0, outSec: 6, section: sections[1].heading}), cut({clipId: '03', inSec: 0, outSec: 4.5, section: sections[2].heading})],
+      [
+        {id: '05_info', at: 12, text: 'なか'},
+        {id: '06_close', at: 30, text: '締め'},
+      ],
+    );
+    const r = repairScriptPlan(p, ctx);
+    // 最後の区間の頭は 9.0 秒だが、05_info（12 秒）より前には戻さない
+    expect(r.plan.narration.find((n) => n.id === '06_close')?.at).toBe(12);
+    expect(r.plan.narration.find((n) => n.id === '05_info')?.at).toBe(12);
+    expect(r.fixes).toHaveLength(1);
+  });
+
+  it('区間の見出しが無い台本でも、最後のカットの頭に置いて動画の中に収める', () => {
+    const p = plan([cut({outSec: 3, section: ''}), cut({clipId: '02', inSec: 0, outSec: 6, section: ''})], [{id: 'a', at: 20, text: 'よみ'}]);
+    const r = repairScriptPlan(p, {sections: [], clipDurations: durations});
+    expect(r.plan.narration[0].at).toBe(3);
+    expect(checkScriptPlan(r.plan, {sections: [], clipDurations: durations}).filter((i) => i.severity === 'E')).toEqual([]);
+  });
+
+  it('素材の長さを超えるカットは、同じ長さのまま素材の終わりに詰める', () => {
+    const r = repairScriptPlan(plan([cut({inSec: 8, outSec: 11})]), ctx);
+    expect(r.plan.cuts[0]).toMatchObject({inSec: 7, outSec: 10});
+    expect(r.fixes[0]).toContain('素材の長さ 10.00 秒を超えていた');
+    expect(checkScriptPlan(r.plan, ctx).some((i) => i.code === 'SCRIPT_OUT_OF_RANGE')).toBe(false);
+  });
+
+  it('区間が逆なら入れ替える。0 秒は直せないので E のまま', () => {
+    const r = repairScriptPlan(plan([cut({inSec: 3, outSec: 1}), cut({clipId: '02', inSec: 2, outSec: 2, section: sections[1].heading})]), ctx);
+    expect(r.plan.cuts[0]).toMatchObject({inSec: 1, outSec: 3});
+    expect(r.fixes).toHaveLength(1);
+    expect(checkScriptPlan(r.plan, ctx).some((i) => i.code === 'SCRIPT_BAD_RANGE')).toBe(true);
+  });
+
+  it('catalog に無い id は、拡張子・パス違いで 1 つに決まるときだけ読み替える', () => {
+    const r = repairScriptPlan(plan([cut({clipId: 'uploads/01.mov'}), cut({clipId: '99', section: sections[1].heading})]), ctx);
+    expect(r.plan.cuts.map((c) => c.clipId)).toEqual(['01', '99']);
+    expect(r.fixes).toHaveLength(1);
+    expect(checkScriptPlan(r.plan, ctx).filter((i) => i.code === 'SCRIPT_UNKNOWN_CLIP')).toHaveLength(1);
+  });
+
+  it('ナレーションの改行は 1 行に、空は外し、id の重複は連番を足す', () => {
+    const r = repairScriptPlan(
+      plan(
+        [cut()],
+        [
+          {id: 'a', at: 0, text: '改行\nあり'},
+          {id: 'a', at: 1, text: 'ふたつめ'},
+          {id: 'b', at: 2, text: '  '},
+        ],
+      ),
+      ctx,
+    );
+    expect(r.plan.narration).toEqual([
+      {id: 'a', at: 0, text: '改行あり'},
+      {id: 'a_2', at: 1, text: 'ふたつめ'},
+    ]);
+    expect(r.fixes).toHaveLength(3);
+    expect(checkScriptPlan(r.plan, ctx).filter((i) => i.severity === 'E')).toEqual([]);
+  });
+
+  it('NG にした素材・カット無しは直せない（E のまま）', () => {
+    expect(repairScriptPlan(plan([cut()]), {...ctx, ngClipIds: new Set(['01'])}).fixes).toEqual([]);
+    expect(repairScriptPlan(plan([], [{id: 'a', at: 5, text: 'よみ'}]), ctx).fixes).toEqual([]);
   });
 });

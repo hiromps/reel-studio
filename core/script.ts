@@ -23,6 +23,7 @@ import {
   checkScriptPlan,
   formatScriptPlan,
   parseSections,
+  repairScriptPlan,
   reviewScriptProposal,
   scriptPlanToCuts,
   scriptPlanToNarration,
@@ -135,13 +136,15 @@ const writeScriptOutputs = (projectDir: string, plan: ScriptPlan, cuts: ReelData
   log('※ 音声はまだありません。Render の「音声を生成」→「ナレーション合成（mix）」で仕上げます');
 };
 
-export type ScriptProposalView = ScriptProposalReview & {
+export type ScriptProposalView = Omit<ScriptProposalReview, 'plan' | 'fixes'> & {
   createdAt: string;
   model: string;
   costUsd: number;
   appliedAt?: string;
   unmatched: string[];
   notes: string;
+  /** 自動で直したこと（案を作ったときの分 + いま見直して直した分） */
+  autoFixes: string[];
   /** いまの cuts.json / narration.json（承認の確認で「何を置き換えるか」を見せる） */
   current: {cuts: number | null; narration: number | null; sfx: number};
 };
@@ -153,9 +156,19 @@ export const scriptProposalView = (projectDir: string): ScriptProposalView | nul
   let review: ScriptProposalReview;
   try {
     const env = loadScriptEnv(projectDir);
-    review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, cuts: env.toCuts(proposal.plan)});
+    review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, toCuts: env.toCuts});
   } catch (e) {
-    review = {canApply: false, blockers: [(e as Error).message], issues: [], lines: [], totalSec: scriptPlanTotalSec(proposal.plan), cutCount: proposal.plan.cuts.length, narrationCount: proposal.plan.narration.length};
+    review = {
+      canApply: false,
+      blockers: [(e as Error).message],
+      issues: [],
+      fixes: [],
+      plan: proposal.plan,
+      lines: [],
+      totalSec: scriptPlanTotalSec(proposal.plan),
+      cutCount: proposal.plan.cuts.length,
+      narrationCount: proposal.plan.narration.length,
+    };
   }
   let currentCuts: number | null = null;
   const cutsFile = path.join(projectDir, 'cuts.json');
@@ -172,14 +185,22 @@ export const scriptProposalView = (projectDir: string): ScriptProposalView | nul
   } catch {
     /* 壊れた narration.json は置き換わるだけ */
   }
+  // plan そのものは画面に出さない（lines で見せる）
   return {
-    ...review,
+    canApply: review.canApply,
+    blockers: review.blockers,
+    issues: review.issues,
+    lines: review.lines,
+    totalSec: review.totalSec,
+    cutCount: review.cutCount,
+    narrationCount: review.narrationCount,
     createdAt: proposal.createdAt,
     model: proposal.model,
     costUsd: proposal.costUsd,
     appliedAt: proposal.appliedAt,
     unmatched: proposal.plan.unmatched,
     notes: proposal.plan.notes,
+    autoFixes: [...proposal.autoFixes, ...review.fixes],
     current: {cuts: currentCuts, narration: narration?.segments.length ?? null, sfx: narration?.sfx?.length ?? 0},
   };
 };
@@ -187,23 +208,30 @@ export const scriptProposalView = (projectDir: string): ScriptProposalView | nul
 /**
  * 保存してある案（「割り当てを見るだけ」の結果）を cuts.json と narration.json に書き込む。**AI は走らせない。**
  * 書く直前に、いまの台本・素材で検算し直す（台本が変わった・E がある なら書かない）。
+ * 機械的に直せる E は直してから書く（直したことは案に残す）。
  */
-export const applyScriptProposal = (projectDir: string, opt: {onLine?: (l: string) => void} = {}): {cuts: number; narration: number; totalSec: number; issues: ScriptIssue[]} => {
+export const applyScriptProposal = (
+  projectDir: string,
+  opt: {onLine?: (l: string) => void} = {},
+): {cuts: number; narration: number; totalSec: number; issues: ScriptIssue[]; fixes: string[]} => {
   const log = opt.onLine ?? (() => {});
   const proposal = readScriptProposal(projectDir);
   if (!proposal) throw new Error('書き込む割り当ての案がありません（先に「割り当てを見るだけ」を実行してください）');
   const env = loadScriptEnv(projectDir);
-  const cuts = env.toCuts(proposal.plan);
-  const review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, cuts});
+  const review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, toCuts: env.toCuts});
   if (!review.canApply) throw new Error(`この案は書き込めません:\n${review.blockers.map((b) => `  ${b}`).join('\n')}`);
-  writeScriptOutputs(projectDir, proposal.plan, cuts, env.persona, log);
-  writeScriptProposal(projectDir, {...proposal, appliedAt: new Date().toISOString()});
-  return {cuts: cuts.cuts.length, narration: proposal.plan.narration.length, totalSec: review.totalSec, issues: review.issues};
+  for (const f of review.fixes) log(`  自動修正: ${f}`);
+  const cuts = env.toCuts(review.plan);
+  writeScriptOutputs(projectDir, review.plan, cuts, env.persona, log);
+  writeScriptProposal(projectDir, {...proposal, plan: review.plan, autoFixes: [...proposal.autoFixes, ...review.fixes], appliedAt: new Date().toISOString()});
+  return {cuts: cuts.cuts.length, narration: review.plan.narration.length, totalSec: review.totalSec, issues: review.issues, fixes: review.fixes};
 };
 
 export type AiScriptResult = {
   plan: ScriptPlan;
   issues: ScriptIssue[];
+  /** AI の返答から自動で直したこと（plan は直したあと） */
+  fixes: string[];
   cuts: ReelData;
   totalSec: number;
   costUsd: number;
@@ -305,17 +333,21 @@ export async function aiScript(
   });
   opt.onProgress?.(0, 0, '検算しています');
 
-  const plan = ScriptPlanSchema.parse(run.data);
+  // 機械的に直せる E（ナレーションが動画尺の後ろ・素材の長さ超え・改行・id 重複…）は直してから検算する。
+  // AI をやり直させると 5〜7 分と課金がかかるうえ、同じ間違いを繰り返しやすい
+  const {plan, fixes} = repairScriptPlan(ScriptPlanSchema.parse(run.data), env.check);
   const issues = checkScriptPlan(plan, env.check);
   const cuts = env.toCuts(plan);
   const total = scriptPlanTotalSec(plan);
 
   // 結果は必ず残す。「見るだけ」で確かめて、承認されたら AI を走らせずにこれを書き込む（1 回 5〜7 分・課金があるため）
-  const proposal: ScriptProposal = {version: 1, createdAt: new Date().toISOString(), scriptHash: scriptTextHash(script), model: opt.model ?? studioConfig.agent.model, costUsd: run.costUsd, plan};
+  const proposal: ScriptProposal = {version: 1, createdAt: new Date().toISOString(), scriptHash: scriptTextHash(script), model: opt.model ?? studioConfig.agent.model, costUsd: run.costUsd, plan, autoFixes: fixes};
   writeScriptProposal(projectDir, proposal);
 
   const lines = formatScriptPlan(plan, sections, cuts);
   for (const l of lines) log(l);
+  if (fixes.length) log(`AI の返答を ${fixes.length} 件、自動で直しました:`);
+  for (const f of fixes) log(`  自動修正: ${f}`);
   for (const i of issues) log(`  ${i.severity} ${i.code} ${i.message}`);
   for (const u of plan.unmatched) log(`  ? 素材が無い: ${u}`);
   if (plan.notes) log(`意図: ${plan.notes}`);
@@ -337,5 +369,5 @@ export async function aiScript(
         : 'まだ書き込んでいません。Brief の「割り当ての結果」で確かめて「この割り当てで書き込む」を押すと、この案がそのまま入ります（AI はもう走らせません）',
     );
   }
-  return {plan, issues, cuts, totalSec: total, costUsd: run.costUsd, written, lines};
+  return {plan, issues, fixes, cuts, totalSec: total, costUsd: run.costUsd, written, lines};
 }

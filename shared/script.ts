@@ -167,6 +167,135 @@ export const checkScriptPlan = (plan: ScriptPlan, ctx: ScriptCheckContext): Scri
   return out;
 };
 
+// ───────────────────────── E の自動修正 ─────────────────────────
+
+export type ScriptRepair = {
+  /** 直したあとの組み立て（直すところが無ければ元と同じ内容） */
+  plan: ScriptPlan;
+  /** 何をどう直したか（1 件 1 行。空なら何も直していない） */
+  fixes: string[];
+};
+
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+/** 素材 id の読み替え用（パス・拡張子・大小文字を無視して比べる） */
+const normalizeClipId = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/^.*[\\/]/, '')
+    .replace(/\.[a-z0-9]+$/, '');
+
+/**
+ * checkScriptPlan が E にするもののうち、**機械的に直せるものを直す**。AI は走らせない（1 回 5〜7 分・課金があるため）。
+ *
+ * - 素材 id が catalog に無い → パス・拡張子違いで 1 つに決まるなら読み替える
+ * - 区間が逆 → 入れ替える。素材の長さを超えている → 同じ長さのまま素材の終わりに詰める
+ * - ナレーションの改行 → 1 行にする。本文が空 → 外す。id の重複 → 連番を足す
+ * - ナレーションが動画尺より後ろ → **その秒が台本のどの区間かを見て、その区間の映像が実際に出ている位置に写す**
+ *   （AI は台本の秒で at を書きがちで、カットの合計が台本より短いと最後のブロックが動画からはみ出る。今回はこれが一番多い）
+ *
+ * 直せないもの（NG にした素材・0 秒の区間・id が決まらない素材・カットが 1 つも無い）は E のまま残る。
+ */
+export const repairScriptPlan = (plan: ScriptPlan, ctx: ScriptCheckContext): ScriptRepair => {
+  const fixes: string[] = [];
+
+  // 1. カット：素材 id の読み替え → 区間の向き → 素材の長さ
+  const byNorm = new Map<string, string[]>();
+  for (const id of ctx.clipDurations.keys()) {
+    const k = normalizeClipId(id);
+    byNorm.set(k, [...(byNorm.get(k) ?? []), id]);
+  }
+  const cuts = plan.cuts.map((c, i) => {
+    const cut = {...c};
+    const label = `カット${i + 1}（${c.clipId}）`;
+    if (!ctx.clipDurations.has(cut.clipId)) {
+      const cands = byNorm.get(normalizeClipId(cut.clipId)) ?? [];
+      if (cands.length !== 1) return cut; // 決められないので E のまま
+      fixes.push(`${label}: catalog に無い id だったので、名前の合う ${cands[0]} に読み替えました`);
+      cut.clipId = cands[0];
+    }
+    const dur = ctx.clipDurations.get(cut.clipId)!;
+    if (cut.outSec < cut.inSec) {
+      fixes.push(`${label}: 区間が逆（${cut.inSec}〜${cut.outSec}）だったので入れ替えました`);
+      [cut.inSec, cut.outSec] = [cut.outSec, cut.inSec];
+    }
+    if (cut.outSec > cut.inSec && cut.outSec > dur + 0.05) {
+      const len = Math.min(cut.outSec - cut.inSec, dur);
+      const inSec = r3(Math.max(0, dur - len));
+      const outSec = r3(dur);
+      fixes.push(`${label}: 素材の長さ ${dur.toFixed(2)} 秒を超えていた（${cut.inSec.toFixed(2)}〜${cut.outSec.toFixed(2)}）ので ${inSec.toFixed(2)}〜${outSec.toFixed(2)} に詰めました`);
+      cut.inSec = inSec;
+      cut.outSec = outSec;
+    }
+    return cut;
+  });
+
+  // 2. ナレーションの本文と id
+  const ids = new Set<string>();
+  const narration: ScriptPlan['narration'] = [];
+  for (const n of plan.narration) {
+    let text = n.text;
+    if (/[\r\n]/.test(text)) {
+      text = text
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join('');
+      fixes.push(`${n.id}: 本文に改行があったので 1 行にしました`);
+    }
+    if (!text.trim()) {
+      fixes.push(`${n.id}: 本文が空なので外しました`);
+      continue;
+    }
+    let id = n.id;
+    if (ids.has(id)) {
+      let k = 2;
+      while (ids.has(`${n.id}_${k}`)) k++;
+      id = `${n.id}_${k}`;
+      fixes.push(`ナレーションの id ${n.id} が重複していたので ${id} にしました`);
+    }
+    ids.add(id);
+    narration.push({...n, id, text});
+  }
+
+  // 3. ナレーションの位置：動画尺より後ろのものを、台本の区間 → 実際の映像の位置 に写す
+  const total = r3(cuts.reduce((n, c) => n + Math.max(0, c.outSec - c.inSec), 0));
+  const actual = new Map<string, {start: number; end: number}>();
+  let t = 0;
+  for (const c of cuts) {
+    const len = Math.max(0, c.outSec - c.inSec);
+    const a = actual.get(c.section);
+    if (a) a.end = t + len;
+    else actual.set(c.section, {start: t, end: t + len});
+    t += len;
+  }
+  const lastCut = cuts[cuts.length - 1];
+  const lastCutStart = lastCut ? total - Math.max(0, lastCut.outSec - lastCut.inSec) : 0;
+  const latest = Math.max(0, total - 0.1);
+  const sorted = [...narration].sort((a, b) => a.at - b.at);
+  let prevAt = 0;
+  for (const n of sorted) {
+    if (cuts.length && n.at > total + 0.05) {
+      // 台本の秒としてどの区間か。どの区間にも入らなければ（台本の終わりより後ろ）最後の区間の頭に置く
+      const inside = ctx.sections.find((s) => n.at >= s.fromSec && n.at < s.toSec);
+      const sec = inside ?? [...ctx.sections].reverse().find((s) => (actual.get(s.heading)?.end ?? 0) > (actual.get(s.heading)?.start ?? 0));
+      const a = sec ? actual.get(sec.heading) : undefined;
+      let cand = lastCutStart;
+      if (sec && a && a.end > a.start) {
+        const rel = inside ? Math.min(Math.max(0, n.at - sec.fromSec), sec.toSec - sec.fromSec) / (sec.toSec - sec.fromSec) : 0;
+        cand = a.start + rel * (a.end - a.start);
+      }
+      const at = r3(Math.min(Math.max(cand, prevAt), latest));
+      fixes.push(`${n.id}: 動画尺（${total.toFixed(1)} 秒）より後ろ（${n.at.toFixed(1)} 秒）にあったので、${sec ? `${sec.heading} の映像に合わせて ` : ''}${at.toFixed(1)} 秒に動かしました`);
+      n.at = at;
+    }
+    prevAt = Math.max(prevAt, n.at);
+  }
+
+  // 位置は sorted 経由で narration の要素を直接直しているので、並びは元のまま返す
+  return {plan: {...plan, cuts, narration}, fixes};
+};
+
 /** 組み立て結果を、台本の区間ごとに読める形にする（ログ・画面用） */
 export const formatScriptPlan = (plan: ScriptPlan, sections: readonly ScriptSection[], cuts?: ReelData): string[] => {
   const lines: string[] = [];
@@ -263,6 +392,8 @@ export const ScriptProposalSchema = z.object({
   model: z.string().default(''),
   costUsd: z.number().default(0),
   plan: ScriptPlanSchema,
+  /** AI の返答から自動で直したこと（repairScriptPlan）。plan は直したあとのもの */
+  autoFixes: z.array(z.string()).default([]),
   /** 書き込んだ日時（「台本から組み立てる」でそのまま書いたときと、承認して書いたとき） */
   appliedAt: z.string().optional(),
 });
@@ -277,30 +408,40 @@ export type ScriptProposalReview = {
   blockers: string[];
   /** **いまの** catalog・台本で検算し直した結果（作ったあとに素材を NG にした等も拾う） */
   issues: ScriptIssue[];
+  /** いま見直したときに自動で直したこと（案を作ったときの分は proposal.autoFixes）。書き込むのは直したあとの plan */
+  fixes: string[];
+  /** 書き込む組み立て（自動修正のあと） */
+  plan: ScriptPlan;
   lines: string[];
   totalSec: number;
   cutCount: number;
   narrationCount: number;
 };
 
-/** 保存してある案を、いまの台本・素材で見直す（純粋。書き込む直前と画面表示の両方で使う） */
+/**
+ * 保存してある案を、いまの台本・素材で見直す（純粋。書き込む直前と画面表示の両方で使う）。
+ * 機械的に直せる E は直してから検算する（直す前に作った案でも、承認すればそのまま書ける）。
+ */
 export const reviewScriptProposal = (
   proposal: ScriptProposal,
-  now: {scriptText: string | null; check: ScriptCheckContext; cuts: ReelData},
+  now: {scriptText: string | null; check: ScriptCheckContext; toCuts: (plan: ScriptPlan) => ReelData},
 ): ScriptProposalReview => {
   const blockers: string[] = [];
   if (!now.scriptText?.trim()) blockers.push('script.md がありません');
   else if (scriptTextHash(now.scriptText) !== proposal.scriptHash) blockers.push('この案を作ったあとに台本（script.md）が変わっています。「割り当てを見るだけ」をやり直してください');
-  const issues = checkScriptPlan(proposal.plan, now.check);
+  const {plan, fixes} = repairScriptPlan(proposal.plan, now.check);
+  const issues = checkScriptPlan(plan, now.check);
   const errors = issues.filter((i) => i.severity === 'E');
   if (errors.length) blockers.push(`検算の E が ${errors.length} 件あります（${errors.map((e) => e.code).join(', ')}）`);
   return {
     canApply: blockers.length === 0,
     blockers,
     issues,
-    lines: formatScriptPlan(proposal.plan, now.check.sections, now.cuts),
-    totalSec: scriptPlanTotalSec(proposal.plan),
-    cutCount: proposal.plan.cuts.length,
-    narrationCount: proposal.plan.narration.length,
+    fixes,
+    plan,
+    lines: formatScriptPlan(plan, now.check.sections, now.toCuts(plan)),
+    totalSec: scriptPlanTotalSec(plan),
+    cutCount: plan.cuts.length,
+    narrationCount: plan.narration.length,
   };
 };

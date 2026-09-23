@@ -254,7 +254,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           throw new Error(
             `検算で E が出たので書いていません:\n${r.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}\n  結果は Brief の「割り当ての結果」で確認できます`,
           );
-        return {written: r.written, cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
+        return {written: r.written, cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, fixes: r.fixes, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
       }
       // 参考動画（他の人のバズったリール）の型を分析する。url があれば先に取り込む（スマホから上げた Blob）、
       // copyFrom があれば別案件の分析を複製するだけ（AI は走らせない）
@@ -309,7 +309,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           issues: r.issues,
           unmatched: r.plan.unmatched,
           costUsd: r.costUsd,
-          assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec} : null,
+          assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec, fixes: r.assembled.fixes} : null,
         };
       }
       case 'ai-caption': {

@@ -33,7 +33,7 @@ const plan = (over: Partial<ScriptPlan> = {}): ScriptPlan => ({
   ...over,
 });
 
-const proposal = (over: Partial<ScriptProposal> = {}): ScriptProposal => ({version: 1, createdAt: '2026-09-18T00:00:00.000Z', scriptHash: scriptTextHash(SCRIPT), model: 'sonnet', costUsd: 0.8, plan: plan(), ...over});
+const proposal = (over: Partial<ScriptProposal> = {}): ScriptProposal => ({version: 1, createdAt: '2026-09-18T00:00:00.000Z', scriptHash: scriptTextHash(SCRIPT), model: 'sonnet', costUsd: 0.8, plan: plan(), autoFixes: [], ...over});
 
 const check = () => ({
   sections: parseSections(SCRIPT),
@@ -66,10 +66,10 @@ describe('scriptPlanToCuts / scriptPlanToNarration', () => {
 });
 
 describe('reviewScriptProposal', () => {
-  const cuts = scriptPlanToCuts(plan(), buildCtx);
+  const toCuts = (p: ScriptPlan) => scriptPlanToCuts(p, buildCtx);
 
   it('台本が同じで E が無ければ書き込める', () => {
-    const r = reviewScriptProposal(proposal(), {scriptText: SCRIPT, check: check(), cuts});
+    const r = reviewScriptProposal(proposal(), {scriptText: SCRIPT, check: check(), toCuts});
     expect(r.canApply).toBe(true);
     expect(r.blockers).toEqual([]);
     expect(r).toMatchObject({cutCount: 2, narrationCount: 1, totalSec: 6});
@@ -77,15 +77,28 @@ describe('reviewScriptProposal', () => {
   });
 
   it('案を作ったあとに台本を直したら書き込めない', () => {
-    const r = reviewScriptProposal(proposal(), {scriptText: SCRIPT + '\n【6〜9秒】締め\n', check: check(), cuts});
+    const r = reviewScriptProposal(proposal(), {scriptText: SCRIPT + '\n【6〜9秒】締め\n', check: check(), toCuts});
     expect(r.canApply).toBe(false);
     expect(r.blockers[0]).toContain('台本');
   });
 
   it('いまの素材で検算し直す（あとから NG にした素材が入っていれば書き込めない）', () => {
-    const r = reviewScriptProposal(proposal(), {scriptText: SCRIPT, check: {...check(), ngClipIds: new Set(['02'])}, cuts});
+    const r = reviewScriptProposal(proposal(), {scriptText: SCRIPT, check: {...check(), ngClipIds: new Set(['02'])}, toCuts});
     expect(r.canApply).toBe(false);
     expect(r.issues.some((i) => i.code === 'SCRIPT_NG_CLIP')).toBe(true);
+  });
+
+  it('機械的に直せる E は直してから検算する（自動修正の前に作った案でも、承認すれば書ける）', () => {
+    // 締めのナレーションが動画尺（6 秒）より後ろ。以前はこれで「書き込めません」で止まっていた
+    const old = proposal({plan: plan({narration: [{id: '01_hook', at: 0.2, text: 'これ、いくらに見えますか？'}, {id: '02_close', at: 8, text: '締め'}]})});
+    const r = reviewScriptProposal(old, {scriptText: SCRIPT, check: check(), toCuts});
+    expect(r.canApply).toBe(true);
+    expect(r.fixes).toHaveLength(1);
+    expect(r.fixes[0]).toContain('02_close');
+    expect(r.plan.narration[1].at).toBeLessThanOrEqual(6);
+    expect(r.issues.some((i) => i.severity === 'E')).toBe(false);
+    // 元の案は書き換えない（純粋）
+    expect(old.plan.narration[1].at).toBe(8);
   });
 });
 
@@ -123,6 +136,26 @@ describe('applyScriptProposal（案件フォルダ）', () => {
     fs.writeFileSync(path.join(dir, 'script.md'), SCRIPT + '\n【6〜9秒】締め\n');
     expect(() => applyScriptProposal(dir)).toThrow(/書き込めません/);
     expect(fs.existsSync(path.join(dir, 'cuts.json'))).toBe(false);
+  });
+
+  it('動画尺より後ろのナレーションがある古い案も、自動で直して書き、直したことを案に残す', () => {
+    const dir = setup(proposal({plan: plan({narration: [{id: '01_hook', at: 0.2, text: 'これ、いくらに見えますか？'}, {id: '02_close', at: 8, text: '締め'}]})}));
+    const before = scriptProposalView(dir);
+    expect(before?.canApply).toBe(true);
+    expect(before?.autoFixes).toHaveLength(1);
+    expect(before?.autoFixes[0]).toContain('02_close');
+
+    const lines: string[] = [];
+    const r = applyScriptProposal(dir, {onLine: (l) => lines.push(l)});
+    expect(r.fixes).toHaveLength(1);
+    expect(lines.some((l) => l.includes('自動修正'))).toBe(true);
+    const narration = JSON.parse(fs.readFileSync(path.join(dir, 'narration.json'), 'utf8'));
+    expect(narration.segments[1].at).toBeLessThanOrEqual(6);
+
+    // 書いたあとの案は直したあとのもの。もう一度見直しても同じ修正は出ない
+    const after = scriptProposalView(dir);
+    expect(after?.autoFixes).toHaveLength(1);
+    expect(after?.appliedAt).toBeTruthy();
   });
 
   it('案が無ければ「先に見るだけ」と案内する', () => {

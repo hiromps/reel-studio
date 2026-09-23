@@ -23,6 +23,8 @@ type Proposal = {
   appliedAt?: string;
   unmatched: string[];
   notes: string;
+  /** AI の返答から自動で直したこと（ナレーションが動画尺の後ろ・素材の長さ超え等）。空なら何も直していない */
+  autoFixes?: string[];
   current: {cuts: number | null; narration: number | null; sfx: number};
 };
 
@@ -210,8 +212,14 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
             <pre className="script-proposal-lines">{proposal.lines.join('\n')}</pre>
           )}
 
-          {(proposal.issues.length > 0 || proposal.unmatched.length > 0) && (
+          {(proposal.issues.length > 0 || proposal.unmatched.length > 0 || (proposal.autoFixes?.length ?? 0) > 0) && (
             <div className="issues">
+              {(proposal.autoFixes ?? []).map((f, i) => (
+                <div key={`f${i}`} className="issue F" title="AI の返答のうち機械的に直せる E は、AI を走らせ直さずにここで直しています">
+                  <span className="code">自動修正</span>
+                  <span>{f}</span>
+                </div>
+              ))}
               {proposal.issues.map((x, i) => (
                 <div key={`i${i}`} className={`issue ${x.severity}`}>
                   <span className="code">

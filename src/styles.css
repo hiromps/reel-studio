@@ -496,6 +496,10 @@ input.telop.placeholder {
 .issue.W .code {
   color: var(--warn);
 }
+/* 自動修正（E を機械的に直したこと）。注意ではなく報告なので落ち着いた色 */
+.issue.F .code {
+  color: var(--accent2);
+}
 .subs-editor .sub {
   display: flex;
   flex-wrap: wrap;

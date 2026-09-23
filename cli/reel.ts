@@ -369,6 +369,7 @@ async function main() {
           const view = scriptProposalView(dir);
           if (!view) throw new Error('書き込む割り当ての案がありません（先に reel ai script --dry）');
           for (const l of view.lines) out(l);
+          for (const f of view.autoFixes) out(`  自動修正: ${f}`);
           for (const i of view.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
           const r = applyScriptProposal(dir, {onLine: (l) => err(l)});
           out(`書き込みました: ${r.cuts} カット / ${r.totalSec.toFixed(2)} 秒 / ナレーション ${r.narration} ブロック（${localDate(view.createdAt)} の案）`);
@@ -377,6 +378,7 @@ async function main() {
         const r = await aiScript(dir, {model, write: !bool(flags, 'dry'), force: bool(flags, 'force'), onLine: (l) => err(l)});
         out(`台本から ${r.plan.cuts.length} カット / ${r.totalSec.toFixed(2)} 秒 / ナレーション ${r.plan.narration.length} ブロック（$${r.costUsd.toFixed(3)}）`);
         for (const l of r.lines) out(l);
+        for (const f of r.fixes) out(`  自動修正: ${f}`);
         for (const i of r.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
         for (const u of r.plan.unmatched) out(`  ? 素材が無い: ${u}`);
         if (!r.written) out(bool(flags, 'dry') ? '（書いていません。この案で書き込むなら reel ai script --project P --apply）' : '（書いていません）');
@@ -491,6 +493,7 @@ async function main() {
           const a = r.assembled;
           out(`組み立て: ${a.plan.cuts.length} カット / ${a.totalSec.toFixed(2)} 秒 / ナレーション ${a.plan.narration.length} ブロック`);
           for (const l of a.lines) out(l);
+          for (const f of a.fixes) out(`  自動修正: ${f}`);
           for (const i of a.issues) out(`  ${i.severity} ${i.code} ${i.message}`);
           if (!a.written) out(bool(flags, 'dry') ? '（書いていません。この案で書き込むなら reel ai script --project P --apply）' : '（書いていません）');
         } else out(`（組み立てはしていません。reel ai script --project ${path.basename(dir)} で組み立てます）`);

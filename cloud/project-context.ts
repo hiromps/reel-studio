@@ -11,7 +11,7 @@ import type {z, ZodTypeAny} from 'zod';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {findPersona, getPersona} from '../shared/personas';
 import {stableHash} from '../shared/hash';
-import {parseSections, reviewScriptProposal, scriptPlanToCuts, scriptPlanTotalSec} from '../shared/script';
+import {parseSections, reviewScriptProposal, scriptPlanToCuts, scriptPlanTotalSec, type ScriptProposalReview} from '../shared/script';
 import {validateCuts, type ValidationResult} from '../shared/validate';
 import {BriefSchema, CatalogSchema, NarrationSchema, ReelDataSchema, type Brief, type Catalog, type Narration, type ReelData} from '../shared/schema';
 import {HooksSchema, type Hooks} from '../shared/hooks';
@@ -139,29 +139,39 @@ export const scriptEnv = (ctx: Ctx) => {
 export const scriptProposalView = (ctx: Ctx) => {
   const proposal = ctx.scriptPlan;
   if (!proposal) return null;
-  let review;
+  let review: ScriptProposalReview;
   try {
     const env = scriptEnv(ctx);
-    review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, cuts: env.toCuts(proposal.plan)});
+    review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, toCuts: env.toCuts});
   } catch (e) {
     review = {
       canApply: false,
       blockers: [(e as Error).message],
       issues: [],
+      fixes: [],
+      plan: proposal.plan,
       lines: [],
       totalSec: scriptPlanTotalSec(proposal.plan),
       cutCount: proposal.plan.cuts.length,
       narrationCount: proposal.plan.narration.length,
     };
   }
+  // plan そのものは画面に出さない（lines で見せる）
   return {
-    ...review,
+    canApply: review.canApply,
+    blockers: review.blockers,
+    issues: review.issues,
+    lines: review.lines,
+    totalSec: review.totalSec,
+    cutCount: review.cutCount,
+    narrationCount: review.narrationCount,
     createdAt: proposal.createdAt,
     model: proposal.model,
     costUsd: proposal.costUsd,
     appliedAt: proposal.appliedAt,
     unmatched: proposal.plan.unmatched,
     notes: proposal.plan.notes,
+    autoFixes: [...proposal.autoFixes, ...review.fixes],
     current: {cuts: ctx.cuts?.cuts.length ?? null, narration: ctx.narration?.segments.length ?? null, sfx: ctx.narration?.sfx?.length ?? 0},
   };
 };

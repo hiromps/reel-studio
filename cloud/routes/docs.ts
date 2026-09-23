@@ -121,18 +121,20 @@ docsRouter.post('/script/plan/apply', async (req, res) => {
   if (!proposal) return res.status(400).json({error: '書き込む割り当ての案がありません（先に「割り当てを見るだけ」を実行してください）', view: null});
   try {
     const env = scriptEnv(ctx);
-    const cuts = env.toCuts(proposal.plan);
-    const review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, cuts});
+    // 機械的に直せる E は直してから検算する（core/script.ts:applyScriptProposal と同じ）。書くのは直したあとの plan
+    const review = reviewScriptProposal(proposal, {scriptText: env.script, check: env.check, toCuts: env.toCuts});
     if (!review.canApply) throw new Error(`この案は書き込めません:\n${review.blockers.map((b) => `  ${b}`).join('\n')}`);
+    const cuts = env.toCuts(review.plan);
     await writeDoc(slug, 'cuts', cuts, {by: 'cloud'});
-    const narration = scriptPlanToNarration(proposal.plan, env.persona.narration);
+    const narration = scriptPlanToNarration(review.plan, env.persona.narration);
     if (narration) await writeDoc(slug, 'narration', narration, {by: 'cloud'});
-    await writeDoc(slug, 'scriptPlan', {...proposal, appliedAt: new Date().toISOString()}, {by: 'cloud'});
+    await writeDoc(slug, 'scriptPlan', {...proposal, plan: review.plan, autoFixes: [...proposal.autoFixes, ...review.fixes], appliedAt: new Date().toISOString()}, {by: 'cloud'});
     res.json({
       cuts: cuts.cuts.length,
-      narration: proposal.plan.narration.length,
+      narration: review.plan.narration.length,
       totalSec: review.totalSec,
       issues: review.issues,
+      fixes: review.fixes,
       view: scriptProposalView(await loadCtx(slug)),
     });
   } catch (e) {
