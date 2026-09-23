@@ -10,6 +10,8 @@ import {CropBox} from '../components/CropBox';
 import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
 import {fallbackDuration} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
+import {IssueList} from '../components/IssueList';
+import {FIT_DEFAULTS} from '@shared/fit';
 import {useStudio} from '../state/store';
 import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
@@ -39,10 +41,19 @@ const Counter: React.FC<{text: string; max?: number}> = ({text, max = 13}) => {
 
 // ───────────────────────── 動画全体 ─────────────────────────
 export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
-  const {cuts, validation, patchReel} = m;
+  const {cuts, validation, patchReel, fitBlockedBy, fitToNarration} = m;
   // 取り込み済みの自前フォント（Settings で取り込んだもの）
   const fonts = useStudio().config?.fonts ?? [];
+  // 「ナレーション音声に尺を合わせる」の結果（何をどう刻んだか）。次に押すまで残す
+  const [fitNotes, setFitNotes] = useState<string[]>([]);
+  useEffect(() => setFitNotes([]), [m.s.active]);
   if (!cuts) return <div className="hint">左の素材をタイムラインへドラッグするか、Brief で構成を作ってください</div>;
+  const runFit = () => {
+    const notes = fitToNarration();
+    setFitNotes(notes);
+    const head = notes[0];
+    if (head) m.s.toast(head.replace(/^!\s*/, ''), head.startsWith('!') ? 'error' : 'ok');
+  };
   return (
     <>
       <Section title="動画全体">
@@ -94,6 +105,29 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
             <input type="range" min={0} max={1} step={0.05} value={cuts.badgeOpacity ?? BADGE_OPACITY_DEFAULT} onChange={(e) => patchReel({badgeOpacity: Number(e.target.value)})} />
           </label>
         </div>
+        <div className="row" style={{marginTop: 8}}>
+          <button
+            className="small"
+            onClick={runFit}
+            disabled={!!fitBlockedBy}
+            title={
+              fitBlockedBy ??
+              `各ナレーションの音声の長さ（実測）に映像を合わせ、${FIT_DEFAULTS.minCutSec}〜${FIT_DEFAULTS.maxCutSec} 秒のカットに刻み直します。テロップ・バッジは元のカットから引き継ぎ、会話（字幕つき）とロック済みのカットは触りません。音声は作り直しません（Ctrl+Z で戻せます）`
+            }
+            data-tour="fit"
+          >
+            ナレーション音声に尺を合わせる
+          </button>
+          <span className="hint">
+            {FIT_DEFAULTS.minCutSec}〜{FIT_DEFAULTS.maxCutSec} 秒刻み・取り消し可
+          </span>
+        </div>
+        {fitNotes.length > 0 && (
+          <details open style={{marginTop: 6}}>
+            <summary className="hint">合わせた結果</summary>
+            <IssueList rows={fitNotes.map((n) => ({severity: n.trimStart().startsWith('!') ? ('W' as const) : ('info' as const), message: n.trim().replace(/^!\s*/, '')}))} maxHeight={220} />
+          </details>
+        )}
       </Section>
       <Section title="操作">
         <ul className="insp-keys">

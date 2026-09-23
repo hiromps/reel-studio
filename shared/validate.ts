@@ -68,8 +68,11 @@ export type ValidateContext = {
   engineStale?: boolean;
 };
 
-const CUT_TOO_SHORT_SEC = 0.6;
-const HOOK_TOO_SHORT_SEC = 0.8;
+/** これより短いカットは W（フックは HOOK_TOO_SHORT_SEC）。shared/fit.ts の刻みの下限にも使う */
+export const CUT_TOO_SHORT_SEC = 0.6;
+export const HOOK_TOO_SHORT_SEC = 0.8;
+/** テロップの表示がこれ未満だと物理的に読めない（TELOP_MIN_DISPLAY を E にする境）。shared/fit.ts も同じ値で守る */
+export const TELOP_UNREADABLE_SEC = 0.8;
 const CONVERSATION_MAX_SEC = 10;
 const SUB_MAX_CHARS = 20;
 
@@ -265,7 +268,7 @@ export function validateCuts(input: unknown, ctx: ValidateContext = {}): Validat
     if (shown + 0.001 < need) {
       const msg = `「${t}」の表示 ${shown.toFixed(2)} 秒 < 目安 ${need.toFixed(2)} 秒（${countChars(t)} 文字）。次カットにまたがらせるか文を短く`;
       // 0.8 秒未満は物理的に読めないので E。それ以上は目安違反として W（納品実績に 1.0 秒×10 文字が存在するため）
-      if (shown < 0.8) E({code: 'TELOP_MIN_DISPLAY', ...base, message: msg});
+      if (shown < TELOP_UNREADABLE_SEC) E({code: 'TELOP_MIN_DISPLAY', ...base, message: msg});
       else W({code: 'TELOP_MIN_DISPLAY', ...base, message: msg});
     }
   });

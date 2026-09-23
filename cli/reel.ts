@@ -25,6 +25,7 @@
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
 //   reel sfx auto --project P [--max n] [--gap s] [--exclude role,role] [--dry]   （cuts.json から自動配置）
 //   reel tts --project P [--force] [--id 01_a,02_b]                            （narration.json → narration/*.wav）
+//   reel fit --project P [--min 0.75] [--max 0.8] [--lead s] [--tail s] [--estimate] [--dry] [--json]   （ナレーション音声に映像の尺を合わせる。0.75〜0.8 秒のカットに刻み直す）
 //   reel plan --project P [--write] [--no-reuse] [--no-copy] [--json]
 //   reel validate --project P [--json] [--strict-proxy]
 //   reel table --project P
@@ -66,6 +67,7 @@ import {describeReference} from '../shared/reference';
 import {localDate} from '../shared/time';
 import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
+import {fitProject} from '../core/fit';
 import {autoPlaceSfx, readLibrary, scanLibrary, writeLibrary} from '../core/sfx';
 import {deliver, narrationReady} from '../core/deliver';
 import {buildPlan, runBuild} from '../core/build';
@@ -811,6 +813,23 @@ async function main() {
       const r = await generateTts(dir, {force: bool(flags, 'force'), ids: typeof only === 'string' ? only.split(',').map((x) => x.trim()).filter(Boolean) : undefined, onLine: (l) => err(l)});
       out(`音声生成 ${r.made.length} 本 / ${r.chars} 文字（model ${r.modelId}）`);
       for (const id of r.made) out(`  ${id}.wav`);
+      return;
+    }
+
+    case 'fit': {
+      const dir = projectFromFlags(flags);
+      const r = fitProject(dir, {
+        write: !bool(flags, 'dry'),
+        minCutSec: num(flags, 'min'),
+        maxCutSec: num(flags, 'max'),
+        leadSec: num(flags, 'lead'),
+        tailSec: num(flags, 'tail'),
+        estimate: bool(flags, 'estimate'),
+        onLine: (l) => err(l),
+      });
+      if (bool(flags, 'json')) out(JSON.stringify({blocks: r.blocks, before: r.before, after: r.after, notes: r.notes, written: r.written, validation: r.validation, narrationIssues: r.narrationIssues}, null, 2));
+      else out(`${r.written ? '書き込み' : '見るだけ'}: ${r.before.cutCount} カット / ${r.before.totalSec.toFixed(2)}s → ${r.after.cutCount} カット / ${r.after.totalSec.toFixed(2)}s（平均 ${r.after.avgCutSec.toFixed(2)}s）`);
+      process.exitCode = r.validation.ok ? 0 : 1;
       return;
     }
 

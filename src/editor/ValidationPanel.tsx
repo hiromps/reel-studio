@@ -8,7 +8,7 @@ import {usePref} from '../hooks/usePref';
 type Tab = 'cuts' | 'order' | 'narr' | 'sfx';
 
 export const ValidationPanel: React.FC<{m: EditorModel; onSeekCut: (i: number) => void; onSeekSec: (sec: number) => void}> = ({m, onSeekCut, onSeekSec}) => {
-  const {validation, orderCheck, narrIssues, sfxIssues, applyFix, fixOverlaps, s} = m;
+  const {validation, orderCheck, narrIssues, sfxIssues, applyFix, fixOverlaps, fitBlockedBy, fitToNarration, s} = m;
   // 別名コピー（SAME_SRC_NONCONSECUTIVE）は実ファイルのコピーを伴うので、その場の書き換えではなく PC のジョブに任せる
   const aliasFix = useAliasFix();
   const [open, setOpen] = usePref('reel-studio.editor.validation', true);
@@ -122,6 +122,23 @@ export const ValidationPanel: React.FC<{m: EditorModel; onSeekCut: (i: number) =
                     重なりを自動で直す（at をずらす）
                   </button>
                   <span className="hint">後ろにずらすだけなので音声の作り直しは不要です</span>
+                </div>
+              )}
+              {narrIssues.some((x) => x.includes('重なります') || x.includes('はみ出します')) && !fitBlockedBy && (
+                <div className="row" style={{marginTop: 6}}>
+                  <button
+                    className="small"
+                    onClick={() => {
+                      const notes = fitToNarration();
+                      const head = notes[0];
+                      if (head) s.toast(head.replace(/^!\s*/, ''), head.startsWith('!') ? 'error' : 'ok');
+                      for (const n of notes.slice(1)) if (n.trimStart().startsWith('!')) s.toast(n.trim().replace(/^!\s*/, ''), 'error');
+                    }}
+                    title="各ナレーションの音声の長さに映像を合わせ、0.75〜0.8 秒のカットに刻み直します（音声は作り直さない・取り消し可）"
+                  >
+                    映像を音声に合わせる（0.75〜0.8 秒刻み）
+                  </button>
+                  <span className="hint">カットを刻み直して動画尺を音声に揃えます（Ctrl+Z で戻せます）</span>
                 </div>
               )}
             </>

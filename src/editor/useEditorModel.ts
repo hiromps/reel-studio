@@ -9,6 +9,7 @@ import {checkOrder, orderFromCuts} from '@shared/order';
 import {FORMAT_SPECS} from '@shared/format-specs';
 import {findPersona} from '@shared/personas';
 import {checkNarration, fixNarrationOverlaps} from '@shared/narration';
+import {fitBlockedBy as fitBlockedByOf, fitCutsToNarration} from '@shared/fit';
 import {SFX_DEFAULTS, checkSfx, type SfxLibrary} from '@shared/sfx';
 import {useUndo} from '../hooks/useUndo';
 import {useDebounced} from '../components/useDebounced';
@@ -297,6 +298,22 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     if (r.moved.length) commitNarr({...narration, segments: r.segments});
     return r.notes;
   }, [narration, estimateSec, total, commitNarr]);
+  /**
+   * ナレーション音声（実測 durSec）に映像の尺を合わせ、0.75〜0.8 秒のカットに刻み直す（shared/fit.ts）。
+   * cuts と narration を 1 手で書き換える（取り消しは 1 回で両方戻る）。押せないときの理由は fitBlockedBy
+   */
+  const fitBlockedBy = useMemo(() => fitBlockedByOf(cuts, narration), [cuts, narration]);
+  const fitToNarration = useCallback((): string[] => {
+    if (!cuts || !narration) return [];
+    const r = fitCutsToNarration(cuts, narration, {clipDurationOf: (src) => clipOf(src)?.probe.durationSec});
+    if (!r.ok) return r.blockers.map((b) => `! ${b}`);
+    pushHistory();
+    setCuts(r.cuts);
+    setNarr(r.narration);
+    setSelection(null);
+    setFrame(0);
+    return r.notes;
+  }, [cuts, narration, clipOf, pushHistory, setCuts, setNarr]);
   const invalidateAll = useCallback(
     (patch: Partial<Narration>) => {
       if (!narration) return;
@@ -452,6 +469,8 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     addSeg,
     sortSegs,
     fixOverlaps,
+    fitBlockedBy,
+    fitToNarration,
     invalidateAll,
     patchSfx,
     removeSfx,
