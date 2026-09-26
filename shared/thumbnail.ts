@@ -125,7 +125,7 @@ export const thumbnailDefaults = (cuts: Pick<ReelData, 'cuts' | 'meta'> | null |
 export const THUMBNAIL_BUILTIN_FONT = 'builtin';
 
 /** エンジンに渡す、埋め終わったサムネイル。bg が null ＝ カットが無いので作れない */
-export type ResolvedThumbnail = {en: string; side: string; title: string; font?: string; bg: ThumbnailBg | null};
+export type ResolvedThumbnail = {en: string; side: string; title: string; /** 描くフォント（public/fonts/ のファイル名）。同梱の明朝は THUMBNAIL_BUILTIN_FONT */ font: string; bg: ThumbnailBg | null};
 
 /**
  * cuts.json の thumbnail（手で書いたもの）＋ 案件からの既定 → 描くもの。
@@ -136,12 +136,14 @@ export const resolveThumbnail = (cuts: Pick<ReelData, 'cuts' | 'meta' | 'font'> 
   const d = thumbnailDefaults(cuts, brief);
   // 空白だけ＝未記入扱い（消したつもりの欄が空のまま焼き付かないように）
   const pick = (v: string | undefined, fallback: string) => (v !== undefined && v.trim() ? v.trim() : fallback);
-  const font = t.font === THUMBNAIL_BUILTIN_FONT ? undefined : (t.font ?? cuts.font ?? fallbackFont ?? undefined);
+  // 同梱の明朝も「無し」ではなく THUMBNAIL_BUILTIN_FONT と**明示して**渡す。キーを省くと、エンジン側で
+  // テロップのフォントに戻ったり、Remotion が --props を案件の cuts.json とマージして古い値が残ったりする
+  const font = t.font ?? cuts.font ?? fallbackFont ?? THUMBNAIL_BUILTIN_FONT;
   return {
     en: pick(t.en, d.en).toUpperCase(),
     side: pick(t.side, d.side),
     title: pick(t.title, d.title),
-    ...(font ? {font} : {}),
+    font,
     bg: t.bg ?? d.bg,
   };
 };

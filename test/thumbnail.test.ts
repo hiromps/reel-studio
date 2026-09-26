@@ -91,7 +91,9 @@ describe('resolveThumbnail', () => {
     expect(resolveThumbnail(reel(), brief({}), 'set.ttf').font).toBe('set.ttf');
     expect(resolveThumbnail(reel({font: 'telop.otf'}), brief({}), 'set.ttf').font).toBe('telop.otf');
     expect(resolveThumbnail(reel({font: 'telop.otf', thumbnail: {font: 'thumb.ttf'}}), brief({}), 'set.ttf').font).toBe('thumb.ttf');
-    expect(resolveThumbnail(reel({font: 'telop.otf', thumbnail: {font: THUMBNAIL_BUILTIN_FONT}}), brief({}), 'set.ttf').font).toBeUndefined();
+    expect(resolveThumbnail(reel({font: 'telop.otf', thumbnail: {font: THUMBNAIL_BUILTIN_FONT}}), brief({}), 'set.ttf').font).toBe(THUMBNAIL_BUILTIN_FONT);
+    // どこにもフォントの指定が無ければ同梱の明朝（キーを省かずに明示する）
+    expect(resolveThumbnail(reel(), brief({})).font).toBe(THUMBNAIL_BUILTIN_FONT);
   });
 
   it('手で決めた背景を使う', () => {

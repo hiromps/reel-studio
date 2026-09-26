@@ -25,6 +25,9 @@ export type ThumbnailProps = ReelData & {thumbnail?: ThumbnailDef};
 
 const W = 1080;
 
+/** thumbnail.font がこれなら同梱の明朝（Noto Serif JP）で描く */
+const BUILTIN_FONT = 'builtin';
+
 const LAYOUT = {
   enTop: 285,
   enFontSize: 200,
@@ -107,9 +110,12 @@ export const ReelThumbnail: React.FC<ThumbnailProps> = (data) => {
   const t = data.thumbnail ?? {};
   // 背景の指定が無い（エンジン単体で開いたとき）は 1 カット目の真ん中
   const first = data.cuts[0];
-  const bg = t.bg ?? (first ? {src: first.src, atSec: (first.inSec + first.outSec) / 2, crop: first.crop} : null);
+  // フォント。"builtin"＝同梱の明朝（shared/thumbnail.ts の THUMBNAIL_BUILTIN_FONT と同じ値）。
+  // Reel Studio からは必ずどちらかが明示で来る。thumbnail が無い（エンジン単体で開いた）ときだけテロップのフォントを使う
+  const fontFile = data.thumbnail ? (t.font && t.font !== BUILTIN_FONT ? t.font : undefined) : data.font;
+  const bg = t.bg ??(first ? {src: first.src, atSec: (first.inSec + first.outSec) / 2, crop: first.crop} : null);
   return (
-    <TelopFont file={t.font ?? data.font}>
+    <TelopFont file={fontFile}>
       <AbsoluteFill style={{backgroundColor: 'black'}}>
         {bg ? (
           <AbsoluteFill style={{overflow: 'hidden'}}>
