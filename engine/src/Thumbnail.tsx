@@ -9,7 +9,7 @@ import {TelopFont, useTelopFont} from './telops';
 //   上  … 英字の地名（OSAKA）。大きなセリフ体、中央
 //   左  … 縦書きの「地域×エリア」（大阪×天満）
 //   下  … 大きな横書きのキャッチ（神コスパ寿司酒場）。横幅いっぱい
-//   背景 … 動画の 1 コマ。上下の端を残して、真ん中の帯だけ少し暗くする
+//   背景 … 動画の 1 コマをそのまま（暗くする帯・下地は付けない。2026-09-26 ユーザー指定）
 // 文字はすべて白＋右下に落ちる濃い影。フォントはテロップと同じもの（thumbnail.font で個別に変えられる）。
 // 文言と背景の決め方は Reel Studio 側（shared/thumbnail.ts）で、ここには埋め終わったものが来る。
 
@@ -26,9 +26,6 @@ export type ThumbnailProps = ReelData & {thumbnail?: ThumbnailDef};
 const W = 1080;
 
 const LAYOUT = {
-  bandTop: 280, // 暗い帯（参考画像では上下の端だけ素の明るさ）
-  bandBottom: 1632,
-  bandAlpha: 0.16,
   enTop: 285,
   enFontSize: 200,
   enMaxWidth: 1000,
@@ -119,7 +116,6 @@ export const ReelThumbnail: React.FC<ThumbnailProps> = (data) => {
             <OffthreadVideo src={staticFile(bg.src)} startFrom={Math.round(bg.atSec * fps)} muted style={cropStyle(bg.crop)} />
           </AbsoluteFill>
         ) : null}
-        <div style={{position: 'absolute', left: 0, right: 0, top: LAYOUT.bandTop, height: LAYOUT.bandBottom - LAYOUT.bandTop, background: `rgba(0, 0, 0, ${LAYOUT.bandAlpha})`}} />
         <Texts en={t.en ?? ''} side={t.side ?? ''} title={t.title ?? ''} />
       </AbsoluteFill>
     </TelopFont>
