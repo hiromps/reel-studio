@@ -81,6 +81,7 @@ CLI は Git Bash から `bin/reel <cmd>`（cmd.exe は `bin\reel.cmd`）。
 | `reel sync --project P [--check]` | エンジン（src/*.tsx）をマスターに同期 |
 | `reel draft\|render --project P [--out f] [--gl swiftshader] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries 3] [--force] [--no-sync] [--strict-proxy] [--props f]` | preflight → レンダー（段階リトライ）→ フレーム数検証 → QC タイル |
 | `reel still --project P --cut N [--offset 0.3]` / `--frame F` | 1 フレーム書き出し（カット頭から 0.3 秒後が既定） |
+| `reel thumbnail --project P [--out f.jpg]` | サムネイル（投稿のカバー画像）だけ作り直す。本番レンダーでは自動で `out/thumbnail.jpg` を作る |
 | `reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]` | トライアル用の**フック案（A は今の形・B/C は別の切り口）とパターン別キャプション**を書かせて `hooks.json` に入れる |
 | `reel ai reference --project P --file <動画> [--model m] [--no-analyze]` | **他の人のバズ動画を取り込んで型を分析**し `reference.json` に入れる（`--no-analyze` は取り込みだけ）。`--show` で分析を表示、`--from <別案件>` で別案件の分析を写す、`--remove` で取り消す |
 | `reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]` | **分析した型を写した台本**を `script.md` に書き、そのまま「台本から組み立てる」まで行う（`--dry` は割り当てを見るだけ、`--no-assemble` は台本だけ） |

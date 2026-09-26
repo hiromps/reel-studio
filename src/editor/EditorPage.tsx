@@ -14,12 +14,14 @@ import {usePref} from '../hooks/usePref';
 import {useHotkeys} from '../hooks/useHotkeys';
 import type {SfxLibrary} from '@shared/sfx';
 import {calcTotalFrames} from '@shared/timeline';
+import {bgAtTimelineSec, bgTimelineSec, defaultBgOf} from '@shared/thumbnail';
 import {Bin} from './Bin';
 import {Transport} from './Transport';
 import {Timeline, type TimelineHandle, type TrackVisibility} from './Timeline';
 import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
 import {ValidationPanel} from './ValidationPanel';
 import {AiMenu} from './AiMenu';
+import {ThumbnailSection, patchThumbnail} from './ThumbnailSection';
 import {useEditorModel} from './useEditorModel';
 import {useMixPreview} from './useMixPreview';
 import {pendingNarration} from './mixPreview';
@@ -29,7 +31,7 @@ import type {Selection} from './selection';
 
 /** 狭い画面のシートの見出し（いま何を触っているか） */
 const selectionLabel = (sel: NonNullable<Selection>): string =>
-  sel.kind === 'cut' ? `カット ${sel.index + 1}` : sel.kind === 'telop' ? `テロップ ${sel.group + 1}` : sel.kind === 'narr' ? `ナレーション ${sel.index + 1}` : `効果音 ${sel.index + 1}`;
+  sel.kind === 'thumbnail' ? 'サムネイル' : sel.kind === 'cut' ? `カット ${sel.index + 1}` : sel.kind === 'telop' ? `テロップ ${sel.group + 1}` : sel.kind === 'narr' ? `ナレーション ${sel.index + 1}` : `効果音 ${sel.index + 1}`;
 
 type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean};
 const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true};
@@ -251,6 +253,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const extIndex = binDrag.drag ? (timeline.current?.insertIndexAtPoint(binDrag.drag.x, binDrag.drag.y) ?? null) : null;
 
   // タイムラインで何かをクリックしたら、選ぶと同時にそこへシークする（NLE の慣習）。ドラッグ中は Timeline 側が選択だけ更新する
+  // サムネイルの背景にしているコマ（動画の秒）。目盛りのピンの位置
+  const thumbnailSec = cuts ? bgTimelineSec(cuts, cuts.thumbnail?.bg ?? defaultBgOf(cuts)) : null;
   const selectFromTimeline = (sel: typeof selection, opt: {seek?: boolean} = {}) => {
     setSelection(sel);
     setFocusTelop(false);
@@ -265,7 +269,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     } else if (sel.kind === 'sfx') {
       const x = narration?.sfx?.[sel.index];
       if (x) seekSec(x.at);
-    }
+    } else if (sel.kind === 'thumbnail' && thumbnailSec !== null) seekSec(thumbnailSec);
   };
   const blockOf = useCallback(
     (i: number): [number, number] => {
@@ -419,6 +423,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           {sel?.kind === 'telop' && <TelopInspector m={m} group={sel.group} onSeekCut={seekCut} />}
           {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} ttsBlockedBy={ttsBlockedBy} />}
           {sel?.kind === 'sfx' && <SfxInspector m={m} index={sel.index} onSeekCut={seekCut} lib={lib} onPlay={playSfx} />}
+          {sel?.kind === 'thumbnail' && <ThumbnailSection m={m} large />}
           {!sel && <ReelInspector m={m} />}
           <ValidationPanel m={m} onSeekCut={seekCut} onSeekSec={seekSec} />
         </div>
@@ -475,6 +480,14 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           <button className="small" onClick={() => timeline.current?.fit()} title="全体が収まる拡大率にする">
             全体
           </button>
+          <button
+            className={`small chip${sel?.kind === 'thumbnail' ? ' on' : ''}`}
+            onClick={() => selectFromTimeline(sel?.kind === 'thumbnail' ? null : {kind: 'thumbnail'})}
+            disabled={!cuts}
+            title="サムネイル（投稿のカバー画像）の文言・フォント・背景のコマを右で編集します。目盛りの 🖼 はいまの背景のコマ（横にドラッグで変えられます）"
+          >
+            🖼 サムネイル
+          </button>
         </div>
         <Timeline
           ref={timeline}
@@ -515,6 +528,13 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           external={binDrag.drag ? {x: binDrag.drag.x, y: binDrag.drag.y} : null}
           snap={prefsSafe.snap}
           tracks={prefsSafe.tracks}
+          thumbnailSec={thumbnailSec}
+          onThumbnailSec={(sec) => {
+            const bg = cuts ? bgAtTimelineSec(cuts, sec) : null;
+            if (!bg) return;
+            patchThumbnail(m, {bg});
+            setSelection({kind: 'thumbnail'});
+          }}
         />
       </div>
 

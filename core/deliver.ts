@@ -98,6 +98,9 @@ export const deliver = async (projectDir: string, opt: DeliverOptions = {}): Pro
   }
   if (readCaption(projectDir)?.trim()) kinds.push('caption');
   else warnings.push('caption.txt が無いのでキャプションは納品していません');
+  // サムネイルは本番レンダーのたびに作られる。無い（古い案件・生成に失敗した）ときは知らせるだけ
+  if (fs.existsSync(path.join(projectDir, deliverSource('thumbnail')))) kinds.push('thumbnail');
+  else warnings.push('out/thumbnail.jpg が無いのでサムネイルは納品していません（Timeline の「サムネイル」で作れます）');
 
   const items: DeliverItem[] = [];
   for (const kind of kinds) {

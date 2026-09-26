@@ -168,6 +168,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
       | {
           outRel?: string;
           qcTileRel?: string;
+          thumbnailRel?: string;
           frames?: number;
           expectedFrames?: number;
           sizeBytes?: number;
@@ -194,7 +195,13 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
             </div>
           </div>
         )}
-        {r.outRel && /\.png$/.test(r.outRel) && <img src={`${s.mediaBase}/${r.outRel}?t=${j.endedAt}`} alt="" style={{maxWidth: 320}} />}
+        {r.outRel && /\.(png|jpe?g)$/.test(r.outRel) && <img src={`${s.mediaBase}/${r.outRel}?t=${j.endedAt}`} alt="" style={{maxWidth: 320}} />}
+        {r.thumbnailRel && (
+          <div>
+            <img src={`${s.mediaBase}/${r.thumbnailRel}?t=${j.endedAt}`} alt="サムネイル" style={{maxWidth: 180}} />
+            <div className="hint">サムネイル: {r.thumbnailRel}（文言・背景は Timeline の「動画全体」→ サムネイル で変えられます）</div>
+          </div>
+        )}
         {r.qcTileRel && <img src={`${s.mediaBase}/${r.qcTileRel}?t=${j.endedAt}`} alt="QC" />}
         {r.warnings?.map((w, i) => (
           <div key={i} className="issue W">

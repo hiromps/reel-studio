@@ -45,9 +45,11 @@ describe('deliverSource', () => {
     expect(deliverSource('narration')).toBe('out/final_narration.mp4');
     expect(deliverSource('silent')).toBe('out/final.mp4');
     expect(deliverSource('caption')).toBe('caption.txt');
+    expect(deliverSource('thumbnail')).toBe('out/thumbnail.jpg');
+    expect(deliverFileName({shop: '活魚センター', persona: 'nagi', kind: 'thumbnail'})).toBe('活魚センター_nagi_サムネイル.jpg');
   });
 
   it('draft は納品対象に無い', () => {
-    expect(Object.keys(DELIVER_LABEL)).toEqual(['narration', 'silent', 'caption']);
+    expect(Object.keys(DELIVER_LABEL)).toEqual(['narration', 'silent', 'caption', 'thumbnail']);
   });
 });

@@ -167,7 +167,8 @@ const candidates = (dir: string): Candidate[] => {
   // 軽量プロキシ（540x960）。スマホの Timeline プレビューの本体
   for (const rel of walk(path.join(sdir, 'preview'))) out.push({kind: 'uploads', mode: 'light', relPath: rel, file: path.join(sdir, 'preview', rel)});
   // 書き出し・QC・ナレーション音声
-  for (const rel of walk(path.join(dir, 'out'))) if (/\.(mp4|m4v|mov)$/i.test(rel)) out.push({kind: 'out', mode: 'full', relPath: rel, file: path.join(dir, 'out', rel)});
+  // 静止画はサムネイル（out/thumbnail.jpg）。スマホから保存して投稿のカバーに使う
+  for (const rel of walk(path.join(dir, 'out'))) if (/\.(mp4|m4v|mov|jpg|png)$/i.test(rel)) out.push({kind: 'out', mode: 'full', relPath: rel, file: path.join(dir, 'out', rel)});
   for (const rel of walk(path.join(dir, 'qc'))) out.push({kind: 'qc', mode: 'full', relPath: rel, file: path.join(dir, 'qc', rel)});
   for (const rel of walk(path.join(dir, 'narration'))) if (/\.wav$/i.test(rel)) out.push({kind: 'narration', mode: 'full', relPath: rel, file: path.join(dir, 'narration', rel)});
   return out;

@@ -69,6 +69,10 @@ type Props = {
   /** ナレーション・効果音のドラッグでカット境界に吸着する */
   snap: boolean;
   tracks: TrackVisibility;
+  /** サムネイルの背景にしているコマの位置（動画の秒）。目盛りにピンを立てる。null なら出さない */
+  thumbnailSec?: number | null;
+  /** ピンを横にドラッグして離したとき（その秒のコマを背景にする） */
+  onThumbnailSec?: (sec: number) => void;
 };
 
 type Drag =
@@ -91,7 +95,7 @@ const descOf = (clip: Clip | undefined, c: Cut): string => clip?.tags?.descripti
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
-  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, onSelect, onSelectQuiet, currentFrame, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks} = props;
+  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, onSelect, onSelectQuiet, currentFrame, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
   const videoRowRef = useRef<HTMLDivElement | null>(null);
@@ -399,6 +403,45 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
   const trimStartSec = trimIndex >= 0 ? (blocks[trimIndex]?.startSec ?? 0) : Infinity;
 
   const playheadX = playheadSec * pxPerSec;
+
+  // ---- サムネイルのピン：クリックで編集を開く・横にドラッグで背景のコマを変える ----
+  const pinDrag = useRef<{startX: number; moved: boolean} | null>(null);
+  const [pinSec, setPinSec] = useState<number | null>(null);
+  const secAtClientX = (clientX: number) => {
+    const inner = innerRef.current;
+    if (!inner) return 0;
+    return Math.max(0, Math.min(totalSec - 1 / data.fps, (clientX - inner.getBoundingClientRect().left) / pxPerSec));
+  };
+  const onPinDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    pinDrag.current = {startX: e.clientX, moved: false};
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      /* 取れなくてもクリックは効く */
+    }
+  };
+  const onPinMove = (e: React.PointerEvent) => {
+    const d = pinDrag.current;
+    if (!d) return;
+    if (!d.moved && Math.abs(e.clientX - d.startX) < 4) return;
+    d.moved = true;
+    const sec = secAtClientX(e.clientX);
+    setPinSec(sec);
+    // 動かしている間はそのコマをプレビューに出す
+    onSeek(Math.round(sec * data.fps));
+  };
+  const onPinUp = (e: React.PointerEvent) => {
+    const d = pinDrag.current;
+    pinDrag.current = null;
+    setPinSec(null);
+    if (!d) return;
+    if (d.moved) onThumbnailSec?.(secAtClientX(e.clientX));
+    else onSelect({kind: 'thumbnail'});
+  };
+  const shownPinSec = pinSec ?? thumbnailSec ?? null;
   const isSel = (s: Selection) => sameSelection(selection, s);
   const rowsShown = 1 + (tracks.telop ? 1 : 0) + (tracks.narr ? 1 : 0) + (tracks.sfx ? 1 : 0);
 
@@ -449,6 +492,22 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                 {t.major && <span className="ctl-tick-label">{fmtSec(t.sec)}</span>}
               </div>
             ))}
+            {shownPinSec !== null && cuts && (
+              <div
+                className={`tl-thumb-pin${isSel({kind: 'thumbnail'}) ? ' sel' : ''}${pinSec !== null ? ' dragging' : ''}`}
+                style={{left: shownPinSec * pxPerSec}}
+                title="サムネイルの背景にするコマ。クリックでサムネイルを編集、横にドラッグでコマを変える"
+                onPointerDown={onPinDown}
+                onPointerMove={onPinMove}
+                onPointerUp={onPinUp}
+                onPointerCancel={() => {
+                  pinDrag.current = null;
+                  setPinSec(null);
+                }}
+              >
+                🖼
+              </div>
+            )}
           </div>
 
           {/* ── V: 映像 ── */}

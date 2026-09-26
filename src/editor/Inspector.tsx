@@ -15,6 +15,7 @@ import {FIT_DEFAULTS} from '@shared/fit';
 import {useStudio} from '../state/store';
 import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
+import {ThumbnailSection} from './ThumbnailSection';
 
 type Common = {m: EditorModel; onSeekCut: (i: number) => void};
 
@@ -128,6 +129,9 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
             <IssueList rows={fitNotes.map((n) => ({severity: n.trimStart().startsWith('!') ? ('W' as const) : ('info' as const), message: n.trim().replace(/^!\s*/, '')}))} maxHeight={220} />
           </details>
         )}
+      </Section>
+      <Section title="サムネイル" right={<span className="hint">本番レンダーで自動作成</span>}>
+        <ThumbnailSection m={m} />
       </Section>
       <Section title="操作">
         <ul className="insp-keys">

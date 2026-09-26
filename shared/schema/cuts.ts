@@ -121,6 +121,30 @@ export const ReelMetaSchema = z
   .passthrough(); // shop / format / winningAngle / reasonToSave / selectedHook / buzzScore / order … は自由項目として通す
 export type ReelMeta = z.infer<typeof ReelMetaSchema>;
 
+/**
+ * サムネイル（投稿のカバー画像）の中身。engine/src/Thumbnail.tsx の ThumbnailDef と対応。
+ * どれも省略でき、省略したものは案件（brief・カット）から決める（shared/thumbnail.ts）。
+ *   en    … 上の英字（例 "OSAKA"）
+ *   side  … 左の縦書き（例 "大阪×天満"）
+ *   title … 下の大きな横書き（例 "神コスパ寿司酒場"）。改行で 2 行にできる
+ *   font  … 使うフォント（public/fonts/ のファイル名）。省略＝テロップと同じ
+ *   bg    … 背景にする 1 コマ（素材と、素材内の秒）
+ */
+export const ThumbnailSchema = z.object({
+  en: z.string().optional(),
+  side: z.string().optional(),
+  title: z.string().optional(),
+  font: z.string().min(1).optional(),
+  bg: z
+    .object({
+      src: z.string().min(1),
+      atSec: z.number().min(0),
+      crop: CropSchema.optional(),
+    })
+    .optional(),
+});
+export type ThumbnailDef = z.infer<typeof ThumbnailSchema>;
+
 export const ReelDataSchema = z
   .object({
     fps: z.number().positive(),
@@ -133,6 +157,8 @@ export const ReelDataSchema = z
     tate: z.object({text: z.string(), outlineColor: z.string()}).optional(),
     /** バッジ下地の不透明度（0〜1）。省略時はエンジン既定 0.6。Timeline のスライダーで調整する */
     badgeOpacity: z.number().min(0).max(1).optional(),
+    /** サムネイルの文言・背景。省略時は案件から自動で決める（本番レンダーのたびに out/thumbnail.jpg を作る） */
+    thumbnail: ThumbnailSchema.optional(),
     cuts: z.array(CutSchema).min(1),
     meta: ReelMetaSchema.optional(),
   })

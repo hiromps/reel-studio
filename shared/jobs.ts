@@ -10,6 +10,8 @@ export const JOB_TYPES = [
   'render',
   'draft',
   'still',
+  /** サムネイル（投稿のカバー画像 out/thumbnail.jpg）だけを作り直す。本番レンダーでは自動で作られる */
+  'thumbnail',
   'qc-tile',
   'sync-engine',
   'npm-install',
@@ -72,6 +74,7 @@ export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
   'render',
   'draft',
   'still',
+  'thumbnail',
   'qc-tile',
   'mix',
   'trial',

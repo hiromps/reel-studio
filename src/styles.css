@@ -2367,6 +2367,30 @@ a.btn-like:hover {
   pointer-events: none;
   white-space: nowrap;
 }
+/* サムネイルの背景にするコマ（目盛りの上のピン）。クリックで編集、横ドラッグでコマを変える */
+.tl-thumb-pin {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+  height: calc(var(--tl-ruler) - 3px);
+  min-width: 20px;
+  padding: 0 3px;
+  font-size: 11px;
+  line-height: calc(var(--tl-ruler) - 5px);
+  text-align: center;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: ew-resize;
+  z-index: 5;
+  touch-action: none;
+  user-select: none;
+}
+.tl-thumb-pin.sel,
+.tl-thumb-pin.dragging {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 217, 102, 0.35);
+}
 .tl-playhead {
   position: absolute;
   top: 0;

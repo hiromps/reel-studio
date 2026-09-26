@@ -33,6 +33,7 @@
 //   reel sync --project P [--check]
 //   reel draft|render --project P [--out f] [--gl x] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries n] [--force] [--force-errors] [--no-sync] [--strict-proxy] [--props f]
 //   reel still --project P (--cut N | --frame F) [--out f]
+//   reel thumbnail --project P [--out f.jpg|f.png]      （サムネイルだけ作り直す。本番レンダーでは自動で out/thumbnail.jpg を作る）
 //   reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--gl x] [--force] [--force-errors]     （フックだけ差し替えた複数版。キャプションもパターンごとに納品）
 //   reel winner --project P [--id A] [--tail "締めテロップ"] [--tail-narration "締めナレ"] [--caption-file f] [--speed 1.1] [--draft] [--no-deliver] [--force] [--force-errors] [--model m]  （勝ちパターンの二次活用：締めだけ変えて倍速で出し直す）
 //   reel build --project P [--plan] [--steps caption,narration,tts,render,mix,deliver] [--model m] [--force-errors] [--label 修正版]  （仕上げ：残っている工程を順に走らせる）
@@ -79,7 +80,7 @@ import {TRIAL_POSTING_RULES} from '../shared/hooks';
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxRole} from '../shared/sfx';
 import {cloneProject, createProject, engineDiff, listProjects, npmInstall, readBrief, readCuts, resolveProjectDir, syncEngine, writeCuts} from '../core/project';
 import {applyAliases, pendingAliases} from '../core/alias';
-import {renderProject, renderStill, validateProject, PreflightError} from '../core/render';
+import {renderProject, renderStill, renderThumbnail, validateProject, PreflightError} from '../core/render';
 import {readJsonLoose} from '../core/json-io';
 import {applyMosaic, mosaicStatus, revertMosaic, setupMosaic} from '../core/mosaic';
 import {mosaicLabel, spansText} from '../shared/mosaic';
@@ -870,6 +871,7 @@ async function main() {
         });
         out(`OK ${r.outPath} (${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB, ${r.frames}f / 期待 ${r.expectedFrames}f, ${r.durationSec.toFixed(2)}s, ${r.attempts} 回目で成功)`);
         if (r.qcTile) out(`QC: ${r.qcTile}`);
+        if (r.thumbnail) out(`サムネイル: ${r.thumbnail}`);
         for (const w of r.warnings) out(`W ${w}`);
       } catch (e) {
         if (e instanceof PreflightError) {
@@ -887,6 +889,13 @@ async function main() {
       const dir = projectFromFlags(flags);
       const r = await renderStill(dir, {cut: num(flags, 'cut'), frame: num(flags, 'frame'), offsetSec: num(flags, 'offset'), out: str(flags, 'out'), gl: str(flags, 'gl'), onLine: (l) => err(l)});
       out(`OK ${r.out} (frame ${r.frame})`);
+      return;
+    }
+
+    case 'thumbnail': {
+      const dir = projectFromFlags(flags);
+      const r = await renderThumbnail(dir, {out: str(flags, 'out'), gl: str(flags, 'gl'), onLine: (l) => err(l)});
+      out(`OK ${r.out}`);
       return;
     }
 

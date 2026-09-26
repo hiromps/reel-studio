@@ -6,18 +6,20 @@
 //   <店名>_<人格>_ナレーション付き.mp4 / <店名>_<人格>_ナレーションなし.mp4 / <店名>_<人格>_caption.txt
 
 /** 納品物の種類 */
-export type DeliverKind = 'narration' | 'silent' | 'caption';
+export type DeliverKind = 'narration' | 'silent' | 'caption' | 'thumbnail';
 
 export const DELIVER_LABEL: Record<DeliverKind, string> = {
   narration: 'ナレーション付き',
   silent: 'ナレーションなし',
   caption: 'caption',
+  thumbnail: 'サムネイル',
 };
 
 export const DELIVER_EXT: Record<DeliverKind, string> = {
   narration: '.mp4',
   silent: '.mp4',
   caption: '.txt',
+  thumbnail: '.jpg',
 };
 
 /** Windows で使えない文字と、前後の空白・ドットを落とす。店名そのものは変えない（勝手に短くしない） */
@@ -42,4 +44,4 @@ export const deliverFileName = (opt: {shop: string; persona: string; kind: Deliv
 
 /** 案件フォルダ内の、その種類の元ファイル（プロジェクト相対） */
 export const deliverSource = (kind: DeliverKind): string =>
-  kind === 'narration' ? 'out/final_narration.mp4' : kind === 'silent' ? 'out/final.mp4' : 'caption.txt';
+  kind === 'narration' ? 'out/final_narration.mp4' : kind === 'silent' ? 'out/final.mp4' : kind === 'thumbnail' ? 'out/thumbnail.jpg' : 'caption.txt';

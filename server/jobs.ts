@@ -9,7 +9,7 @@ import {buildCatalog, loadCatalog, saveCatalog} from '../core/catalog';
 import {makeProxy, makePreviewProxy, needsProxy} from '../core/proxy';
 import {makeThumbnails, makeQcTile} from '../core/thumbnails';
 import {ffprobe} from '../core/ffprobe';
-import {renderProject, renderStill} from '../core/render';
+import {renderProject, renderStill, renderThumbnail} from '../core/render';
 import {npmInstall, resolveProjectDir, resolveProjectDirStrict, syncEngine, readCuts, writeCuts} from '../core/project';
 import {applyAliases} from '../core/alias';
 import {realignAliases} from '../shared/alias';
@@ -531,7 +531,12 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           onProgress: (pr) => ctx.onProgress(pr),
           signal,
         });
-        return {...r, validation: undefined, outRel: path.relative(dir, r.outPath).replace(/\\/g, '/'), qcTileRel: r.qcTile ? path.relative(dir, r.qcTile).replace(/\\/g, '/') : undefined};
+        return {...r, validation: undefined, outRel: path.relative(dir, r.outPath).replace(/\\/g, '/'), qcTileRel: r.qcTile ? path.relative(dir, r.qcTile).replace(/\\/g, '/') : undefined, thumbnailRel: r.thumbnail ? path.relative(dir, r.thumbnail).replace(/\\/g, '/') : undefined};
+      }
+      // サムネイルだけ作り直す（文言・背景を Timeline で直したあと）
+      case 'thumbnail': {
+        const r = await renderThumbnail(dir, {gl: p.gl as string | undefined, onLine, signal});
+        return {outRel: path.relative(dir, r.out).replace(/\\/g, '/')};
       }
       case 'still': {
         const r = await renderStill(dir, {cut: p.cut as number | undefined, frame: p.frame as number | undefined, offsetSec: p.offsetSec as number | undefined, gl: p.gl as string | undefined, onLine});

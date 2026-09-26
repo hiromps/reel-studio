@@ -16,6 +16,8 @@ import {loadCatalog} from './catalog';
 import {engineDiff, syncEngine, readCuts, readBrief, writeCuts} from './project';
 import {ensureProjectFont, type FontDelivery} from './fonts';
 import {pendingAliases, applyAliases} from './alias';
+import {loadSettings} from './settings';
+import {resolveThumbnail, THUMBNAIL_REL} from '../shared/thumbnail';
 
 export type RenderProgress = {phase: 'bundle' | 'render' | 'stitch' | 'other'; done: number; total: number; attempt: number};
 
@@ -43,6 +45,11 @@ export type RenderOptions = {
   /** --props に渡す cuts.json（省略時は案件直下の cuts.json＝defaultProps） */
   props?: string;
   lowMemory?: boolean;
+  /**
+   * 書き出しのあとにサムネイル（out/thumbnail.jpg）も作るか。
+   * 既定は「本番（draft でない）を既定の場所に書き出すとき」だけ作る（別名・別 props の書き出しは二次活用なので作らない）
+   */
+  thumbnail?: boolean;
   onLine?: (line: string) => void;
   onProgress?: (p: RenderProgress) => void;
   signal?: AbortSignal;
@@ -57,6 +64,8 @@ export type RenderResult = {
   expectedFrames: number;
   durationSec: number;
   qcTile?: string;
+  /** 作ったサムネイル（絶対パス）。作らなかった・失敗したときは無し（失敗は warnings に載る） */
+  thumbnail?: string;
   warnings: string[];
   logs: string[];
   validation: ValidationResult;
@@ -260,6 +269,17 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
   } catch (e) {
     warnings.push(`QC タイル生成に失敗: ${(e as Error).message}`);
   }
+  // サムネイル。動画はもう出来ているので、失敗しても書き出しは成功のまま（知らせるだけ）
+  let thumbnail: string | undefined;
+  if (opt.thumbnail ?? (!opt.draft && !opt.out && !opt.props)) {
+    try {
+      thumbnail = (await renderThumbnail(projectDir, {gl: opt.gl, onLine: log, signal: opt.signal})).out;
+      log(`サムネイル: ${path.relative(projectDir, thumbnail).replace(/\\/g, '/')}`);
+    } catch (e) {
+      if (opt.signal?.aborted) throw e;
+      warnings.push(`サムネイルの生成に失敗: ${(e as Error).message.split('\n')[0]}（Timeline の「サムネイル」から作り直せます）`);
+    }
+  }
   const result: RenderResult = {
     ok: true,
     attempts,
@@ -269,6 +289,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
     expectedFrames,
     durationSec,
     qcTile,
+    thumbnail,
     warnings,
     logs,
     validation: pf.validation,
@@ -298,4 +319,31 @@ export async function renderStill(projectDir: string, opt: {cut?: number; frame?
   const r = await exec(process.execPath, [remotionCli(projectDir), ...args], {cwd: projectDir, onLine: (l) => opt.onLine?.(l)});
   if (r.code !== 0 || !fs.existsSync(outAbs)) throw new Error(`still に失敗 (exit ${r.code}):\n${r.stderr.split(/\r?\n/).slice(-20).join('\n')}`);
   return {out: outAbs, frame};
+}
+
+/**
+ * サムネイル（投稿のカバー画像）を書き出す。型は engine/src/Thumbnail.tsx、文言と背景は shared/thumbnail.ts。
+ * cuts.json はそのままに、埋め終わったものを別の props ファイルに書いて Remotion に渡す
+ * （エンジンは案件にコピーされる独立したコードなので、既定の決め方はこちらで持つ）。
+ */
+export async function renderThumbnail(projectDir: string, opt: {out?: string; gl?: string; onLine?: (l: string) => void; signal?: AbortSignal} = {}): Promise<{out: string}> {
+  const cuts = readCuts(projectDir);
+  const thumb = resolveThumbnail(cuts, readBrief(projectDir), loadSettings().telop.font);
+  if (!thumb.bg) throw new Error('背景にするカットがありません');
+  if (!fs.existsSync(path.join(projectDir, 'public', thumb.bg.src))) throw new Error(`背景の素材が見つかりません: public/${thumb.bg.src}`);
+  if (!fs.existsSync(remotionCli(projectDir))) throw new Error('node_modules に @remotion/cli が無い（npm install が必要）');
+  if (engineDiff(projectDir).stale) syncEngine(projectDir);
+  const font = ensureProjectFont(projectDir, thumb.font);
+  if (font.missing) opt.onLine?.(`サムネイルのフォント ${font.file} が見つかりません。同梱の明朝で描きます`);
+  const outRel = opt.out ?? THUMBNAIL_REL;
+  const outAbs = path.isAbsolute(outRel) ? outRel : path.join(projectDir, outRel);
+  fs.mkdirSync(path.dirname(outAbs), {recursive: true});
+  const propsFile = path.join(projectDir, studioConfig.studioDirName, 'thumbnail-props.json');
+  fs.mkdirSync(path.dirname(propsFile), {recursive: true});
+  fs.writeFileSync(propsFile, JSON.stringify({...cuts, thumbnail: thumb}, null, 2));
+  const format = /\.png$/i.test(outAbs) ? ['--image-format=png'] : ['--image-format=jpeg', '--jpeg-quality=92'];
+  const args = ['still', 'Thumbnail', outAbs, `--props=${propsFile}`, ...format, `--gl=${opt.gl ?? 'swiftshader'}`, '--overwrite'];
+  const r = await exec(process.execPath, [remotionCli(projectDir), ...args], {cwd: projectDir, signal: opt.signal, onLine: (l) => opt.onLine?.(l)});
+  if (r.code !== 0 || !fs.existsSync(outAbs)) throw new Error(`サムネイルの書き出しに失敗 (exit ${r.code}):\n${r.stderr.split(/\r?\n/).slice(-20).join('\n')}`);
+  return {out: outAbs};
 }

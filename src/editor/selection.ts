@@ -4,11 +4,14 @@ export type Selection =
   | {kind: 'telop'; group: number}
   | {kind: 'narr'; index: number}
   | {kind: 'sfx'; index: number}
+  /** サムネイル（投稿のカバー画像）。タイムラインの「サムネイル」ボタンか目盛りのピンで選ぶ */
+  | {kind: 'thumbnail'}
   | null;
 
 export const sameSelection = (a: Selection, b: Selection): boolean => {
   if (a === null || b === null) return a === b;
   if (a.kind !== b.kind) return false;
+  if (a.kind === 'thumbnail') return true;
   if (a.kind === 'telop') return a.group === (b as {group: number}).group;
   return (a as {index: number}).index === (b as {index: number}).index;
 };
