@@ -5,13 +5,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {ClipKindSchema, AngleSchema, MotionSchema} from '../shared/schema/catalog';
-import type {Clip} from '../shared/schema/catalog';
+import type {Catalog, Clip} from '../shared/schema/catalog';
 import {ReelDataSchema, type Cut, type ReelData} from '../shared/schema/cuts';
-import {NarrationSchema} from '../shared/schema/narration';
+import {NarrationSchema, type Narration} from '../shared/schema/narration';
 import type {ValidationResult} from '../shared/validate';
 import {checkOrder, formatOrderCheck, orderPrinciples} from '../shared/order';
 import {checkCaption, formatCaptionIssues, type CaptionIssue} from '../shared/caption';
-import {cutDurationSec, telopGroupsOf, totalSec} from '../shared/timeline';
+import {cutDurationSec, round3, snapSec, telopGroupsOf, totalSec} from '../shared/timeline';
 import {countChars, isPlaceholder, minDisplaySec, normalizeEllipsis} from '../shared/telop-text';
 import {importTags, loadCatalog, saveCatalog, studioDir, type TagImport} from './catalog';
 import {buildOrderExport, exportOrder, importOrder, loadOrderEnv, type OrderEnv, type OrderImportResult} from './order';
@@ -1096,8 +1096,30 @@ const PATCH_SCHEMA = {
     },
     narration: {
       type: 'array',
-      description: 'ナレーションの変更。text を変えると音声を作り直す必要がある',
-      items: {type: 'object', additionalProperties: false, required: ['id'], properties: {id: {type: 'string'}, text: {type: 'string'}, at: {type: 'number'}}},
+      description: 'ナレーションの変更。text を変えると音声を作り直す必要がある。add: true で新しいブロック（id は新しく付ける・text と at が必須）',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: {id: {type: 'string'}, text: {type: 'string'}, at: {type: 'number'}, add: {type: 'boolean'}, remove: {type: 'boolean'}},
+      },
+    },
+    add: {
+      type: 'array',
+      description: '素材からカットを足す。ref は仮の名前（n1, n2 …）で、order / telops / cuts の cutId に使える',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ref', 'clipId'],
+        properties: {
+          ref: {type: 'string'},
+          clipId: {type: 'string', description: '素材一覧の id'},
+          inSec: {type: 'number', description: '素材内の秒。省略すると best 区間の頭'},
+          outSec: {type: 'number'},
+          text: {type: 'string', description: 'テロップ。省略で無し。前後のカットと同じ文言にすると 1 グループになる'},
+          after: {type: 'string', description: 'order を返さないときだけ使う。このカット（cutId か ref）の後ろに入れる。"^" で先頭、省略で末尾'},
+        },
+      },
     },
     cuts: {
       type: 'array',
@@ -1109,16 +1131,17 @@ const PATCH_SCHEMA = {
         properties: {cutId: {type: 'string'}, inSec: {type: 'number'}, outSec: {type: 'number'}, playbackRate: {type: 'number'}, badge: {type: 'string'}, remove: {type: 'boolean'}},
       },
     },
-    order: {type: 'array', items: {type: 'string'}, description: 'cutId の並べ替え。全カットを列挙する。並び替えないなら省略'},
+    order: {type: 'array', items: {type: 'string'}, description: '並べ替え後の全カット（残す既存の cutId と、add の ref）を先頭から列挙する。並び替えないなら省略'},
     theme: {type: 'string', enum: ['pop', 'bold', 'human', 'stylish']},
     unapplied: {type: 'array', items: {type: 'string'}, description: 'できなかったこと・判断がつかず確認したいこと'},
   },
 } as const;
 
-type Patch = {
+export type Patch = {
   summary: string;
   telops?: {group?: string; cutId?: string; text: string; orientation?: 'vertical' | 'horizontal'}[];
-  narration?: {id: string; text?: string; at?: number}[];
+  narration?: {id: string; text?: string; at?: number; add?: boolean; remove?: boolean}[];
+  add?: {ref: string; clipId: string; inSec?: number; outSec?: number; text?: string; after?: string}[];
   cuts?: {cutId: string; inSec?: number; outSec?: number; playbackRate?: number; badge?: string; remove?: boolean}[];
   order?: string[];
   theme?: 'pop' | 'bold' | 'human' | 'stylish';
@@ -1133,6 +1156,228 @@ export type AiEditResult = {
   needsTts: string[];
   costUsd: number;
   validation?: ValidationResult;
+};
+
+const LABEL_RANK: Record<string, number> = {best: 0, ok: 1, 'motion-full': 2};
+
+/** 素材の使える区間（avoid 以外）を best 優先で */
+const usableOf = (clip: Clip) =>
+  clip.usableRanges.filter((r) => r.label !== 'avoid' && r.outSec > r.inSec).sort((a, b) => (LABEL_RANK[a.label] ?? 5) - (LABEL_RANK[b.label] ?? 5) || a.inSec - b.inSec);
+
+/**
+ * 足すカットの区間。省略時は best 区間（無ければ頭尾 0.2 秒を避けた全体）。
+ * 会話クリップ以外は maxSec で切り、素材の尺とフレームグリッドに収める。短すぎて使えなければ null
+ */
+export const addedCutRange = (clip: Clip, fps: number, maxSec: number, inSec?: number, outSec?: number): {inSec: number; outSec: number} | null => {
+  const dur = clip.probe.durationSec;
+  const u = usableOf(clip)[0];
+  const margin = dur >= 2.5 ? 0.2 : 0;
+  let a = inSec ?? u?.inSec ?? margin;
+  let b = outSec ?? (inSec === undefined && u ? u.outSec : dur - margin);
+  const speech = clip.tags?.hasSpeech === true || clip.tags?.kind === 'conversation' || (clip.speech?.length ?? 0) > 0;
+  if (!speech && maxSec > 0 && b - a > maxSec) b = a + maxSec;
+  a = Math.min(Math.max(0, snapSec(a, fps)), dur);
+  b = Math.min(Math.max(0, snapSec(b, fps)), dur);
+  if (b - a < 0.2) return null;
+  return {inSec: round3(a), outSec: round3(b)};
+};
+
+export type PatchApplied = {
+  cuts: ReelData;
+  /** 変えていなければ null（書き出さない） */
+  narration: Narration | null;
+  cutsTouched: boolean;
+  applied: string[];
+  unapplied: string[];
+  needsTts: string[];
+};
+
+/**
+ * AI が返した差分を cuts.json / narration.json に当てる（純粋関数。書き出しは呼び出し側）。
+ * 順番: 足す → 区間・削除 → 並べ替え → テロップ → theme。add の ref は以降のどこからでも cutId として指せる
+ */
+export function applyPatch(
+  cuts: ReelData,
+  narration: Narration | null,
+  catalog: Pick<Catalog, 'clips'>,
+  patch: Patch,
+  opt: {maxCutSec: number; defaultTheme?: string},
+): PatchApplied {
+  const applied: string[] = [];
+  const unapplied = [...(patch.unapplied ?? [])];
+  const needsTts: string[] = [];
+  const next: ReelData = {...cuts, cuts: cuts.cuts.map((c) => ({...c, main: c.main ? {...c.main} : undefined}))};
+  if (next.meta?.telopGroups) next.meta = {...next.meta, telopGroups: next.meta.telopGroups.map((g) => ({...g, cutIds: [...g.cutIds]}))};
+
+  // ref（n1 …）→ 実際に振った cutId
+  const refs = new Map<string, string>();
+  const idOf = (key: string) => refs.get(key) ?? key;
+  const indexOfCut = (key: string) => next.cuts.findIndex((c) => c.id === idOf(key));
+
+  for (const a of patch.add ?? []) {
+    const clip = catalog.clips.find((x) => x.id === a.clipId) ?? catalog.clips.find((x) => x.src === a.clipId);
+    if (!clip) {
+      unapplied.push(`add: 素材 ${a.clipId} が無い`);
+      continue;
+    }
+    if (clip.user.ng) {
+      unapplied.push(`add: 素材 ${clip.id} は NG 指定なので足していない`);
+      continue;
+    }
+    const range = addedCutRange(clip, next.fps, opt.maxCutSec, a.inSec, a.outSec);
+    if (!range) {
+      unapplied.push(`add: 素材 ${clip.id} の ${a.inSec ?? '?'}〜${a.outSec ?? '?'} 秒は短すぎるか素材の外`);
+      continue;
+    }
+    const id = newCutIdOf(next.cuts);
+    const cut: Cut = {id, src: clip.src, inSec: range.inSec, outSec: range.outSec, ...(clip.crop ? {crop: clip.crop} : {})};
+    const text = a.text?.trim();
+    if (text) cut.main = {text: normalizeEllipsis(text)};
+    let at = next.cuts.length;
+    if (!patch.order?.length && a.after) {
+      if (a.after === '^') at = 0;
+      else {
+        const i = indexOfCut(a.after);
+        if (i >= 0) at = i + 1;
+        else unapplied.push(`add: ${a.ref} の after ${a.after} が無いので末尾に入れた`);
+      }
+    }
+    next.cuts.splice(at, 0, cut);
+    refs.set(a.ref, id);
+    applied.push(`カット ${id} を追加（素材 ${clip.id} ${range.inSec.toFixed(2)}〜${range.outSec.toFixed(2)}${text ? `・テロップ「${cut.main!.text}」` : ''}）`);
+  }
+
+  for (const e of patch.cuts ?? []) {
+    const i = indexOfCut(e.cutId);
+    if (i < 0) {
+      unapplied.push(`cuts: ${e.cutId} が無い`);
+      continue;
+    }
+    if (e.remove) {
+      if (next.cuts.length <= 1) {
+        unapplied.push(`cuts: ${e.cutId} は最後の 1 カットなので消せない`);
+        continue;
+      }
+      const [gone] = next.cuts.splice(i, 1);
+      applied.push(`カット ${gone.id} を削除`);
+      continue;
+    }
+    const c = next.cuts[i];
+    const before = `${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`;
+    if (e.inSec !== undefined) c.inSec = e.inSec;
+    if (e.outSec !== undefined) c.outSec = e.outSec;
+    if (e.playbackRate !== undefined) {
+      if (e.playbackRate === 1) delete c.playbackRate;
+      else c.playbackRate = e.playbackRate;
+    }
+    if (e.badge !== undefined) {
+      if (e.badge) c.badge = e.badge;
+      else delete c.badge;
+    }
+    applied.push(`カット ${c.id} を ${before} → ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`);
+  }
+
+  if (patch.order?.length) {
+    const byId = new Map(next.cuts.map((c) => [c.id, c]));
+    const ids = patch.order.map(idOf);
+    const unknown = ids.filter((id) => !byId.has(id));
+    const missing = next.cuts.filter((c) => !ids.includes(c.id!)).map((c) => c.id);
+    const dup = ids.length !== new Set(ids).size;
+    if (unknown.length || missing.length || dup) {
+      unapplied.push(
+        `order: 並べ替えは見送り（${[unknown.length ? `知らない id ${unknown.join(', ')}` : '', missing.length ? `抜けている ${missing.join(', ')}` : '', dup ? '重複あり' : ''].filter(Boolean).join(' / ')}）`,
+      );
+    } else if (ids.join() !== next.cuts.map((c) => c.id).join()) {
+      next.cuts = ids.map((id) => byId.get(id)!);
+      applied.push(`並び替え: ${ids.join(' → ')}`);
+    }
+  }
+
+  for (const t of patch.telops ?? []) {
+    const ids = t.group ? (next.meta?.telopGroups?.find((g) => g.id === t.group)?.cutIds ?? []) : t.cutId ? [t.cutId] : [];
+    const idx = ids.map(indexOfCut).filter((i) => i >= 0);
+    if (!idx.length) {
+      unapplied.push(`telops: ${t.group ?? t.cutId ?? '(指定なし)'} が無い`);
+      continue;
+    }
+    const before = next.cuts[idx[0]].main?.text ?? '';
+    for (const i of idx) {
+      const c = next.cuts[i];
+      c.main = {...(c.main ?? {}), text: normalizeEllipsis(t.text)};
+      if (t.orientation === 'horizontal') c.main.orientation = 'horizontal';
+      else if (t.orientation === 'vertical') delete c.main.orientation;
+    }
+    applied.push(`テロップ ${t.group ?? idOf(t.cutId!)}「${before}」→「${t.text}」`);
+  }
+
+  if (patch.theme && patch.theme !== (next.theme ?? opt.defaultTheme)) {
+    next.theme = patch.theme;
+    applied.push(`theme を ${patch.theme} に`);
+  }
+
+  // 消したカットは meta から外す（残すと絵コンテのグループ・スロットが幽霊を指す）
+  const alive = new Set(next.cuts.map((c) => c.id));
+  if (next.meta?.slots) next.meta = {...next.meta, slots: next.meta.slots.filter((s) => alive.has(s.cutId))};
+  if (next.meta?.telopGroups) next.meta = {...next.meta, telopGroups: next.meta.telopGroups.map((g) => ({...g, cutIds: g.cutIds.filter((id) => alive.has(id))})).filter((g) => g.cutIds.length)};
+
+  const cutsTouched = (patch.add?.length ?? 0) + (patch.cuts?.length ?? 0) + (patch.telops?.length ?? 0) + (patch.order?.length ?? 0) > 0 || !!patch.theme;
+
+  // ── narration.json ──
+  let nextNarr: Narration | null = null;
+  if (patch.narration?.length) {
+    if (!narration) unapplied.push('narration: narration.json が無いので変更できない');
+    else {
+      const n = {...narration, segments: narration.segments.map((s) => ({...s}))};
+      for (const e of patch.narration) {
+        const idx = n.segments.findIndex((s) => s.id === e.id);
+        if (e.add) {
+          if (idx >= 0) unapplied.push(`narration: ${e.id} はもうあるので足していない（別の id にする）`);
+          else if (!e.text?.trim() || e.at === undefined) unapplied.push(`narration: ${e.id} を足すには text と at が要る`);
+          else {
+            n.segments.push({id: e.id, at: e.at, text: e.text, needsTts: true} as Narration['segments'][number]);
+            needsTts.push(e.id);
+            applied.push(`ナレーション ${e.id} を ${e.at.toFixed(2)} 秒に追加「${e.text}」`);
+          }
+          continue;
+        }
+        if (idx < 0) {
+          unapplied.push(`narration: ${e.id} が無い`);
+          continue;
+        }
+        if (e.remove) {
+          n.segments.splice(idx, 1);
+          applied.push(`ナレーション ${e.id} を削除`);
+          continue;
+        }
+        const seg = n.segments[idx];
+        if (e.at !== undefined && e.at !== seg.at) {
+          applied.push(`ナレーション ${e.id} の位置を ${seg.at.toFixed(2)} → ${e.at.toFixed(2)} 秒`);
+          seg.at = e.at;
+        }
+        if (e.text !== undefined && e.text !== seg.text) {
+          applied.push(`ナレーション ${e.id}「${seg.text}」→「${e.text}」`);
+          seg.text = e.text;
+          // 文言が変わった＝既存の wav は使えない。実測尺も無効にする
+          delete (seg as Record<string, unknown>).durSec;
+          (seg as Record<string, unknown>).needsTts = true;
+          needsTts.push(e.id);
+        }
+      }
+      n.segments.sort((a, b) => a.at - b.at);
+      nextNarr = n;
+    }
+  }
+
+  return {cuts: next, narration: nextNarr, cutsTouched, applied, unapplied, needsTts};
+}
+
+/** 空いている最小の c01 … 形式の id（Timeline 画面の newCutId と同じ採番） */
+const newCutIdOf = (cuts: Cut[]): string => {
+  const used = new Set(cuts.map((c) => c.id));
+  for (let n = 1; ; n++) {
+    const id = `c${String(n).padStart(2, '0')}`;
+    if (!used.has(id)) return id;
+  }
 };
 
 /** 自由文の指示で cuts.json / narration.json を直す。エージェントは差分だけ返し、適用はこちらで行う */
@@ -1176,6 +1421,25 @@ export async function aiEdit(
     });
   }
 
+  // 足せる素材。NG は出さない。使用中のものも別区間で使えるので載せる
+  const usedBy = new Map<string, string[]>();
+  cuts.cuts.forEach((c) => {
+    const cl = clipOf(c);
+    if (cl) usedBy.set(cl.id, [...(usedBy.get(cl.id) ?? []), c.id ?? '?']);
+  });
+  const sdir = studioConfig.studioDirName;
+  const clipLines = catalog.clips
+    .filter((cl) => !cl.user.ng)
+    .map((cl) => {
+      const ranges = usableOf(cl)
+        .map((r) => `${r.label} ${r.inSec.toFixed(2)}〜${r.outSec.toFixed(2)}`)
+        .join('、');
+      const used = usedBy.get(cl.id);
+      const sheet = cl.thumbs.sheet ? `${sdir}/${cl.thumbs.sheet.replace(/\\/g, '/')}` : '';
+      return `- ${cl.id} / ${cl.probe.durationSec.toFixed(2)}秒${ranges ? ` / 使える区間 ${ranges}` : ''}${used ? ` / 使用中 ${used.join('・')}` : ''}${cl.tags?.signage ? ' / 店名・看板が写る' : ''} / ${cl.tags?.description ?? cl.slug}${sheet ? ` / 一覧画 ${sheet}` : ''}`;
+    });
+  const maxCutSec = spec.tempo?.maxCutSec ?? 3;
+
   const prompt = [
     'グルメのショート動画の案件を直してほしい。ユーザーの指示は次のとおり:',
     '',
@@ -1189,7 +1453,14 @@ export async function aiEdit(
     narration ? `いまのナレーション（ボイス ${narration.voiceTitle ?? narration.voice} / speed ${narration.speed ?? persona.narration.speed} / 実測 ${persona.narration.charsPerSecMeasured} 文字/秒）:` : 'ナレーションはまだ無い（narration.json 無し）。',
     ...narrLines,
     '',
+    '足せる素材（id / 尺 / 使える区間 / 使用中のカット / 内容）:',
+    ...clipLines,
+    '',
     '指示に関係するところだけ直す。関係ないところは触らない。返すのは差分だけで、ファイルは自分で書き換えないこと。',
+    '差分でできること: 素材からカットを足す（add。ref に n1, n2 … と仮の名前を付け、order・telops・cuts の cutId にその ref を使える）／区間・倍速・削除（cuts）／並べ替え（order＝残す既存の cutId と add の ref を全部、先頭から）／テロップ（telops）／ナレーションの文言・位置の変更と追加・削除（narration）／theme。',
+    '**頼まれたことは、できる部分は全部この差分でやりきる**。一部に確認したいことがあっても、残りを見送らない。確認事項は unapplied に書き、その部分は無難な案で入れておくか、入れずに残す。',
+    'カットを足したり並べ替えたりすると後ろのカットの位置がずれる。ナレーションがあるときは、並べ替え後の時間軸でブロックが対応するカットの区間に来るよう at を直し、足したカットに合うブロックが要るなら add で足す。',
+    `足すカットの区間は素材の尺の内側で、${maxCutSec} 秒以内（使える区間の best を優先。省略すると best 区間の頭から）。見た目で決めたいときは「一覧画」を Read で見てよい（1 枚ずつ）。`,
     '判断に絵が要るカットは「画」のパスを Read で見る（1 枚ずつ）。cuts.json / narration.json / brief.json / catalog.json / caption.txt（店の情報の要約。ナレーションを肉付けする材料。金額・ハッシュタグ・URL・住所は読まない）も Read で読める。',
     '',
     '守ること:',
@@ -1197,7 +1468,7 @@ export async function aiEdit(
     `- テロップの文体: ${persona.tone}`,
     `- ナレーション: **そのブロックの区間に出ているテロップの内容に沿って書く**（一字一句同じにはせず、言い換え・主語や理由の補足・キャプションや裏取り済みの事実で肉付けする）。上の「目安 N 文字」を超えると次のブロックに食い込む。語尾を連続させない。固有名詞や数字の単位は TTS が誤読しないようひらがなに開く（「牛すじ」→「ぎゅうすじ」、「350g」→「350グラム」。テロップは漢字のままでよい）`,
     ...persona.narrationRules.map((r) => `- ナレーション: ${r}`),
-    '- カットの尺は 3 秒を超えない（会話字幕のカットは例外）',
+    `- カットの尺は ${maxCutSec} 秒を超えない（会話字幕のカットは例外）`,
     '- 同じテロップ文言が続くカットは 1 グループ。group で指すと全部まとめて変わる',
     '',
     'できないこと・判断がつかないことは unapplied に書いて、勝手に決めない。',
@@ -1221,113 +1492,23 @@ export async function aiEdit(
   });
   opt.onProgress?.(want.length, want.length, '差分を適用しています');
   const patch = run.data;
-  const applied: string[] = [];
-  const unapplied = [...(patch.unapplied ?? [])];
-  const needsTts: string[] = [];
+  const r = applyPatch(cuts, narration, catalog, patch, {maxCutSec, defaultTheme: spec.theme});
+  const {applied, unapplied, needsTts} = r;
 
-  // ── cuts.json ──
-  let nextCuts: ReelData = {...cuts, cuts: cuts.cuts.map((c) => ({...c, main: c.main ? {...c.main} : undefined}))};
-  const indexOfCut = (id: string) => nextCuts.cuts.findIndex((c) => c.id === id);
-
-  for (const e of patch.cuts ?? []) {
-    const i = indexOfCut(e.cutId);
-    if (i < 0) {
-      unapplied.push(`cuts: ${e.cutId} が無い`);
-      continue;
-    }
-    if (e.remove) {
-      applied.push(`カット ${e.cutId} を削除`);
-      nextCuts.cuts.splice(i, 1);
-      continue;
-    }
-    const c = nextCuts.cuts[i];
-    const before = `${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`;
-    if (e.inSec !== undefined) c.inSec = e.inSec;
-    if (e.outSec !== undefined) c.outSec = e.outSec;
-    if (e.playbackRate !== undefined) {
-      if (e.playbackRate === 1) delete c.playbackRate;
-      else c.playbackRate = e.playbackRate;
-    }
-    if (e.badge !== undefined) {
-      if (e.badge) c.badge = e.badge;
-      else delete c.badge;
-    }
-    applied.push(`カット ${e.cutId} を ${before} → ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`);
-  }
-
-  if (patch.order?.length) {
-    const byId = new Map(nextCuts.cuts.map((c) => [c.id, c]));
-    const reordered = patch.order.map((id) => byId.get(id)).filter((c): c is Cut => !!c);
-    if (reordered.length !== nextCuts.cuts.length) unapplied.push(`order: ${nextCuts.cuts.length} カットのうち ${reordered.length} 個しか指定されていないので並べ替えは見送り`);
-    else if (patch.order.join() !== nextCuts.cuts.map((c) => c.id).join()) {
-      nextCuts.cuts = reordered;
-      applied.push(`並び替え: ${patch.order.join(' → ')}`);
-    }
-  }
-
-  for (const t of patch.telops ?? []) {
-    const ids = t.group ? (nextCuts.meta?.telopGroups?.find((g) => g.id === t.group)?.cutIds ?? []) : t.cutId ? [t.cutId] : [];
-    const idx = ids.map(indexOfCut).filter((i) => i >= 0);
-    if (!idx.length) {
-      unapplied.push(`telops: ${t.group ?? t.cutId ?? '(指定なし)'} が無い`);
-      continue;
-    }
-    const before = nextCuts.cuts[idx[0]].main?.text ?? '';
-    for (const i of idx) {
-      const c = nextCuts.cuts[i];
-      c.main = {...(c.main ?? {}), text: normalizeEllipsis(t.text)};
-      if (t.orientation === 'horizontal') c.main.orientation = 'horizontal';
-      else if (t.orientation === 'vertical') delete c.main.orientation;
-    }
-    applied.push(`テロップ ${t.group ?? t.cutId}「${before}」→「${t.text}」`);
-  }
-
-  if (patch.theme && patch.theme !== (nextCuts.theme ?? spec.theme)) {
-    nextCuts.theme = patch.theme;
-    applied.push(`theme を ${patch.theme} に`);
-  }
-
-  const parsedCuts = ReelDataSchema.safeParse(nextCuts);
   let validation: ValidationResult | undefined;
-  const cutsTouched = (patch.cuts?.length ?? 0) + (patch.telops?.length ?? 0) + (patch.order?.length ?? 0) > 0 || !!patch.theme;
-  if (cutsTouched) {
+  if (r.cutsTouched) {
+    const parsedCuts = ReelDataSchema.safeParse(r.cuts);
     if (!parsedCuts.success) {
       unapplied.push(`cuts.json の形が壊れるので書いていない: ${parsedCuts.error.issues[0]?.message ?? ''}`);
     } else {
-      nextCuts = parsedCuts.data;
-      writeCuts(projectDir, nextCuts);
+      writeCuts(projectDir, parsedCuts.data);
       validation = validateProject(projectDir);
     }
   }
-
-  // ── narration.json ──
-  if (patch.narration?.length) {
-    if (!narration) unapplied.push('narration: narration.json が無いので変更できない');
-    else {
-      const next = {...narration, segments: narration.segments.map((s) => ({...s}))};
-      for (const e of patch.narration) {
-        const seg = next.segments.find((s) => s.id === e.id);
-        if (!seg) {
-          unapplied.push(`narration: ${e.id} が無い`);
-          continue;
-        }
-        if (e.at !== undefined && e.at !== seg.at) {
-          applied.push(`ナレーション ${e.id} の位置を ${seg.at.toFixed(2)} → ${e.at.toFixed(2)} 秒`);
-          seg.at = e.at;
-        }
-        if (e.text !== undefined && e.text !== seg.text) {
-          applied.push(`ナレーション ${e.id}「${seg.text}」→「${e.text}」`);
-          seg.text = e.text;
-          // 文言が変わった＝既存の wav は使えない。実測尺も無効にする
-          delete (seg as Record<string, unknown>).durSec;
-          (seg as Record<string, unknown>).needsTts = true;
-          needsTts.push(e.id);
-        }
-      }
-      const parsedNarr = NarrationSchema.safeParse(next);
-      if (!parsedNarr.success) unapplied.push(`narration.json の形が壊れるので書いていない: ${parsedNarr.error.issues[0]?.message ?? ''}`);
-      else writeNarration(projectDir, parsedNarr.data);
-    }
+  if (r.narration) {
+    const parsedNarr = NarrationSchema.safeParse(r.narration);
+    if (!parsedNarr.success) unapplied.push(`narration.json の形が壊れるので書いていない: ${parsedNarr.error.issues[0]?.message ?? ''}`);
+    else writeNarration(projectDir, parsedNarr.data);
   }
 
   log(`AI 修正完了: ${applied.length} 件 / $${run.costUsd.toFixed(3)}`);

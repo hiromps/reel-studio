@@ -231,7 +231,7 @@ B 案件のテロップを AI に書かせる」はできるが、「2 案件を
 | Materials の **「AI にタグ付けしてもらう」** | 未タグのクリップを 8 本ずつに分け、コンタクトシートを見せて `kind` / `angle` / `signage` / `sizzleScore` / `subject` / `description` / `slug` を書かせ、`catalog.json` に反映する。看板・メニューから読み取れた事実は `catalog.facts` に入る |
 | Timeline の **「AI ▾ → 並べ替えてもらう」** | `.studio/order-export.json` を書き出し、それを読ませて並び順を決めさせ、`brief.order.fixed` → 再 plan → `cuts.json` まで書く |
 | Timeline の **「AI ▾ → テロップを書いてもらう」** | 未記入（`{{gNN:intent}}`）のグループについて、**そのカット頭の実フレームを 1 枚ずつ見せて**文言を書かせ、`cuts.json` に入れる |
-| Timeline の **「AI ▾ → 直してもらう」**（自由入力＋送信） | 書いた指示に沿って、テロップ文言・ナレーションのセリフと位置・カットの IN/OUT・倍速・削除・並び替え・theme を直す |
+| Timeline の **「AI ▾ → 直してもらう」**（自由入力＋送信） | 書いた指示に沿って、素材からのカット追加・テロップ文言・ナレーションのセリフと位置（ブロックの追加・削除も）・カットの IN/OUT・倍速・削除・並び替え・theme を直す |
 | Timeline の **「AI ▾ → ナレーション原稿」**／Render の **「AI にナレーションを書いてもらう」** | 完成したテロップ・カットの役割・各カット頭の実フレームを見て `narration.json` を書く。**テロップの内容に沿った原稿**を最優先にし（一字一句同じにはしない）、`caption.txt` と裏取り済みの事実で肉付けして動画の尺（6〜8 割を声で埋める）に合わせる |
 | Render の **「AI にキャプションを書いてもらう」** | まず店舗情報を Web で裏取り（Instagram 優先）して `brief.facts` を埋め、人格の SKILL.md Step 4 と過去の実例を読んで `caption.txt` を書く |
 | Render の **「店舗情報だけ調べる」** | キャプションは書かず、裏取りだけして `brief.facts` に入れる |
@@ -308,8 +308,8 @@ IG ハンドルが取れ、住所と電話は集約サイト経由（Google マ�
 
 ### 自由指示（`ai-edit`）の作り
 
-エージェントは**ファイルを書き換えず、差分だけを決まった形で返す**（`summary` / `telops` / `narration` / `cuts` / `order` / `theme` / `unapplied`）。
-それを `core/ai.ts` が 1 件ずつ適用し、`ReelDataSchema` / `NarrationSchema` に通してから書く。形が壊れる差分は書かずに `unapplied` に落ちる。
+エージェントは**ファイルを書き換えず、差分だけを決まった形で返す**（`summary` / `add` / `telops` / `narration` / `cuts` / `order` / `theme` / `unapplied`）。`add` は素材一覧（プロンプトに id・尺・使える区間を載せる）からカットを足す欄で、仮の名前 `ref`（n1 …）を `order` / `telops` / `cuts` から指せる。
+それを `core/ai.ts` の `applyPatch`（足す → 区間・削除 → 並べ替え → テロップ → theme の順）が適用し、`ReelDataSchema` / `NarrationSchema` に通してから書く。形が壊れる差分は書かずに `unapplied` に落ちる。
 変更前のファイルは `.studio/backups/` に残る。渡す文脈は、全カットの行（id・役割・区間・素材・テロップ・**カット頭のフレーム画像のパス**）と、
 ナレーション各ブロック（`at`・実測尺・**次のブロックまでの空き秒から計算した目安文字数**・現在の文言）。
 
