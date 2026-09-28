@@ -83,7 +83,7 @@ CLI は Git Bash から `bin/reel <cmd>`（cmd.exe は `bin\reel.cmd`）。
 | `reel still --project P --cut N [--offset 0.3]` / `--frame F` | 1 フレーム書き出し（カット頭から 0.3 秒後が既定） |
 | `reel thumbnail --project P [--out f.jpg]` | サムネイル（投稿のカバー画像）だけ作り直す。本番レンダーでは自動で `out/thumbnail.jpg` を作る |
 | `reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]` | トライアル用の**フック案（A は今の形・B/C は別の切り口）とパターン別キャプション**を書かせて `hooks.json` に入れる |
-| `reel ai reference --project P --file <動画> [--model m] [--no-analyze]` | **他の人のバズ動画を取り込んで型を分析**し `reference.json` に入れる（`--no-analyze` は取り込みだけ）。`--show` で分析を表示、`--from <別案件>` で別案件の分析を写す、`--remove` で取り消す |
+| `reel ai reference --project P --file <動画> [--model m] [--no-analyze]` | **他の人のバズ動画を取り込んで型を分析**し `reference.json` に入れる（`--no-analyze` は取り込みだけ）。`--file` の代わりに `--url <Instagram のリール URL>` で Instagram から落として取り込む（HikerAPI 1 トークン）。`--show` で分析を表示、`--from <別案件>` で別案件の分析を写す、`--remove` で取り消す |
 | `reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]` | **分析した型を写した台本**を `script.md` に書き、そのまま「台本から組み立てる」まで行う（`--dry` は割り当てを見るだけ、`--no-assemble` は台本だけ） |
 | `reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--force] [--force-errors]` | **フックだけ差し替えた複数版**を作る（レンダー→音声→mix→納品。キャプションもパターンごとに出す） |
 | `reel winner --project P [--id A] [--tail "締め"] [--tail-narration "締めナレ"] [--caption-file f] [--speed 1.1] [--draft] [--no-deliver] [--force] [--force-errors] [--model m]` | **勝ちパターンの二次活用**：締めの一言だけ変えて倍速で書き出し直し、新しいキャプションで納品 |
@@ -493,6 +493,9 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
 ### 使い方
 
 1. **動画を選ぶ**（ローカルは PC のファイル、スマホからは素材と同じく Blob へ直接上げて PC が受け取る）。
+   **Instagram のリール URL** を貼って「URL から取り込んで分析」でもよい（PC・スマホどちらからも）。PC が Smartgram MCP の
+   `download_reel_video` で動画の直リンクを取って落とす（**HikerAPI を 1 トークン消費**。Settings の「Instagram の情報取得」の鍵が要る）。
+   写真の投稿・非公開・削除済みは断る。元の投稿の URL は `reference.json` の `source.sourceUrl` に残る
    取り込むと自動で **「型を分析する」**（`ai-reference`）が走る。3 分までのショート動画だけ受け付ける
 2. 分析結果（尺・カット数・平均カット秒・声の割合、フック・リビール・締め・テロップとテンポの癖、区間の表、
    カットの一覧、写すときの規則）を見る。「別の案件の分析を使う」で、前に分析した型をそのまま持ってこられる
@@ -537,7 +540,7 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
 - 動画とコマは `.studio/reference/`（`source.<ext>` / `frames/NNN.jpg` / `sheets/NN.jpg`）。
   ワーカーは **コマとシートだけ**を Blob に上げる（動画は上げない）ので、スマホでも分析の一覧が見える
 - 「別の案件の分析を使う」はローカルではその場でコピー、クラウドでは `ai-reference` ジョブ（`copyFrom`）として PC が複製する
-- ジョブは `ai-reference`（`url` があれば先に取り込む／`copyFrom` なら複製だけ／`analyze: false` で取り込みだけ）と
+- ジョブは `ai-reference`（`url` があれば先に取り込む／`igUrl` なら Instagram から落として取り込む／`copyFrom` なら複製だけ／`analyze: false` で取り込みだけ）と
   `ai-mimic`（`write: false` で見るだけ／`assemble: false` で台本だけ）。どちらも軽いジョブ扱い（ffmpeg は数秒で終わり、あとは AI の待ち時間）
 
 **参考動画の扱い。** 分析のためだけに案件フォルダに置き、動画本体は公開もクラウド同期もしない。

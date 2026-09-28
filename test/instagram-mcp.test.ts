@@ -7,6 +7,7 @@ import path from 'node:path';
 import {defaultSettings, instagramKeyView, mergeSettings, resetSettings, saveSettings, settingsView} from '../core/settings';
 import {INSTAGRAM_MCP_KEY_ENV, INSTAGRAM_MCP_TOOLS, instagramMcpAvailable, instagramMcpEnv, instagramMcpForAgent, instagramToolLabel, isInstagramMcpTool, parseMcpResponse, probeInstagramMcp, resetInstagramMcpEnv} from '../core/instagram-mcp';
 import {agentArgs} from '../core/agent';
+import {fetchInstagramVideoInfo, INSTAGRAM_DOWNLOAD_TOOL, parseInstagramPostUrl, pickInstagramVideo} from '../shared/instagram-mcp';
 import {DEFAULT_INSTAGRAM_MCP_URL} from '../shared/schema/settings';
 import {studioConfig} from '../studio.config';
 
@@ -212,5 +213,49 @@ describe('instagram-mcp: 応答の読み方と接続テスト', () => {
     const r = await probeInstagramMcp(conn);
     expect(r.ok).toBe(false);
     expect(r.message).toContain('ECONNREFUSED');
+  });
+
+  it('リールの URL から動画の直リンクを取る（download_reel_video に正規化した URL を渡す）', async () => {
+    const calls = stubFetch((method, params) => {
+      if (method === 'initialize') return {body: {serverInfo: {name: 'growgram-insights'}}};
+      expect(params.name).toBe(INSTAGRAM_DOWNLOAD_TOOL);
+      return {body: toolText({media: {code: 'DAbc123xyz', user: {username: 'oc.eat'}, videoUrl: 'https://scontent.cdninstagram.com/v/x.mp4?sig=1'}})};
+    });
+    const post = parseInstagramPostUrl('https://www.instagram.com/reel/DAbc123xyz/?igsh=abc')!;
+    const r = await fetchInstagramVideoInfo(conn, post);
+    expect(r).toEqual({videoUrl: 'https://scontent.cdninstagram.com/v/x.mp4?sig=1', username: 'oc.eat'});
+    expect(calls.map((c) => c.method)).toEqual(['initialize', 'tools/call']);
+    expect(calls[1].params.arguments).toEqual({url: 'https://www.instagram.com/reel/DAbc123xyz/'});
+  });
+
+  it('写真の投稿（videoUrl: null）は分かる言葉で断る', async () => {
+    stubFetch((method) => (method === 'initialize' ? {body: {}} : {body: toolText({videoUrl: null, mediaType: 1})}));
+    await expect(fetchInstagramVideoInfo(conn, parseInstagramPostUrl('instagram.com/p/Cxyz12345')!)).rejects.toThrow(/動画が見つかりません/);
+  });
+
+  it('課金されるダウンロードのツールは裏取りの claude には渡さない', () => {
+    expect(INSTAGRAM_MCP_TOOLS as readonly string[]).not.toContain(INSTAGRAM_DOWNLOAD_TOOL);
+  });
+});
+
+describe('parseInstagramPostUrl', () => {
+  it.each([
+    ['https://www.instagram.com/reel/DAbc123xyz/', 'reel', 'DAbc123xyz'],
+    ['https://www.instagram.com/reels/DAbc123xyz/?igsh=MTc4', 'reel', 'DAbc123xyz'],
+    ['instagram.com/p/C_x-Y12345', 'p', 'C_x-Y12345'],
+    ['https://m.instagram.com/tv/CabcdEFG12/', 'tv', 'CabcdEFG12'],
+    ['https://www.instagram.com/oc.eat/reel/DAbc123xyz/', 'reel', 'DAbc123xyz'],
+    ['  https://instagr.am/reel/DAbc123xyz  ', 'reel', 'DAbc123xyz'],
+  ])('%s', (input, kind, code) => {
+    expect(parseInstagramPostUrl(input)).toEqual({kind, code, url: `https://www.instagram.com/${kind}/${code}/`});
+  });
+
+  it.each(['', 'https://www.instagram.com/oc.eat/', 'https://www.tiktok.com/@a/video/123', 'https://evil-instagram.com/reel/DAbc123xyz/', 'not a url'])('読めない: %s', (input) => {
+    expect(parseInstagramPostUrl(input)).toBeNull();
+  });
+
+  it('pickInstagramVideo は https でない値・変な username を拾わない', () => {
+    expect(pickInstagramVideo({videoUrl: 'javascript:alert(1)', username: '../../x'})).toEqual({videoUrl: null});
+    expect(pickInstagramVideo([{items: [{video_url: 'https://a/b.mp4', owner: {username: 'shop_1'}}]}])).toEqual({videoUrl: 'https://a/b.mp4', username: 'shop_1'});
   });
 });

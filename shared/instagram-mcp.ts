@@ -175,3 +175,97 @@ export const probeInstagramMcp = async (conn: InstagramMcpConn, opt: {signal?: A
     return {ok: false, message: `接続できません: ${e instanceof Error ? e.message : String(e)}`};
   }
 };
+
+// ───────────────────────── 参考動画の取り込み（リールの URL → 動画） ─────────────────────────
+
+/**
+ * 投稿・リールの URL から動画の直リンクを返すツール。**HikerAPI を 1 トークン消費する**ので、
+ * 裏取りの claude には渡さず（INSTAGRAM_MCP_TOOLS に入れない）、ユーザーが URL を渡したときだけ Reel Studio が直接叩く
+ */
+export const INSTAGRAM_DOWNLOAD_TOOL = 'download_reel_video';
+
+export type InstagramPostRef = {
+  /** 投稿の shortcode（/reel/<これ>/） */
+  code: string;
+  kind: 'reel' | 'p' | 'tv';
+  /** ツールに渡す正規化した URL（クエリ・追跡用の引数を落とす） */
+  url: string;
+};
+
+/**
+ * Instagram の投稿・リールの URL を読む。読めなければ null。
+ * 受けるもの: https://www.instagram.com/reel/XXX/ ・/reels/XXX ・/p/XXX ・/tv/XXX ・/<user>/reel/XXX、
+ * instagr.am、スキーム無し、?igsh=… などのクエリ付き（共有ボタンでコピーした URL）
+ */
+export const parseInstagramPostUrl = (input: string): InstagramPostRef | null => {
+  const raw = input.trim();
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase().replace(/^(www\.|m\.)/, '');
+  if (host !== 'instagram.com' && host !== 'instagr.am') return null;
+  const parts = u.pathname.split('/').filter(Boolean);
+  const i = parts.findIndex((p) => /^(reels?|p|tv)$/i.test(p));
+  if (i < 0 || !parts[i + 1]) return null;
+  const code = parts[i + 1];
+  if (!/^[A-Za-z0-9_-]{5,64}$/.test(code)) return null;
+  const k = parts[i].toLowerCase();
+  const kind: InstagramPostRef['kind'] = k === 'p' ? 'p' : k === 'tv' ? 'tv' : 'reel';
+  return {code, kind, url: `https://www.instagram.com/${kind}/${code}/`};
+};
+
+export type InstagramVideoInfo = {
+  videoUrl: string | null;
+  /** 投稿者（取れたときだけ。取り込んだ動画の表示名に使う） */
+  username?: string;
+};
+
+/** download_reel_video の結果（JSON）から動画の直リンクと投稿者を探す。形が多少変わっても拾えるよう入れ子も見る */
+export const pickInstagramVideo = (raw: unknown): InstagramVideoInfo => {
+  let videoUrl: string | null = null;
+  let username: string | undefined;
+  const seen = new Set<unknown>();
+  const walk = (v: unknown, depth: number) => {
+    if (!v || typeof v !== 'object' || depth > 6 || seen.has(v)) return;
+    seen.add(v);
+    if (Array.isArray(v)) {
+      for (const x of v) walk(x, depth + 1);
+      return;
+    }
+    const o = v as Record<string, unknown>;
+    for (const key of ['videoUrl', 'video_url']) {
+      const s = o[key];
+      if (!videoUrl && typeof s === 'string' && /^https:\/\//i.test(s)) videoUrl = s;
+    }
+    for (const key of ['username', 'ownerUsername', 'owner_username']) {
+      const s = o[key];
+      if (!username && typeof s === 'string' && /^[A-Za-z0-9._]{1,30}$/.test(s)) username = s;
+    }
+    for (const x of Object.values(o)) walk(x, depth + 1);
+  };
+  walk(raw, 0);
+  return {videoUrl, ...(username ? {username} : {})};
+};
+
+/**
+ * リールの URL から動画の直リンクを取る（HikerAPI 1 トークン）。写真投稿・非公開・削除済みは例外。
+ * 直リンクは Instagram の CDN の署名付き URL で数時間で切れるので、受け取ったらすぐ落とすこと
+ */
+export const fetchInstagramVideoInfo = async (conn: InstagramMcpConn, post: InstagramPostRef, opt: {signal?: AbortSignal} = {}): Promise<InstagramVideoInfo & {videoUrl: string}> => {
+  await mcpCall(conn, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'reel-studio', version: '0'}}, {signal: opt.signal, id: 1});
+  const r = await mcpCall<ToolResult>(conn, 'tools/call', {name: INSTAGRAM_DOWNLOAD_TOOL, arguments: {url: post.url}}, {signal: opt.signal, id: 2});
+  let json: unknown;
+  try {
+    json = toolJson<unknown>(r);
+  } catch (e) {
+    if (e instanceof InstagramMcpError) throw e;
+    throw new InstagramMcpError(`${INSTAGRAM_DOWNLOAD_TOOL} の結果を読めません: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const info = pickInstagramVideo(json);
+  if (!info.videoUrl) throw new InstagramMcpError(`動画が見つかりません（写真の投稿か、非公開・削除済みの可能性があります）: ${post.url}`);
+  return {...info, videoUrl: info.videoUrl};
+};

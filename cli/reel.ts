@@ -19,6 +19,7 @@
 //   reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]      （裏取り→caption.txt）
 //   reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]  （トライアル用のフック案＋パターン別キャプション→hooks.json）
 //   reel ai reference --project P --file <動画> [--model m] [--no-analyze]        （他の人のバズ動画を取り込んで型を分析→reference.json）
+//   reel ai reference --project P --url <Instagram のリール URL> [--model m] [--no-analyze]（Smartgram MCP で動画を落として取り込む。HikerAPI 1 トークン）
 //   reel ai reference --project P [--show] | --from <別案件slug> | --remove           （分析を表示 / 別案件の分析を写す / 取り消す）
 //   reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]        （分析した型を写した台本→script.md→そのまま組み立て。--dry は割り当てを見るだけ）
 //   reel sfx scan | list                                                        （効果音ライブラリの棚卸し）
@@ -63,7 +64,7 @@ import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatal
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, importReferenceVideo, readReference} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
 import {describeReference} from '../shared/reference';
 import {localDate} from '../shared/time';
 import {claudeAvailable, claudeBin} from '../core/agent';
@@ -454,6 +455,7 @@ async function main() {
       // 他の人のバズ動画の型を分析する（取り込み → ffmpeg → claude → reference.json）
       if (sub === 'reference') {
         const file = str(flags, 'file');
+        const url = str(flags, 'url');
         const from = str(flags, 'from');
         if (bool(flags, 'remove')) {
           deleteReference(dir);
@@ -466,12 +468,16 @@ async function main() {
           for (const l of describeReference(r)) out(`  ${l}`);
           return;
         }
-        if (file) {
+        if (url) {
+          const r = await importReferenceFromInstagram(dir, url, {onLine: (l) => err(l)});
+          out(`取り込みました: ${r.source!.originalName}（${r.source!.durationSec.toFixed(1)} 秒）`);
+          if (!bool(flags, 'analyze', true)) return;
+        } else         if (file) {
           const r = await importReferenceVideo(dir, path.resolve(file));
           out(`取り込みました: ${r.source!.originalName}（${r.source!.durationSec.toFixed(1)} 秒）`);
           if (!bool(flags, 'analyze', true)) return;
         }
-        if (bool(flags, 'show') || (!file && !claudeAvailable())) {
+        if (bool(flags, 'show') || (!file && !url && !claudeAvailable())) {
           const r = readReference(dir);
           if (!r) throw new Error('参考動画がありません（reel ai reference --project P --file <動画>）');
           for (const l of describeReference(r)) out(l);

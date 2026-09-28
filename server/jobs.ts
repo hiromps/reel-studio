@@ -22,7 +22,7 @@ import {runTrial} from '../core/trial';
 import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, importReferenceVideo, readReference} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
 import {describeReference} from '../shared/reference';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
@@ -256,7 +256,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           );
         return {written: r.written, cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, fixes: r.fixes, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
       }
-      // 参考動画（他の人のバズったリール）の型を分析する。url があれば先に取り込む（スマホから上げた Blob）、
+      // 参考動画（他の人のバズったリール）の型を分析する。url があれば先に取り込む（スマホから上げた Blob）、igUrl なら Instagram から落として取り込む、
       // copyFrom があれば別案件の分析を複製するだけ（AI は走らせない）
       case 'ai-reference': {
         if (typeof p.copyFrom === 'string' && p.copyFrom.trim()) {
@@ -266,7 +266,11 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           for (const l of describeReference(r)) onLine(`  ${l}`);
           return {copied: true, from: p.copyFrom, segments: r.segments.length, cuts: r.cuts.length};
         }
-        if (typeof p.url === 'string' && p.url) {
+        // Instagram のリール・投稿の URL（PC の Smartgram 鍵で動画を落とす。スマホからもこの形で積まれる）
+        if (typeof p.igUrl === 'string' && p.igUrl.trim()) {
+          const r = await importReferenceFromInstagram(dir, p.igUrl.trim(), {signal, onLine});
+          onLine(`取り込みました: ${r.source!.originalName}（${r.source!.durationSec.toFixed(1)} 秒）`);
+        } else if (typeof p.url === 'string' && p.url) {
           const name = typeof p.name === 'string' && p.name ? p.name : 'reference.mp4';
           onLine(`参考動画を取り込みます: ${name}`);
           const tmp = await fetchReferenceToInbox(dir, p.url, name, signal);

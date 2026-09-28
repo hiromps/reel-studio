@@ -34,6 +34,8 @@ export const ReferenceSourceSchema = z.object({
   /** .studio 相対（reference/source.mp4）。取り込んだ実体 */
   file: z.string().min(1),
   originalName: z.string().default(''),
+  /** Instagram の URL から取り込んだときの元の投稿（分析の表示にだけ使う） */
+  sourceUrl: z.string().optional(),
   durationSec: z.number().positive(),
   fps: z.number().positive(),
   width: z.number().int().nonnegative().default(0),

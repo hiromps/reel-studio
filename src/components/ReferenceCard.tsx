@@ -11,6 +11,7 @@ import {AiModelSelect} from '../hooks/useAiModel';
 import {AiJobStatus} from './AiJobStatus';
 import {fmtSec, isReferenceAnalyzed, referenceStats, type Reference, type ReferenceCut} from '@shared/reference';
 import {localDateTime} from '@shared/time';
+import {parseInstagramPostUrl} from '@shared/instagram-mcp';
 
 type Res = {etag: string | null; data: Reference | null};
 
@@ -43,6 +44,7 @@ export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => v
   const [ref, setRef] = useState<Reference | null>(null);
   const [uploading, setUploading] = useState<{name: string; pct: number | null} | null>(null);
   const [localPath, setLocalPath] = useState('');
+  const [igUrl, setIgUrl] = useState('');
   const [from, setFrom] = useState('');
   const [showCuts, setShowCuts] = useState(false);
   const [showRules, setShowRules] = useState(true);
@@ -112,6 +114,17 @@ export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => v
     }
   };
 
+  /** Instagram のリール URL から取り込んで分析（ダウンロードは PC が Smartgram MCP で行う。HikerAPI 1 トークン） */
+  const importInstagram = async () => {
+    const post = parseInstagramPostUrl(igUrl);
+    if (!slug || !post) return;
+    const job = await s.addJob('ai-reference', {igUrl: post.url, model: aiModel});
+    if (job) {
+      setIgUrl('');
+      s.toast(s.isCloud ? 'PC が Instagram から動画を落として分析します（PC オフラインなら起動後に始まります）' : 'Instagram から動画を落として分析します', 'ok');
+    }
+  };
+
   const importPath = async () => {
     if (!slug || !localPath.trim()) return;
     try {
@@ -162,6 +175,8 @@ export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => v
   const p = ref?.pattern;
   const frameUrl = (c: ReferenceCut): string | null => (c.frame && s.mediaBase ? `${s.mediaBase}/studio/${c.frame}` : null);
   const running = analyzing ?? mimicking;
+  const igParsed = parseInstagramPostUrl(igUrl);
+  const igReady = !!s.config?.instagramMcp;
   const mimicDisabled = busy || unsupported || !analyzed || !catalog || !brief || !claude;
   const mimicTitle = !analyzed
     ? '先に参考動画を分析してください'
@@ -227,6 +242,21 @@ export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => v
         )}
         {unsupported && <span className="pill warn">サーバーが古いプロセスです。再起動してください</span>}
       </div>
+      <div className="row">
+        <label className="grow">
+          Instagram のリール URL から取り込む（共有 →「リンクをコピー」の URL）
+          <input value={igUrl} onChange={(e) => setIgUrl(e.target.value)} placeholder="https://www.instagram.com/reel/XXXXXXXXX/" spellCheck={false} inputMode="url" disabled={busy || !!uploading} />
+        </label>
+        <button
+          onClick={() => void importInstagram()}
+          disabled={!igParsed || busy || !!uploading || unsupported || !igReady}
+          title={!igReady ? 'Settings の「Instagram の情報取得」に Smartgram の MCP 用 API キーを入れると使えます' : 'Smartgram MCP で動画を落として取り込み、そのまま分析します（HikerAPI 1 トークン + 分析の API 課金）'}
+        >
+          URL から取り込んで分析
+        </button>
+        {igUrl.trim() && !igParsed && <span className="pill warn">Instagram の投稿・リールの URL ではありません</span>}
+        {!igReady && <span className="hint">Settings の「Instagram の情報取得」に Smartgram の鍵が要ります</span>}
+      </div>
       {!s.isCloud && !ref && (
         <div className="row">
           <label className="grow">
@@ -265,6 +295,11 @@ export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => v
           <div className="summary">
             <span>
               <b>{ref.source!.originalName || ref.source!.file}</b>
+              {ref.source!.sourceUrl && (
+                <a href={ref.source!.sourceUrl} target="_blank" rel="noreferrer" style={{marginLeft: 6}}>
+                  元の投稿
+                </a>
+              )}
             </span>
             <span>
               {fmtSec(stats.durationSec)} 秒・{stats.count} カット・平均 {fmtSec(stats.avgSec)} 秒/カット・{stats.segments} 区間・声 {Math.round(stats.speechRatio * 100)}%

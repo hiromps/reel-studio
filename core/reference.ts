@@ -20,6 +20,8 @@ import {loadCatalog, studioDir, VIDEO_EXT} from './catalog';
 import {backupsDir, readBrief} from './project';
 import {readJsonLoose, writeJsonAtomic, backupFile} from './json-io';
 import {runAgent, type AgentRun} from './agent';
+import {instagramMcpEnv} from './instagram-mcp';
+import {fetchInstagramVideoInfo, parseInstagramPostUrl} from '../shared/instagram-mcp';
 import {agentProgress} from './ai';
 import {aiScript, readScript, scriptPath, writeScript, type AiScriptResult} from './script';
 import {getPersona} from '../shared/personas';
@@ -111,6 +113,8 @@ export type ImportOptions = {
   originalName?: string;
   /** コピーではなく移動する（受け口が書いた一時ファイル用） */
   move?: boolean;
+  /** 元の投稿の URL（Instagram から取り込んだとき） */
+  sourceUrl?: string;
 };
 
 const moveOrCopy = (src: string, dst: string, move: boolean) => {
@@ -150,6 +154,7 @@ export const importReferenceVideo = async (dir: string, srcPath: string, opt: Im
     source: {
       file: rel(studioDir(dir), dest),
       originalName: opt.originalName ?? path.basename(srcPath),
+      ...(opt.sourceUrl ? {sourceUrl: opt.sourceUrl} : {}),
       durationSec: probe.durationSec,
       fps: probe.fps,
       width,
@@ -172,6 +177,24 @@ export const fetchReferenceToInbox = async (dir: string, url: string, name: stri
   await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(tmp));
   fs.renameSync(tmp, dest);
   return dest;
+};
+
+/**
+ * Instagram のリール・投稿の URL から参考動画を取り込む。Smartgram MCP の download_reel_video で
+ * 動画の直リンクを取り（HikerAPI 1 トークン）、受け口に落としてから importReferenceVideo に渡す。
+ * 鍵は PC の設定（~/.reel-studio/settings.json か SMARTGRAM_MCP_KEY）にあるので、PC 側でだけ動く
+ */
+export const importReferenceFromInstagram = async (dir: string, url: string, opt: {signal?: AbortSignal; onLine?: (l: string) => void} = {}): Promise<Reference> => {
+  const post = parseInstagramPostUrl(url);
+  if (!post) throw new Error(`Instagram の投稿・リールの URL として読めません: ${url.slice(0, 200)}（例: https://www.instagram.com/reel/XXXXXXXXX/）`);
+  const env = instagramMcpEnv();
+  if (!env) throw new Error('Instagram の URL から取り込むには、Settings の「Instagram の情報取得」に Smartgram の MCP 用 API キーが要ります');
+  opt.onLine?.(`Instagram から動画の場所を取得中: ${post.url}（Smartgram / HikerAPI 1 トークン）`);
+  const info = await fetchInstagramVideoInfo(env, post, {signal: opt.signal});
+  const name = `${info.username ? `@${info.username}_` : 'instagram_'}${post.code}.mp4`;
+  opt.onLine?.(`動画をダウンロード中: ${name}`);
+  const tmp = await fetchReferenceToInbox(dir, info.videoUrl, name, opt.signal);
+  return importReferenceVideo(dir, tmp, {originalName: name, move: true, sourceUrl: post.url});
 };
 
 /** 別の案件の分析（reference.json とコマ）をそのまま持ってくる。同じ型で別の店を作るとき用 */
