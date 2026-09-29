@@ -209,7 +209,8 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
             <span>{w}</span>
           </div>
         ))}
-        {r.items && (
+        {/* items はトライアル以外（mosaic など）でも別の形で使われるので、トライアルに限る */}
+        {j.type === 'trial' && r.items && (
           <div>
             {r.items.map((it) => (
               <div key={it.id} style={{marginBottom: 8}}>
@@ -237,7 +238,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
         )}
         {r.ran && <div className="hint">実行: {r.ran.join(' → ')}{r.delivered?.length ? ` ／ 納品: ${r.delivered.join(', ')}` : ''}</div>}
         {r.synced && <div className="hint">同期: {r.synced.join(', ') || 'なし'}</div>}
-        {r.applied !== undefined && <div className="hint">alias 適用: {r.applied}</div>}
+        {j.type === 'aliases' && r.applied !== undefined && <div className="hint">alias 適用: {r.applied}</div>}
       </div>
     );
   };
