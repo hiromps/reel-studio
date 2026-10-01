@@ -82,7 +82,11 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     const el = centerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      const h = el.clientHeight - 40; // transport の分
+      // 狭い画面（縦積み）では中央列の高さがプレビュー自身で決まる。そこから測ると
+      // 「広げる → 列が伸びる → また広げる」を数 px ずつ繰り返し、開くたびに映像がじわじわ出てきた。
+      // 縦積みのときは高さを画面から取って、最初から最終の大きさで出す
+      const stacked = window.matchMedia('(max-width: 860px)').matches;
+      const h = (stacked ? window.innerHeight : el.clientHeight) - 40; // transport の分
       const w = el.clientWidth - 8;
       setPreviewW(Math.max(120, Math.floor(Math.min(w, (h * 9) / 16))));
     });
