@@ -10,7 +10,7 @@ import {stableHash} from '../shared/hash';
 import {CONTRACT_FILES, DOC_NAMES, parseProjectMeta, withArchived, type DocName, type ProjectInfo, type ProjectMeta} from '../shared/project';
 import {isReferencePresent} from '../shared/reference';
 import {canStartJob, type JobType} from '../shared/jobs';
-import {db} from './db/client';
+import {db, rowsOf} from './db/client';
 import {assets, docs, jobLogs, jobs, kv, personas, projects, type ProjectSnapshot} from './db/schema';
 
 export type Actor = 'cloud' | 'worker';
@@ -74,15 +74,17 @@ export type WriteDocResult = {ok: true; etag: string; rev: number; hash: string}
 export const writeDoc = async (slug: string, name: DocName, data: unknown, opt: {expectRev?: number | null; by: Actor}): Promise<WriteDocResult> => {
   const hash = stableHash(data);
   const expect = opt.expectRev ?? null;
-  const rows = (await db().execute(sql`
+  const rows = rowsOf<{rev: number; hash: string}>(
+    await db().execute(sql`
     INSERT INTO docs (slug, name, data, rev, hash, updated_by, updated_at)
     VALUES (${slug}, ${name}, ${JSON.stringify(data)}::jsonb, 1, ${hash}, ${opt.by}, now())
     ON CONFLICT (slug, name) DO UPDATE
       SET data = EXCLUDED.data, rev = docs.rev + 1, hash = EXCLUDED.hash, updated_by = EXCLUDED.updated_by, updated_at = now()
       WHERE ${expect}::int IS NULL OR docs.rev = ${expect}::int
     RETURNING rev, hash
-  `)) as unknown as {rows: {rev: number; hash: string}[]};
-  const row = rows.rows?.[0];
+  `),
+  );
+  const row = rows[0];
   if (!row) {
     const current = await readDoc(slug, name);
     // WHERE が外れた＝誰かが先に書いた。現在値を返して画面に選ばせる
@@ -219,7 +221,7 @@ export const listJobs = async (limit = JOB_KEEP): Promise<CloudJob[]> => {
     ) t WHERE rn <= 5 ORDER BY job_id, rn DESC
   `);
   const byJob = new Map<string, string[]>();
-  for (const r of (tails as unknown as {rows: {job_id: string; line: string}[]}).rows ?? []) byJob.set(r.job_id, [...(byJob.get(r.job_id) ?? []), r.line]);
+  for (const r of rowsOf<{job_id: string; line: string}>(tails)) byJob.set(r.job_id, [...(byJob.get(r.job_id) ?? []), r.line]);
   return rows.map((r) => toCloudJob(r, byJob.get(r.id) ?? []));
 };
 
@@ -311,11 +313,12 @@ export const finishJob = async (id: string, r: {status: 'done' | 'failed' | 'can
  * （画面から押し直せばよい）。
  */
 export const failStaleJobs = async (staleMs = 5 * 60_000): Promise<number> => {
-  const limit = new Date(Date.now() - staleMs);
+  // 生 SQL に Date をそのまま渡さない（postgres.js ドライバは timestamptz の直列化を Drizzle に任せていて、列を通らない Date は送れない）
+  const limit = new Date(Date.now() - staleMs).toISOString();
   const rows = await db()
     .update(jobs)
     .set({status: 'failed', endedAt: new Date(), error: 'ワーカーとの通信が途切れました（PC が落ちた・スリープした可能性があります）'})
-    .where(and(eq(jobs.status, 'running'), sql`coalesce(${jobs.heartbeatAt}, ${jobs.startedAt}) < ${limit}`))
+    .where(and(eq(jobs.status, 'running'), sql`coalesce(${jobs.heartbeatAt}, ${jobs.startedAt}) < ${limit}::timestamptz`))
     .returning({id: jobs.id});
   return rows.length;
 };

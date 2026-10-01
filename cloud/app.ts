@@ -1,7 +1,7 @@
 // クラウド版の Express アプリ。Vercel Functions（api/[...path].ts）がこれを 1 本だけマウントする。
 //
 // ローカル版（server/index.ts）との違い:
-// - ファイルシステムの代わりに Neon（契約ファイル・ジョブ）と Blob（メディア）を使う
+// - ファイルシステムの代わりに Supabase の Postgres（契約ファイル・ジョブ）と Vercel Blob（メディア）を使う
 // - 重い処理は自分でやらず、ジョブとして積んで PC のワーカーに実行させる
 // - 公開されるので、すべての経路に認証が要る（画面は Cookie、ワーカーは Bearer）
 import express from 'express';

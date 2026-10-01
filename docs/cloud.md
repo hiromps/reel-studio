@@ -8,7 +8,7 @@ Reel Studio を **スマホから全機能使えるようにする**ための構
         │  HTTPS（Cookie 認証・パスワード 1 つ）
         ▼
 [Vercel]  画面（PWA）＋ API
-        │  Neon（案件・契約ファイル・ジョブ）／Vercel Blob（サムネ・軽量プロキシ・完成動画）
+        │  Supabase の Postgres（案件・契約ファイル・ジョブ）／Vercel Blob（サムネ・軽量プロキシ・完成動画）
         ▲
         │  ポーリング（**PC からの発信だけ**。PC のポートは開けない）
         │
@@ -45,9 +45,9 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 
 | 種類 | 置き場 | 正 |
 |---|---|---|
-| 案件・契約ファイル（catalog / brief / cuts / narration / caption / script / hooks） | Neon（`docs` テーブル） | **クラウド** |
-| ジョブとログ | Neon（`jobs` / `job_logs`） | クラウド |
-| 人格・設定・効果音の一覧 | Neon（`personas` / `kv`） | クラウド（PC に反映される） |
+| 案件・契約ファイル（catalog / brief / cuts / narration / caption / script / hooks） | Supabase（`docs` テーブル） | **クラウド** |
+| ジョブとログ | Supabase（`jobs` / `job_logs`） | クラウド |
+| 人格・設定・効果音の一覧 | Supabase（`personas` / `kv`） | クラウド（PC に反映される） |
 | サムネ・ストリップ・軽量プロキシ・完成動画・ナレーション音声 | Vercel Blob（`assets` テーブルが索引） | PC（生成元） |
 | **原本の素材（4K）** | PC の `uploads/` | PC のみ。クラウドには上げない |
 | Remotion プロジェクト（`work/<slug>-reel/`） | PC | PC のみ |
@@ -73,7 +73,7 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 | 案件・素材 | 完全に別 | 混ざる |
 | ジョブ | 自分の PC が自分のぶんだけ実行 | 取り合う |
 | パスワード | 各自が自分で決める | 全員で同じものを使い回す |
-| 費用 | 各自の Vercel / Neon | 1 人が全員ぶんを負担 |
+| 費用 | 各自の Vercel / Supabase | 1 人が全員ぶんを負担 |
 | 止まったとき | 自分だけ | 全員 |
 
 ## 作り方（人ごとに 1 回）
@@ -91,7 +91,7 @@ Blob ストアの作成と接続 → DB のスキーマ適用 → パスワー�
 | もの | 費用 | 備考 |
 |---|---|---|
 | [Vercel](https://vercel.com) のアカウント | 無料（Hobby） | **Hobby は非商用のみ**。仕事で使うなら Pro（$20/月） |
-| [Neon](https://neon.tech) のアカウント | 無料枠で足りる | 接続文字列を 1 回貼り付けるだけ |
+| [Supabase](https://supabase.com) のアカウント | 無料枠で足りる | Transaction pooler の接続文字列を 1 回貼り付けるだけ |
 | `npx vercel login` を済ませておく | — | 未ログインなら script が案内します |
 
 終わったら、その PC で Reel Studio を起動したままにして（ショートカットから立ち上げれば
@@ -119,13 +119,17 @@ setup が自動で作って、Vercel と `~/.reel-studio/settings.json` の両�
 
 `npm run cloud:setup` が失敗したときや、途中だけやり直したいときのために、中身を書いておきます。
 
-### 1. Neon（Postgres）
+### 1. Supabase（Postgres）
 
 ```bash
-# プロジェクトを作って接続文字列を得る（Neon のコンソール、または MCP / CLI）
-# スキーマは cloud/db/migrations/0001_init.sql を適用する
-psql "$DATABASE_URL" -f cloud/db/migrations/0001_init.sql
+# https://supabase.com でプロジェクトを作り、「Connect」→ Transaction pooler の接続文字列（ポート 6543）を得る。
+# [YOUR-PASSWORD] はプロジェクト作成時の Database Password に置き換える
+# スキーマは cloud/db/migrations/*.sql を順に当てる（冪等。何度流してもよい）
+npm run cloud:migrate -- "postgresql://postgres.<ref>:<password>@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
 ```
+
+Vercel の Supabase 連携（Marketplace）で繋いだ場合は `POSTGRES_URL` が自動で入るので、`DATABASE_URL` は無くても動きます。
+Neon から移す手順は [docs/supabase-migration.md](supabase-migration.md) にあります。
 
 ### 2. Vercel
 
@@ -155,7 +159,7 @@ npx vercel api "/v9/projects/<prj_…>/link?teamId=<team_…>" -X DELETE
 
 | 変数 | 作り方 |
 |---|---|
-| `DATABASE_URL` | Neon の接続文字列（pooler のもの） |
+| `DATABASE_URL` | Supabase の接続文字列（**Transaction pooler**、ポート 6543 のもの）。Vercel の Supabase 連携が入れる `POSTGRES_URL` でも可 |
 | `AUTH_PASSWORD_HASH` | `node scripts/hash-password.mjs` の出力（`scrypt$…`） |
 | `AUTH_JWT_SECRET` | 32 文字以上のランダム文字列（`openssl rand -base64 48`） |
 | `WORKER_TOKEN` | ランダム文字列。PC のワーカーと同じ値にする |
@@ -260,7 +264,7 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 
 ## 費用のめやす
 
-- **Neon** — 契約ファイルとジョブだけなので数 MB。無料枠で足りる
+- **Supabase** — 契約ファイルとジョブだけなので数 MB。無料枠で足りる（ただし **1 週間使われないとプロジェクトが一時停止**する。ダッシュボードから再開できる）
 - **Vercel Blob** — 軽量プロキシが 1 案件あたり 50〜200MB。案件が増えたら古いものを消す
   （消しても PC に原本があるので、`preview-proxy` ジョブで作り直せる）
 - **Vercel Functions** — SSE は 55 秒で切って繋ぎ直す形。画面を開いている間だけ動く

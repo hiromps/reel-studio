@@ -175,7 +175,7 @@ CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）�
 ローカル専用のままでも使えますが、**Vercel に置いて PWA としてスマホから全機能を使う**構成もあります。
 
 ```
-[スマホ PWA] ──HTTPS──▶ [Vercel] 画面 + API（Neon / Blob）
+[スマホ PWA] ──HTTPS──▶ [Vercel] 画面 + API（Supabase / Blob）
                             ▲
                             │ ポーリング（PC からの発信だけ）
                        [自宅 PC] Reel Studio  ← ffmpeg・Remotion・Claude Code はここで動く
@@ -203,6 +203,7 @@ npm run worker
 - [CHANGELOG.md](CHANGELOG.md) — 版ごとの変更（更新したときはここを見る）
 - [docs/guide.md](docs/guide.md) — 画面と CLI の詳細、AI ジョブ、台本からの組み立て、トライアル、契約ファイル、設計とセキュリティ
 - [docs/cloud.md](docs/cloud.md) — クラウドモード（Vercel + PWA + 自宅 PC ワーカー）の構成と運用
+- [docs/supabase-migration.md](docs/supabase-migration.md) — クラウドモードの DB を Neon から Supabase に移す手順
 - [engine/README.md](engine/README.md) — Remotion エンジン（案件に複製されるテンプレート）
 
 ## 開発

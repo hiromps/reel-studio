@@ -8,6 +8,18 @@ Settings の「版と更新」から）。**案件データ・設定・人格は
 
 ## 未リリース
 
+### 変わったこと（クラウドモードを使っている人だけ）
+
+**クラウド版の DB を Neon から Supabase に移しました**
+接続は postgres.js ＋ Drizzle（`drizzle-orm/postgres-js`）で、Supabase の Transaction pooler（ポート 6543）に `prepare: false` で繋ぎます。
+スキーマ・`cloud/store.ts` の SQL・画面とワーカーの API は変わりません。Vercel Blob もそのままです。
+
+- 新しく始める人は `npm run cloud:setup` のステップ 5 で Supabase の接続文字列を貼るだけ
+- すでに Neon で動かしている人は [docs/supabase-migration.md](docs/supabase-migration.md) の手順で移す
+  （`npm run cloud:migrate` でスキーマ → `npm run cloud:copy-db` でデータ → Vercel の `DATABASE_URL` を差し替え → `npm run cloud:deploy`）
+- `cloud/db/migrations/0003_supabase_rls.sql` を足しました。Supabase の REST（anon キー）から表が見えないよう、全表で RLS を有効にします
+- `DATABASE_URL` の代わりに、Vercel の Supabase 連携が入れる `POSTGRES_URL` も読みます。`pgbouncer=true` のような Postgres が受け取れないパラメータは接続時に落とします
+
 ### 追加
 
 **バズ動画の型を写す：Instagram のリール URL から取り込めるように**

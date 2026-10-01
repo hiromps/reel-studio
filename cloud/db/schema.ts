@@ -1,4 +1,4 @@
-// クラウド版の永続層（Neon / Postgres）。
+// クラウド版の永続層（Supabase / Postgres）。接続は ./client.ts（postgres.js、Supabase の Transaction pooler 経由）。
 //
 // 方針：
 // - **契約ファイル（catalog / brief / cuts / narration / caption）はここが正**。PC 側の work/ は

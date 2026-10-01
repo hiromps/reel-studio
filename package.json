@@ -28,6 +28,8 @@
     "worker": "tsx worker/index.ts",
     "cloud:setup": "node scripts/cloud-setup.mjs",
     "cloud:deploy": "node scripts/cloud-deploy.mjs",
+    "cloud:migrate": "node scripts/cloud-migrate.mjs",
+    "cloud:copy-db": "node scripts/cloud-copy-db.mjs",
     "dev": "vite",
     "build": "node scripts/prepare-public.mjs && node scripts/build-api.mjs && vite build",
     "start": "node scripts/launch.mjs",
@@ -36,13 +38,13 @@
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
     "@remotion/player": "4.0.522",
     "@vercel/blob": "^2.8.0",
     "chokidar": "^4.0.3",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "jose": "^6.2.12",
+    "postgres": "^3.4.9",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "remotion": "4.0.522",

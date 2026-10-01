@@ -22,6 +22,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
+import {applyMigrations} from './cloud-migrate.mjs';
 
 const scryptAsync = promisify(scrypt);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -155,31 +156,18 @@ const main = async () => {
   }
 
   // ── 5. データベース（案件・契約ファイル・ジョブ）
-  step(5, TOTAL, 'データベース（Neon / Postgres）');
-  console.log(`  ${C.dim}まだ無ければ https://neon.tech で無料のプロジェクトを作り、${C.reset}`);
-  console.log(`  ${C.dim}「Connection string」（postgresql://… で始まる pooler のもの）をコピーしてください。${C.reset}`);
+  step(5, TOTAL, 'データベース（Supabase / Postgres）');
+  console.log(`  ${C.dim}まだ無ければ https://supabase.com で無料のプロジェクトを作り、${C.reset}`);
+  console.log(`  ${C.dim}ダッシュボード上部の「Connect」→ 「Transaction pooler」の接続文字列（ポート 6543、${C.reset}`);
+  console.log(`  ${C.dim}postgresql://postgres.<ref>:[YOUR-PASSWORD]@…pooler.supabase.com:6543/postgres）をコピーし、${C.reset}`);
+  console.log(`  ${C.dim}[YOUR-PASSWORD] をプロジェクト作成時の DB パスワードに置き換えて貼り付けてください。${C.reset}`);
   const dbUrl = await askSecret('接続文字列を貼り付け');
   if (!/^postgres(ql)?:\/\//.test(dbUrl)) throw new Error('接続文字列の形が違います（postgresql://… で始まります）');
+  if (/\[YOUR-PASSWORD\]/.test(dbUrl)) throw new Error('[YOUR-PASSWORD] のところを DB のパスワードに置き換えてください');
+  if (!/:6543\//.test(dbUrl)) warn('Transaction pooler（ポート 6543）の接続文字列ではないようです。動きますが、Vercel からは 6543 のほうが向いています');
 
   log('スキーマを作っています…');
-  const {neon} = await import('@neondatabase/serverless');
-  const sql = neon(dbUrl);
-  const migrations = fs
-    .readdirSync(path.join(root, 'cloud', 'db', 'migrations'))
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
-  for (const f of migrations) {
-    const text = fs.readFileSync(path.join(root, 'cloud', 'db', 'migrations', f), 'utf8');
-    const statements = text
-      .split('\n')
-      .filter((l) => !l.trim().startsWith('--'))
-      .join('\n')
-      .split(';')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const s of statements) await sql(s);
-    ok(`${f}（${statements.length} 文）`);
-  }
+  await applyMigrations(dbUrl, {onApplied: (f) => ok(f)});
 
   // ── 6. ログインのパスワードと鍵
   step(6, TOTAL, 'ログインのパスワード');
