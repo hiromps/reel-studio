@@ -1,18 +1,101 @@
+/* ═══════════════════════════════════════════════════════════════
+   配色トークン。既定はライト（グレーの地に白いパネルを浮かせる）。
+   右上の月のボタンで html[data-theme='dark'] に切り替わる。
+   色は**ここだけで定義する**（各部品は var() で参照する）
+   ═══════════════════════════════════════════════════════════════ */
 :root {
+  color-scheme: light;
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel2: #f2f3f6;
+  --line: #e4e6eb;
+  --fg: #1d2026;
+  --muted: #8b919c;
+  --accent: #1a73ff;
+  --accent2: #1a73ff;
+  --accent-soft: rgba(26, 115, 255, 0.1);
+  --ok: #1fae6b;
+  --warn: #e8890c;
+  --err: #ef4444;
+  /* 押せる面（ボタン）。下辺を少し濃くして厚みを出す */
+  --btn: #ececf0;
+  --btn-hover: #e2e3e8;
+  --btn-edge: rgba(15, 20, 30, 0.1);
+  --input: #f2f3f6;
+  --chip: #eceef2;
+  --hover: rgba(15, 20, 30, 0.04);
+  --sel-bg: #e8f1ff;
+  --code-bg: #f6f7f9;
+  --veil: rgba(255, 255, 255, 0.94);
+  --backdrop: rgba(20, 24, 32, 0.32);
+  --shadow-sm: 0 1px 2px rgba(15, 20, 30, 0.06), 0 1px 1px rgba(15, 20, 30, 0.04);
+  --shadow-md: 0 4px 14px rgba(15, 20, 30, 0.08), 0 1px 3px rgba(15, 20, 30, 0.06);
+  --shadow-lg-c: rgba(15, 20, 30, 0.18);
+  --dot: #d5d8de;
+  /* 状態の色（淡い下地と、その上の文字色） */
+  --tint-blue: #e3eeff;
+  --tint-blue-fg: #1b62d6;
+  --tint-green: #dcf4e7;
+  --tint-green-fg: #12804c;
+  --tint-yellow: #fff3d1;
+  --tint-yellow-fg: #93620a;
+  --tint-orange: #ffe9d6;
+  --tint-orange-fg: #b85a0b;
+  --tint-red: #ffe3e3;
+  --tint-red-fg: #c92a2a;
+  --tint-purple: #eee5ff;
+  --tint-purple-fg: #6d3fd6;
+  /* タイムラインの段の色（デザインの緑＝音・橙＝効果音・紫＝テキスト） */
+  --trk-video: #3b82f6;
+  --trk-telop: #8b5cf6;
+  --trk-narr: #22b573;
+  --trk-sfx: #f59331;
+  --radius: 16px;
+  --radius-sm: 10px;
+  font-family: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', system-ui, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+:root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #121417;
-  --panel: #1b1f24;
-  --panel2: #232830;
-  --line: #2e343d;
+  --bg: #0f1114;
+  --panel: #191c21;
+  --panel2: #22262d;
+  --line: #2c3139;
   --fg: #e8eaed;
-  --muted: #9aa3ad;
-  --accent: #ffd966;
-  --accent2: #6bb0ff;
+  --muted: #8f98a3;
+  --accent: #4b93ff;
+  --accent2: #4b93ff;
+  --accent-soft: rgba(75, 147, 255, 0.14);
   --ok: #4cc38a;
   --warn: #f0a941;
   --err: #ff6b6b;
-  font-family: 'Segoe UI', 'Yu Gothic UI', system-ui, sans-serif;
-  font-size: 13px;
+  --btn: #262a31;
+  --btn-hover: #2e333b;
+  --btn-edge: rgba(0, 0, 0, 0.45);
+  --input: #22262d;
+  --chip: #2a2f37;
+  --hover: rgba(255, 255, 255, 0.04);
+  --sel-bg: #1d2a3d;
+  --code-bg: #0d0f12;
+  --veil: rgba(18, 20, 23, 0.92);
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.4);
+  --shadow-lg-c: rgba(0, 0, 0, 0.65);
+  --dot: #2b3038;
+  --tint-blue: #1c2a40;
+  --tint-blue-fg: #9cc4ff;
+  --tint-green: #16301f;
+  --tint-green-fg: #6fd9a2;
+  --tint-yellow: #3a3115;
+  --tint-yellow-fg: #ffd966;
+  --tint-orange: #3a2615;
+  --tint-orange-fg: #ffb366;
+  --tint-red: #3a1d1d;
+  --tint-red-fg: #ff8a8a;
+  --tint-purple: #2c2242;
+  --tint-purple-fg: #c9a8ff;
 }
 * {
   box-sizing: border-box;
@@ -32,10 +115,32 @@ textarea {
 input,
 select,
 textarea {
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 4px 6px;
+  background: var(--input);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    background 0.12s;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--panel);
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+  box-shadow: none;
+}
+input[type='range'] {
+  accent-color: var(--accent);
+  background: transparent;
+  padding: 0;
 }
 input[type='number'] {
   width: 84px;
@@ -45,39 +150,60 @@ textarea {
   min-height: 60px;
 }
 button {
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 5px 10px;
+  background: var(--btn);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-weight: 500;
   cursor: pointer;
+  box-shadow: inset 0 -2px 0 var(--btn-edge);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s,
+    transform 0.06s;
 }
 button:hover {
-  border-color: var(--accent2);
+  background: var(--btn-hover);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 -1px 0 var(--btn-edge);
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 button.primary {
-  background: #2b4a7a;
-  border-color: #3b6bb3;
+  background: var(--accent);
+  color: #fff;
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(26, 115, 255, 0.25);
+}
+button.primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
 }
 button.small {
-  padding: 2px 6px;
+  padding: 3px 9px;
   font-size: 12px;
+  border-radius: 8px;
 }
 button.warn {
-  border-color: var(--warn);
-  color: var(--warn);
+  background: var(--tint-orange);
+  color: var(--tint-orange-fg);
 }
 button.danger {
-  border-color: var(--err);
-  color: var(--err);
+  background: var(--tint-red);
+  color: var(--tint-red-fg);
 }
 label {
   display: inline-flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -91,32 +217,85 @@ label > textarea {
   flex-direction: column;
   min-height: 100vh;
 }
+/* 上部バー：地の色のまま浮かせず、部品だけを白いピルで置く */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 6px 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
-  color: var(--accent);
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  white-space: nowrap;
 }
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  background: linear-gradient(135deg, #ff7a3d, #ff4d1a);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(255, 90, 30, 0.35);
+}
+/* タブは白いピルのセグメント切り替え */
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  padding: 3px;
+  background: var(--chip);
+  border-radius: 12px;
 }
 .tab {
   background: transparent;
   border: 1px solid transparent;
+  box-shadow: none;
+  border-radius: 9px;
+  padding: 5px 12px;
+  color: var(--muted);
+}
+.tab:hover {
+  background: transparent;
+  color: var(--fg);
 }
 .tab.active {
-  background: var(--panel2);
-  border-color: var(--line);
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: var(--shadow-sm);
+}
+/* 白い丸ボタン（ヘルプ・テーマ切り替え） */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+.icon-btn:hover {
+  background: var(--chip);
+  color: var(--fg);
+}
+/* 右端（案件の選択・状態の右）に並べる */
+.topbar .icon-btn {
+  order: 5;
 }
 .status {
   margin-left: auto;
@@ -124,10 +303,17 @@ label > textarea {
   gap: 8px;
   align-items: center;
 }
+.status select {
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
 /* 「⟳ 最新に」。案件の選択と並ぶので、狭い画面でも折り返して潰れないようにする */
 .status .pull-btn {
   white-space: nowrap;
   flex: 0 0 auto;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
 }
 /* 状態のピルは中で折り返さない（狭い画面で「PC オフライ / ン」と割れていた） */
 .status .pill,
@@ -135,16 +321,19 @@ label > textarea {
   white-space: nowrap;
 }
 .pill {
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
   font-size: 12px;
-  background: var(--panel2);
+  font-weight: 500;
+  background: var(--chip);
 }
 .pill.warn {
-  color: var(--warn);
+  background: var(--tint-orange);
+  color: var(--tint-orange-fg);
 }
 .pill.run {
-  color: var(--accent2);
+  background: var(--tint-blue);
+  color: var(--tint-blue-fg);
 }
 /* サーバーが古いコードで動いているときの警告（見落とすと原因不明のエラーになる） */
 .pill.err {
@@ -154,26 +343,31 @@ label > textarea {
 }
 .main {
   flex: 1;
-  padding: 12px;
+  padding: 4px 14px 14px;
 }
 .page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 12px;
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
 }
+/* カードの見出しはデザインの「AUDIO」「SECTIONS」と同じ、小さな大文字のラベル */
 .card h2 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  color: var(--accent);
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .card h3 {
-  margin: 8px 0 4px;
+  margin: 10px 0 6px;
   font-size: 13px;
 }
 .row {
@@ -221,15 +415,25 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   width: 100%;
   border-collapse: collapse;
 }
+.table th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 .table th,
 .table td {
   text-align: left;
-  padding: 4px 6px;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
+.table tbody tr:hover {
+  background: var(--hover);
+}
 .table tr.active {
-  background: #1f2a3a;
+  background: var(--sel-bg);
 }
 /* 投稿済みにして一覧から隠した案件（「隠した案件も表示」のときだけ出る）。
    開いている案件は隠していても出るので、active の色は残したまま沈ませる */
@@ -248,22 +452,26 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   color: var(--muted);
   font-size: 12px;
   font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
 }
 .toasts {
   position: fixed;
-  right: 12px;
-  bottom: 12px;
+  right: 14px;
+  bottom: 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   z-index: 50;
 }
 .toast {
-  background: var(--panel2);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-left: 4px solid var(--accent2);
-  padding: 8px 12px;
-  border-radius: 4px;
+  padding: 10px 14px;
+  border-radius: 12px;
   max-width: 420px;
+  box-shadow: var(--shadow-md);
 }
 .toast.ok {
   border-left-color: var(--ok);
@@ -289,7 +497,7 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   padding: 6px 10px;
   background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 12px;
 }
 .folder-pick .folder-name {
@@ -317,17 +525,25 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
 .clip-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 .clip-card {
-  background: var(--panel2);
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 14px;
   padding: 6px;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow 0.12s,
+    border-color 0.12s;
+}
+.clip-card:hover {
+  box-shadow: var(--shadow-md);
 }
 .clip-card.selected {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .clip-card.ng {
   opacity: 0.45;
@@ -336,7 +552,7 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   width: 100%;
   height: 90px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 10px;
   background: #000;
 }
 .clip-card .meta {
@@ -359,25 +575,26 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
 }
 .badge {
   font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: #333a44;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--chip);
 }
 .badge.hook {
-  background: #6b5b00;
-  color: var(--accent);
+  background: var(--tint-yellow);
+  color: var(--tint-yellow-fg);
 }
 .badge.ng {
-  background: #5a1f1f;
-  color: var(--err);
+  background: var(--tint-red);
+  color: var(--tint-red-fg);
 }
 .badge.sign {
-  background: #1f4a3a;
-  color: var(--ok);
+  background: var(--tint-green);
+  color: var(--tint-green-fg);
 }
 .badge.untagged {
-  background: #4a2f1f;
-  color: var(--warn);
+  background: var(--tint-orange);
+  color: var(--tint-orange-fg);
 }
 /* 詳細欄（.detail）の video に max-height を掛けないこと。高さは切り出し枠
    （.cropbox-stage）が 9:16 から決めているので、二重に掛けると枠の中で映像だけが
@@ -392,7 +609,7 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
 .strip img {
   height: 64px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 6px;
   flex: 0 0 auto;
 }
 .form {
@@ -431,15 +648,15 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000;
+  background: var(--panel2);
   color: var(--muted);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 12px;
   text-align: center;
 }
 input.telop.placeholder {
-  background: #4a3f12;
-  color: var(--accent);
+  background: var(--tint-yellow);
+  color: var(--tint-yellow-fg);
 }
 .counter {
   font-size: 11px;
@@ -478,7 +695,7 @@ input.telop.placeholder {
   cursor: pointer;
 }
 .issue.clickable:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hover);
 }
 .issue .code {
   font-family: Consolas, monospace;
@@ -518,7 +735,7 @@ input.telop.placeholder {
   grid-column: 1 / -1; /* プレビュー列とカット列の上に横いっぱいで置く */
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
   padding: 8px 10px 10px;
 }
 .sb-bar {
@@ -529,7 +746,7 @@ input.telop.placeholder {
 }
 .sb-title {
   font-weight: 700;
-  color: var(--accent);
+  color: var(--fg);
 }
 .sb-toggle {
   padding: 2px 7px;
@@ -554,9 +771,9 @@ input.telop.placeholder {
   padding: 4px;
   max-height: 46vh;
   overflow: auto;
-  background: var(--bg);
+  background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
 }
 .sb-body {
   --sb-w: 104px;
@@ -573,9 +790,9 @@ input.telop.placeholder {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  background: var(--panel2);
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
   padding: 4px;
   cursor: grab;
   user-select: none;
@@ -593,7 +810,7 @@ input.telop.placeholder {
 }
 /* まとめて動くカット（テロップ単位）をホバー時に見せる */
 .sb-card.in-block {
-  background: #2c3340;
+  background: var(--sel-bg);
   border-color: var(--muted);
 }
 .sb-card.dragging {
@@ -606,7 +823,7 @@ input.telop.placeholder {
 .sb-thumb {
   position: relative;
   height: calc(var(--sb-w) * 1.3);
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
   background: #000;
 }
@@ -624,7 +841,7 @@ input.telop.placeholder {
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: #000;
+  background: var(--panel2);
   color: var(--muted);
   font-size: 10px;
 }
@@ -637,6 +854,7 @@ input.telop.placeholder {
   font-size: 12px;
   background: rgba(0, 0, 0, 0.72);
   border-bottom-right-radius: 6px;
+  color: #fff;
 }
 .sb-dur {
   position: absolute;
@@ -646,7 +864,7 @@ input.telop.placeholder {
   font-size: 10px;
   color: #d6dae0;
   background: rgba(0, 0, 0, 0.72);
-  border-radius: 3px;
+  border-radius: 6px;
 }
 .sb-flags {
   position: absolute;
@@ -661,17 +879,18 @@ input.telop.placeholder {
   min-width: 14px;
   text-align: center;
   padding: 0 3px;
-  border-radius: 3px;
+  border-radius: 6px;
   background: rgba(0, 0, 0, 0.72);
+  color: #fff;
 }
 .sb-flag.err {
   background: var(--err);
-  color: #1b1f24;
+  color: #fff;
   font-weight: 700;
 }
 .sb-flag.warn {
   background: var(--warn);
-  color: #1b1f24;
+  color: #fff;
   font-weight: 700;
 }
 .sb-foot {
@@ -692,7 +911,7 @@ input.telop.placeholder {
   overflow: hidden;
 }
 .sb-telop.empty {
-  color: #6a727c;
+  color: var(--muted);
 }
 
 /* ── ドラッグ中の見せ方（絵コンテ・カット行で共用） ───────────────────── */
@@ -712,21 +931,21 @@ input.telop.placeholder {
   padding: 3px;
   background: var(--panel2);
   border: 2px solid var(--accent);
-  border-radius: 6px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.65);
+  border-radius: 12px;
+  box-shadow: 0 10px 26px var(--shadow-lg-c);
   pointer-events: none;
 }
 .dnd-ghost.text-only {
   width: auto;
   transform: translate(14px, 14px);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 4px 8px;
 }
 .dnd-ghost img {
   width: 100%;
   height: 120px;
   object-fit: cover;
-  border-radius: 3px;
+  border-radius: 6px;
   display: block;
 }
 .dnd-ghost-label {
@@ -752,7 +971,7 @@ body.dnd-active * {
 .job {
   padding: 6px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   margin-bottom: 4px;
   cursor: pointer;
   background: var(--panel2);
@@ -775,8 +994,8 @@ body.dnd-active * {
 }
 .progress {
   height: 6px;
-  background: #333a44;
-  border-radius: 3px;
+  background: var(--chip);
+  border-radius: 6px;
   overflow: hidden;
   margin-top: 4px;
 }
@@ -785,9 +1004,9 @@ body.dnd-active * {
   background: var(--accent2);
 }
 .log {
-  background: #0d0f12;
+  background: var(--code-bg);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 8px;
   font-family: Consolas, monospace;
   font-size: 11px;
@@ -798,11 +1017,11 @@ body.dnd-active * {
 .result video {
   width: 270px;
   background: #000;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 .result img {
   max-width: 100%;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 /* 完成品（Render の納品カード）。スマホから端末に持ち出す導線を大きく出す */
 .finished {
@@ -816,7 +1035,7 @@ body.dnd-active * {
   width: 220px;
   max-width: 100%;
   background: #000;
-  border-radius: 6px;
+  border-radius: 12px;
 }
 .finished-actions {
   flex: 1 1 220px;
@@ -827,9 +1046,9 @@ body.dnd-active * {
   gap: 8px;
 }
 pre.md {
-  background: #0d0f12;
+  background: var(--code-bg);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 8px;
   font-size: 11px;
   overflow: auto;
@@ -857,25 +1076,30 @@ pre.md {
   min-width: 0;
 }
 .chip {
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--chip);
+  border: 1px solid transparent;
+  box-shadow: none;
   cursor: pointer;
   font-size: 12px;
 }
 .chip.on {
+  background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent);
+  color: #fff;
+}
+.chip.on:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
 }
 
 /* ── タブ番号・「? 使い方」 ─────────────────────────────────────────── */
 .tab-no {
-  display: inline-block;
+  display: none;
   min-width: 15px;
   margin-right: 5px;
   padding: 0 3px;
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--panel2);
   color: var(--muted);
   font-size: 10px;
@@ -883,12 +1107,11 @@ pre.md {
 }
 .tab.active .tab-no {
   background: var(--accent);
-  color: #1b1f24;
+  color: #fff;
   font-weight: 700;
 }
 .help-btn {
-  border-color: var(--line);
-  color: var(--accent);
+  font-weight: 700;
 }
 
 /* ── 次にやること バー ──────────────────────────────────────────────── */
@@ -896,23 +1119,25 @@ pre.md {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 12px;
-  background: #1c2533;
-  border-bottom: 1px solid var(--line);
-  border-left: 4px solid var(--accent2);
+  margin: 0 14px 10px;
+  padding: 6px 8px 6px 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
   font-size: 12px;
   /* sticky にすると preview-col の追従位置とぶつかるので、普通に流す */
 }
 .nextbar.ready {
-  border-left-color: var(--ok);
-  background: #16261f;
+  background: var(--tint-green);
+  border-color: transparent;
 }
 .nextbar-tag {
   flex: 0 0 auto;
-  padding: 1px 7px;
-  border-radius: 9px;
+  padding: 3px 10px;
+  border-radius: 999px;
   background: var(--accent2);
-  color: #10141a;
+  color: #fff;
   font-weight: 700;
 }
 .nextbar.ready .nextbar-tag {
@@ -923,6 +1148,8 @@ pre.md {
   min-width: 0;
 }
 .nextbar-x {
+  background: transparent;
+  box-shadow: none;
   border-color: transparent;
   color: var(--muted);
 }
@@ -963,7 +1190,7 @@ pre.md {
 /* 穴の外側だけを box-shadow で暗くする（穴の中は素通し） */
 .tour-hole {
   position: fixed;
-  border-radius: 6px;
+  border-radius: 12px;
   box-shadow:
     0 0 0 9999px rgba(0, 0, 0, 0.62),
     0 0 0 2px var(--accent) inset;
@@ -979,7 +1206,7 @@ pre.md {
   background: var(--panel);
   border: 1px solid var(--accent);
   border-radius: 8px;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 14px 40px var(--shadow-lg-c);
   padding: 12px 14px;
 }
 .tour-head {
@@ -1014,11 +1241,11 @@ pre.md {
 .tour-body code {
   background: var(--panel2);
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: 6px;
 }
 .tour-flow {
   background: var(--panel2);
-  border-radius: 5px;
+  border-radius: 8px;
   padding: 7px 9px;
   font-size: 12px;
   line-height: 1.9;
@@ -1040,7 +1267,7 @@ pre.md {
   position: fixed;
   inset: 0;
   z-index: 250;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--backdrop);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1054,7 +1281,7 @@ pre.md {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 18px 50px var(--shadow-lg-c);
 }
 .modal-head {
   display: flex;
@@ -1164,7 +1391,7 @@ pre.md {
   flex: none;
   margin: 0 auto;
   background: #000;
-  border-radius: 6px;
+  border-radius: 12px;
   overflow: hidden;
   /* ピンチ・ドラッグをブラウザのスクロールに取られない */
   touch-action: none;
@@ -1335,7 +1562,7 @@ pre.md {
   position: relative;
   height: 56px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   background: #000;
   overflow: hidden;
   touch-action: none; /* 触ってスクロールさせない */
@@ -1479,9 +1706,9 @@ pre.md {
 .ai-log {
   margin-top: 4px;
   padding: 4px 6px;
-  background: #0d0f12;
+  background: var(--code-bg);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   font-size: 11px;
   color: var(--muted);
 }
@@ -1530,7 +1757,7 @@ pre.md {
   padding: 3px 4px;
   border-left: 3px solid var(--ok);
   background: var(--panel2);
-  border-radius: 3px;
+  border-radius: 6px;
 }
 .narr-row.needs-tts {
   border-left-color: var(--warn);
@@ -1561,7 +1788,7 @@ a.btn-like {
   display: inline-block;
   background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 2px 6px;
   font-size: 12px;
   color: inherit;
@@ -1595,7 +1822,7 @@ a.btn-like:hover {
   gap: 10px;
   flex-wrap: wrap;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 6px 8px;
   background: var(--panel2);
 }
@@ -1624,7 +1851,7 @@ a.btn-like:hover {
 .hook-variant {
   border: 1px solid var(--line);
   border-left: 3px solid var(--accent2);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 6px;
   margin-top: 6px;
   background: var(--panel2);
@@ -1658,7 +1885,7 @@ a.btn-like:hover {
   align-items: center;
   justify-content: center;
   border: 2px dashed var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
   color: var(--muted);
   font-size: 12px;
   pointer-events: none;
@@ -1666,15 +1893,16 @@ a.btn-like:hover {
 .ctl-empty.over {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(255, 217, 102, 0.08);
+  background: var(--accent-soft);
 }
 .ctl-clip {
   position: absolute;
   top: 6px;
-  height: 70px;
+  height: 68px;
   background: #000;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
   cursor: grab;
   touch-action: none;
@@ -1685,11 +1913,11 @@ a.btn-like:hover {
   outline-offset: 1px;
 }
 .ctl-clip.current {
-  outline: 1px solid var(--accent2);
+  outline: 2px solid var(--accent-soft);
 }
 .ctl-clip.selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .ctl-clip.dragging {
   opacity: 0.35;
@@ -1730,6 +1958,7 @@ a.btn-like:hover {
   background: rgba(0, 0, 0, 0.72);
   border-bottom-right-radius: 5px;
   pointer-events: none;
+  color: #fff;
 }
 .ctl-flags {
   position: absolute;
@@ -1761,7 +1990,7 @@ a.btn-like:hover {
   font-size: 10px;
   color: #d6dae0;
   background: rgba(0, 0, 0, 0.72);
-  border-radius: 3px;
+  border-radius: 6px;
   pointer-events: none;
 }
 .ctl-handle {
@@ -1770,7 +1999,7 @@ a.btn-like:hover {
   bottom: 0;
   width: 10px;
   cursor: ew-resize;
-  background: rgba(255, 217, 102, 0.25);
+  background: rgba(255, 255, 255, 0.35);
   z-index: 2;
 }
 .ctl-handle.in {
@@ -1811,8 +2040,8 @@ a.btn-like:hover {
   line-height: 16px;
 }
 .badge.used {
-  background: #1f3a5a;
-  color: var(--accent2);
+  background: var(--tint-blue);
+  color: var(--tint-blue-fg);
 }
 .mono {
   font-family: Consolas, monospace;
@@ -1838,13 +2067,13 @@ a.btn-like:hover {
 
 /* ═══════════════════════ 編集画面（Timeline タブ） ═══════════════════════ */
 .main-editor {
-  padding: 8px;
+  padding: 4px 14px 14px;
   overflow: hidden;
 }
 .editor {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   min-height: 420px;
 }
 .ed-toolbar {
@@ -1852,10 +2081,11 @@ a.btn-like:hover {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 6px 8px;
+  padding: 8px 10px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 .ed-toolbar .sep {
   width: 1px;
@@ -1867,7 +2097,7 @@ a.btn-like:hover {
   min-height: 0;
   display: grid;
   grid-template-columns: 236px minmax(200px, 1fr) 380px;
-  gap: 8px;
+  gap: 10px;
 }
 @media (max-width: 1280px) {
   .ed-main {
@@ -1880,7 +2110,8 @@ a.btn-like:hover {
   min-height: 0;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 .ed-bin {
   display: flex;
@@ -1889,15 +2120,52 @@ a.btn-like:hover {
 }
 .ed-inspector {
   overflow: auto;
-  padding: 8px 10px;
+  padding: 10px 14px;
 }
+/* プレビューは方眼の点を打ったキャンバスの真ん中に浮かせる */
 .ed-center {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: 16px;
   overflow: hidden;
+  background-color: var(--panel);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+  background-position: 8px 8px;
+}
+.ed-stage {
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 18px 40px rgba(15, 20, 30, 0.16),
+    0 2px 6px rgba(15, 20, 30, 0.08);
+  line-height: 0;
+}
+/* キャンバス左下の切り替え（合成音・ループ・軽量）。デザインの「22% / Fit」の位置 */
+.canvas-pill {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100% - 24px);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  color: var(--fg);
+}
+.canvas-pill-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
 }
 .ed-center .empty-state {
   max-width: 420px;
@@ -1912,39 +2180,168 @@ a.btn-like:hover {
   flex: 0 0 auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px 8px 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 8px 12px 10px;
 }
+/* 左：件数　中央：再生　右：拡大と表示 */
 .tl-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 10px;
-  padding-bottom: 4px;
+  margin: 0 -12px 6px;
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-toolbar-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.tl-toolbar-side.end {
+  justify-content: flex-end;
 }
 /* 2 本指の案内は指で操作するときだけ出す（下の pointer: coarse で表示に切り替える） */
 .tl-touch-hint {
   display: none;
 }
 
-/* トランスポート */
+/* トランスポート：時刻｜⏮ ◀ (●) ▶ ⏭｜全体の尺 */
 .transport {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 4px 6px 0;
-  height: 36px;
+  gap: 6px;
 }
-.transport-play {
-  min-width: 34px;
+.tp-time,
+.tp-total {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+  text-align: right;
+}
+.tp-total {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+}
+.tp-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fg);
+}
+.tp-btn:hover {
+  background: var(--chip);
+}
+.tp-play {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #15171b;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(15, 20, 30, 0.25);
+}
+.tp-play:hover {
+  background: #2a2d33;
+}
+.tp-play svg {
+  width: 20px;
+  height: 20px;
+}
+:root[data-theme='dark'] .tp-play {
+  background: #fff;
+  color: #15171b;
+}
+.tp-play.on {
+  background: var(--accent);
+  color: #fff;
+}
+.tp-cut {
+  margin-left: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 「Claude に頼む」：デザインの Ask Claude と同じ、目玉付きのオレンジのピル */
+.ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff6a2b, #f24d12);
+  color: #fff;
   font-weight: 700;
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.18),
+    0 4px 12px rgba(242, 77, 18, 0.3);
 }
-.transport-play.on {
-  border-color: var(--accent);
-  color: var(--accent);
+.ai-btn:hover {
+  background: linear-gradient(180deg, #ff7a40, #e5450d);
 }
-.transport-time {
-  font-size: 12px;
+.ai-btn.on {
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.18),
+    0 0 0 3px rgba(242, 77, 18, 0.25);
+}
+.ai-eyes {
+  display: inline-flex;
+  gap: 2px;
+}
+.ai-eyes i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  position: relative;
+}
+.ai-eyes i::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #15171b;
+  left: 4px;
+  top: 4px;
+}
+.ai-btn.busy .ai-eyes i::after {
+  animation: ai-look 1.6s ease-in-out infinite;
+}
+@keyframes ai-look {
+  0%,
+  100% {
+    left: 2px;
+  }
+  50% {
+    left: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-btn.busy .ai-eyes i::after {
+    animation: none;
+  }
+}
+.ai-caret {
+  font-size: 10px;
+  opacity: 0.8;
 }
 
 /* 素材ビン */
@@ -1980,9 +2377,10 @@ a.btn-like:hover {
   align-content: start;
 }
 .bin-card {
-  background: var(--panel2);
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
   padding: 4px;
   cursor: grab;
   touch-action: none;
@@ -2000,7 +2398,7 @@ a.btn-like:hover {
 .bin-thumb {
   position: relative;
   height: 74px;
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
   background: #000;
 }
@@ -2020,6 +2418,7 @@ a.btn-like:hover {
   font-weight: 700;
   background: rgba(0, 0, 0, 0.72);
   border-bottom-right-radius: 5px;
+  color: #fff;
 }
 .bin-dur {
   position: absolute;
@@ -2028,7 +2427,8 @@ a.btn-like:hover {
   padding: 0 4px;
   font-size: 10px;
   background: rgba(0, 0, 0, 0.72);
-  border-radius: 3px;
+  border-radius: 6px;
+  color: #fff;
 }
 .bin-used {
   position: absolute;
@@ -2036,16 +2436,16 @@ a.btn-like:hover {
   top: 2px;
   padding: 0 4px;
   font-size: 10px;
-  background: #1f3a5a;
-  color: var(--accent2);
-  border-radius: 3px;
+  background: var(--tint-blue);
+  color: var(--tint-blue-fg);
+  border-radius: 6px;
 }
 .bin-hook {
   position: absolute;
   left: 2px;
   bottom: 2px;
   font-size: 11px;
-  color: var(--accent);
+  color: #ffd966;
   text-shadow: 0 0 3px #000;
 }
 .bin-desc {
@@ -2064,7 +2464,7 @@ a.btn-like:hover {
 
 /* インスペクタ */
 .insp-section {
-  padding: 6px 0 10px;
+  padding: 10px 0 14px;
   border-bottom: 1px solid var(--line);
 }
 .insp-section:last-child {
@@ -2074,8 +2474,12 @@ a.btn-like:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
-  color: var(--accent);
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .insp-title.clickable {
   cursor: pointer;
@@ -2097,7 +2501,7 @@ a.btn-like:hover {
   width: 84px;
   height: 84px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 8px;
   background: #000;
 }
 .insp-cut-meta {
@@ -2120,7 +2524,7 @@ a.btn-like:hover {
 .insp-keys code {
   background: var(--panel2);
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--fg);
 }
 .insp-section .row {
@@ -2135,7 +2539,7 @@ a.btn-like:hover {
   font-size: 10px;
   font-weight: 700;
   text-align: center;
-  color: #1b1f24;
+  color: #fff;
 }
 .vbadge.E {
   background: var(--err);
@@ -2181,7 +2585,7 @@ a.btn-like:hover {
   z-index: 40;
   width: 460px;
   max-width: calc(100vw - 32px);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 14px 40px var(--shadow-lg-c);
 }
 .ai-pop-head {
   align-items: center;
@@ -2213,7 +2617,7 @@ a.btn-like:hover {
   align-items: center;
   gap: 8px;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: 8px;
   border: 1px solid transparent;
   cursor: pointer;
   color: var(--fg);
@@ -2236,19 +2640,19 @@ a.btn-like:hover {
   font-size: 10px;
   text-align: center;
   padding: 1px 0;
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--line);
 }
 .build-status.done {
-  background: #1f4a3a;
+  background: var(--tint-green);
   color: var(--ok);
 }
 .build-status.todo {
-  background: #2b4a7a;
-  color: #cfe3ff;
+  background: var(--tint-blue);
+  color: var(--tint-blue-fg);
 }
 .build-status.blocked {
-  background: #5a1f1f;
+  background: var(--tint-red);
   color: var(--err);
 }
 .build-detail {
@@ -2257,37 +2661,64 @@ a.btn-like:hover {
   text-overflow: ellipsis;
 }
 
-/* ── 多段タイムライン ── */
+/* ── 多段タイムライン ──
+   段ラベルは色付きの角丸アイコン＋名前。ブロックはどれも角丸のピルにして、
+   段ごとの色（映像＝青・テロップ＝グループ色の淡いチップ・ナレーション＝緑・効果音＝橙）で見分ける */
 .tl {
-  --tl-ruler: 20px;
+  --tl-ruler: 24px;
   --tl-v: 74px;
-  --tl-t: 28px;
-  --tl-n: 34px;
-  --tl-s: 24px;
+  --tl-t: 34px;
+  --tl-n: 38px;
+  --tl-s: 30px;
   display: flex;
   gap: 0;
   user-select: none;
 }
 .tl-labels {
-  flex: 0 0 34px;
+  flex: 0 0 124px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-right: none;
-  border-radius: 4px 0 0 4px;
-  background: var(--panel2);
+  border-right: 1px solid var(--line);
   overflow: hidden;
 }
 .tl-label {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
+  gap: 8px;
+  padding: 0 8px 0 2px;
+  font-size: 12px;
+  color: var(--fg);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.tl-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-ico {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: inline-grid;
+  place-items: center;
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-  flex-direction: column;
+  color: #fff;
+  background: var(--trk-video);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+}
+.tl-ico.t {
+  background: var(--trk-telop);
+}
+.tl-ico.n {
+  background: var(--trk-narr);
+}
+.tl-ico.s {
+  background: var(--trk-sfx);
 }
 .tl-label-ruler {
   height: var(--tl-ruler);
@@ -2306,11 +2737,16 @@ a.btn-like:hover {
   border-bottom: none;
 }
 .tl-add {
-  padding: 0 4px;
-  font-size: 10px;
-  line-height: 14px;
-  border-color: transparent;
-  color: var(--accent2);
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 7px;
+  background: var(--chip);
+  box-shadow: none;
+  color: var(--accent);
 }
 .tl-scroll {
   position: relative; /* 挿入キャレットの基準 */
@@ -2318,12 +2754,13 @@ a.btn-like:hover {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 0 4px 4px 0;
+  background: var(--panel);
+  border-radius: 0 10px 10px 0;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
 }
 .tl-scroll.ext-over {
-  border-color: var(--accent);
+  outline-color: var(--accent);
 }
 .tl-inner {
   position: relative;
@@ -2355,11 +2792,11 @@ a.btn-like:hover {
   border-bottom: none;
 }
 .tl-row-v .ctl-clip {
-  top: 2px;
+  top: 3px;
 }
 .tl-row-hint {
   position: absolute;
-  left: 8px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 11px;
@@ -2370,17 +2807,18 @@ a.btn-like:hover {
 /* サムネイルの背景にするコマ（目盛りの上のピン）。クリックで編集、横ドラッグでコマを変える */
 .tl-thumb-pin {
   position: absolute;
-  top: 1px;
+  top: 2px;
   transform: translateX(-50%);
-  height: calc(var(--tl-ruler) - 3px);
-  min-width: 20px;
-  padding: 0 3px;
+  height: calc(var(--tl-ruler) - 4px);
+  min-width: 22px;
+  padding: 0 4px;
   font-size: 11px;
-  line-height: calc(var(--tl-ruler) - 5px);
+  line-height: calc(var(--tl-ruler) - 6px);
   text-align: center;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
   cursor: ew-resize;
   z-index: 5;
   touch-action: none;
@@ -2388,66 +2826,73 @@ a.btn-like:hover {
 }
 .tl-thumb-pin.sel,
 .tl-thumb-pin.dragging {
-  background: var(--accent);
-  box-shadow: 0 0 0 2px rgba(255, 217, 102, 0.35);
+  border-color: var(--accent);
+  background: var(--sel-bg);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
+/* 再生ヘッド：青い線と、目盛りの上の丸いつまみ */
 .tl-playhead {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: var(--err);
+  background: var(--accent);
   z-index: 4;
   pointer-events: none;
 }
 .tl-playhead::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: -5px;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 8px solid var(--err);
+  top: 2px;
+  left: -7px;
+  width: 16px;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  box-shadow: 0 2px 6px rgba(26, 115, 255, 0.4);
 }
-/* T 段 */
+/* T 段：グループ色を淡く敷いたチップ（デザインの Hook / Profile / … の帯） */
 .tl-telop {
   position: absolute;
-  top: 3px;
-  height: calc(var(--tl-t) - 6px);
+  top: 4px;
+  height: calc(var(--tl-t) - 8px);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 6px;
-  border: 1px solid var(--line);
-  border-left-width: 4px;
-  border-radius: 3px;
-  background: #1c2533;
-  font-size: 11px;
+  gap: 5px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--gcolor, var(--trk-telop)) 22%, var(--panel));
+  color: color-mix(in srgb, var(--gcolor, var(--trk-telop)) 55%, var(--fg));
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
 }
 .tl-telop:hover {
-  filter: brightness(1.15);
+  background: color-mix(in srgb, var(--gcolor, var(--trk-telop)) 32%, var(--panel));
 }
 .tl-telop.selected {
   outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline-offset: 1px;
 }
 .tl-telop.placeholder {
-  background: #4a3f12;
-  color: var(--accent);
+  background: var(--tint-yellow);
+  color: var(--tint-yellow-fg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint-yellow-fg) 30%, transparent);
 }
 .tl-telop.none {
   background: transparent;
   border: 1px dashed var(--line);
-  color: #6a727c;
+  color: var(--muted);
+  font-weight: 400;
   justify-content: center;
 }
 .tl-telop.subs {
-  background: #1f3a3a;
-  border-left-color: var(--ok);
+  background: var(--tint-green);
+  color: var(--tint-green-fg);
 }
 .tl-telop-text {
   overflow: hidden;
@@ -2455,87 +2900,118 @@ a.btn-like:hover {
 }
 .tl-badge {
   flex: 0 0 auto;
-  padding: 0 4px;
-  border-radius: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
   font-size: 10px;
   background: var(--gcolor, var(--line));
-  color: #10141a;
+  color: #fff;
   font-weight: 700;
 }
 .tl-mini {
   flex: 0 0 auto;
   font-size: 10px;
   color: var(--muted);
+  font-weight: 500;
 }
-/* N 段 */
+/* N 段：緑のピル（デザインの Score の段） */
 .tl-narr {
   position: absolute;
   top: 4px;
   height: calc(var(--tl-n) - 8px);
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 6px;
-  border: 1px solid #3c6b5a;
-  border-radius: 3px;
-  background: #1c3a2e;
-  font-size: 11px;
+  gap: 6px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #2bc27e, var(--trk-narr));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
   cursor: grab;
   overflow: hidden;
   white-space: nowrap;
   touch-action: none;
 }
+/* 両端のつまみ風の縦線（掴めることが分かるように） */
+.tl-narr::before,
+.tl-narr::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.tl-narr::before {
+  left: 4px;
+}
+.tl-narr::after {
+  right: 4px;
+}
 .tl-narr.estimated {
-  border-style: dashed;
+  background: var(--tint-green);
+  color: var(--tint-green-fg);
+  outline: 1px dashed var(--trk-narr);
+  outline-offset: -1px;
 }
 .tl-narr.needs-tts {
-  background: #3d3320;
-  border-color: var(--warn);
+  background: var(--tint-orange);
+  color: var(--tint-orange-fg);
+  box-shadow: inset 0 0 0 1px var(--warn);
 }
 .tl-narr.overlap {
-  box-shadow: inset 0 0 0 1px var(--err);
+  box-shadow: inset 0 0 0 2px var(--err);
 }
 .tl-narr.overrun {
-  background: repeating-linear-gradient(45deg, #3d2222, #3d2222 4px, #2a1818 4px, #2a1818 8px);
+  background: repeating-linear-gradient(45deg, var(--tint-red), var(--tint-red) 5px, color-mix(in srgb, var(--tint-red) 60%, var(--panel)) 5px, color-mix(in srgb, var(--tint-red) 60%, var(--panel)) 10px);
+  color: var(--tint-red-fg);
 }
 .tl-narr.selected {
   outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline-offset: 1px;
 }
 .tl-narr-id {
   flex: 0 0 auto;
   font-family: Consolas, monospace;
   font-size: 10px;
-  color: var(--muted);
+  opacity: 0.75;
 }
 .tl-narr-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* S 段 */
+/* S 段：橙のピル */
 .tl-sfx {
   position: absolute;
-  top: 3px;
-  height: calc(var(--tl-s) - 6px);
+  top: 4px;
+  height: calc(var(--tl-s) - 8px);
   display: flex;
   align-items: center;
-  padding: 0 5px;
-  border: 1px solid #7a5a9a;
-  border-radius: 3px;
-  background: #33244a;
+  padding: 0 7px;
+  border: none;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #ffa24d, var(--trk-sfx));
+  color: #fff;
   font-size: 10px;
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
   cursor: grab;
   overflow: hidden;
   white-space: nowrap;
   touch-action: none;
 }
 .tl-sfx.missing {
-  border-color: var(--err);
-  color: var(--err);
+  background: var(--tint-red);
+  color: var(--tint-red-fg);
+  box-shadow: inset 0 0 0 1px var(--err);
 }
 .tl-sfx.selected {
   outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline-offset: 1px;
 }
 .tl-sfx-text {
   overflow: hidden;
@@ -2544,8 +3020,8 @@ a.btn-like:hover {
 
 /* 顔モザイク（deface） */
 .badge.mosaic {
-  background: #5b4b8a;
-  color: #fff;
+  background: var(--tint-purple);
+  color: var(--tint-purple-fg);
 }
 .mosaic-card summary {
   cursor: pointer;
@@ -2559,7 +3035,7 @@ a.btn-like:hover {
   margin-top: 8px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
 }
 .script-proposal .issues {
   margin: 6px 0;
@@ -2640,7 +3116,7 @@ a.btn-like:hover {
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
-  background: #2a1d1d;
+  background: var(--tint-red);
   border-bottom: 1px solid var(--err);
   font-size: 12px;
   line-height: 1.5;
@@ -2786,7 +3262,7 @@ a.btn-like:hover {
     align-items: center;
     gap: 4px 10px;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: 12px;
     padding: 8px;
     margin-bottom: 8px;
   }
@@ -2835,6 +3311,10 @@ a.btn-like:hover {
     z-index: 40;
     background: var(--panel);
     border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 16px rgba(15, 20, 30, 0.06);
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
     padding-bottom: env(safe-area-inset-bottom);
   }
   .bottomnav .bn {
@@ -2848,13 +3328,13 @@ a.btn-like:hover {
     gap: 2px;
     background: transparent;
     border: none;
-    border-radius: 0;
+    border-radius: 12px;
     color: var(--muted);
     padding: 4px 2px;
   }
   .bottomnav .bn.active {
     color: var(--accent);
-    background: var(--panel2);
+    background: var(--accent-soft);
   }
   .bn-icon {
     font-size: 17px;
@@ -2890,7 +3370,7 @@ a.btn-like:hover {
     gap: 6px;
   }
 
-  /* ── AI ▾ の吹き出し ──
+  /* ── Claude に頼む の吹き出し ──
      ボタンを基準に左端を合わせる作りなので、折り返したツールバーの右寄りに
      ボタンが来ると画面の外へ出てしまう。狭い画面では**画面中央のダイアログ**にして、
      ボタンの位置と切り離す。
@@ -2901,7 +3381,7 @@ a.btn-like:hover {
     position: fixed;
     inset: 0;
     z-index: 47;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--backdrop);
   }
   .ai-pop {
     position: fixed;
@@ -2920,7 +3400,7 @@ a.btn-like:hover {
     overflow-y: auto;
     overscroll-behavior: contain;
     border-radius: 10px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 18px 50px var(--shadow-lg-c);
   }
   /* 中をスクロールしても「閉じる」に届くようにする */
   .ai-pop-head {
@@ -2967,7 +3447,7 @@ a.btn-like:hover {
     overscroll-behavior: contain;
     border-radius: 12px 12px 0 0;
     border-bottom: none;
-    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 -12px 32px var(--shadow-lg-c);
     padding: 0 10px calc(10px + env(safe-area-inset-bottom));
   }
 
@@ -3123,7 +3603,7 @@ a.btn-like:hover {
     overscroll-behavior: contain;
     border-radius: 12px 12px 0 0;
     border-bottom: none;
-    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 -12px 32px var(--shadow-lg-c);
     padding: 0 10px;
   }
   /* 中身は縮めない。**シートは縦に伸びてスクロールさせる**のが正しい振る舞い。
@@ -3202,7 +3682,7 @@ a.btn-like:hover {
   /* 区間の一覧は 1 区間＝1 枠にまとめる（どの数値がどの区間のものか分かるように） */
   .ranges .range {
     border: 1px solid var(--line);
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 8px;
     margin: 8px 0;
   }
@@ -3251,9 +3731,10 @@ a.btn-like:hover {
   }
   /* 段ラベルの中の「＋」。button の最低高さ（40px）をそのまま当てると段からはみ出す */
   .tl-add {
-    min-height: 22px;
-    padding: 0 8px;
-    line-height: 20px;
+    min-height: 0;
+    width: 26px;
+    height: 26px;
+    padding: 0;
   }
   /* キーボードの説明は指の操作では使えないので場所を譲る */
   .insp-section:has(> .insp-keys) {
@@ -3301,9 +3782,9 @@ a.btn-like:hover {
   gap: 8px;
   flex-wrap: wrap;
   padding: 6px 10px;
-  background: #2a2519;
+  background: var(--tint-yellow);
   border: 1px solid var(--warn);
-  border-radius: 6px;
+  border-radius: 12px;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -3317,7 +3798,7 @@ a.btn-like:hover {
   margin-bottom: 8px;
   background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
 }
 .upload-materials code {
   color: var(--accent);
@@ -3334,7 +3815,7 @@ a.btn-like:hover {
   gap: 8px;
   padding: 16px;
   text-align: center;
-  background: rgba(18, 20, 23, 0.92);
+  background: var(--veil);
   color: var(--fg);
   font-size: 12px;
   line-height: 1.6;
@@ -3346,7 +3827,7 @@ a.btn-like:hover {
 /* カットの切り出し（Inspector）。既定のままのときは畳んでおく */
 .insp-crop {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
   padding: 6px 8px;
 }
 .insp-crop > summary {
@@ -3378,14 +3859,14 @@ a.btn-like:hover {
   margin-top: 8px;
   padding: 8px 10px;
   border: 1px solid var(--ok);
-  border-radius: 6px;
-  background: #16231c;
+  border-radius: 12px;
+  background: var(--tint-green);
   font-size: 12px;
   line-height: 1.7;
 }
 .update-result.err {
   border-color: var(--err);
-  background: #2a1d1d;
+  background: var(--tint-red);
 }
 .update-result p {
   margin: 6px 0 0;
@@ -3397,7 +3878,7 @@ a.btn-like:hover {
 
 /* ── バズ動画の型を写す（Brief の ReferenceCard） ───────────────────────── */
 .pill.ok {
-  background: #16321f;
+  background: var(--tint-green);
   color: var(--ok);
   border-color: var(--ok);
 }
@@ -3409,7 +3890,7 @@ a.btn-like:hover {
   margin-top: 6px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 12px;
   background: var(--panel2);
 }
 .reference-summary {
@@ -3459,7 +3940,7 @@ a.btn-like:hover {
   position: relative;
   width: 96px;
   height: 128px;
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
   background: #000;
 }
@@ -3490,5 +3971,90 @@ a.btn-like:hover {
 @media (max-width: 860px) {
   .reference-pattern {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ── 刷新したデザインの狭い画面向け ── */
+@media (max-width: 860px) {
+  .topbar {
+    background: var(--bg);
+  }
+  /* 配色の切り替えはロゴの行の右端に置く（案件の選択は下の行いっぱいに使う） */
+  .topbar .theme-btn {
+    order: 1;
+    margin-left: auto;
+  }
+  .topbar .status {
+    order: 2;
+  }
+  .nextbar {
+    margin: 0 8px 8px;
+  }
+  /* 上段は「再生」を 1 行目の中央に、件数と拡大はその下に折り返す */
+  .tl-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .tl-toolbar .transport {
+    order: -1;
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .tl-toolbar-side.end {
+    flex: 1 1 auto;
+  }
+  /* 段ラベルは色付きアイコンだけにして、タイムラインの幅を空ける */
+  .tl-labels {
+    flex: 0 0 40px;
+  }
+  .tl-label {
+    justify-content: center;
+    gap: 2px;
+    padding: 0;
+  }
+  .tl-ico {
+    width: 19px;
+    height: 19px;
+    border-radius: 6px;
+    font-size: 10px;
+  }
+  .tl .tl-add {
+    width: 17px;
+    height: 19px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  /* 再生の行は画面幅に収める（カット番号は V 段で見える） */
+  .tp-cut {
+    display: none;
+  }
+  .tp-time,
+  .tp-total {
+    min-width: 0;
+    font-size: 14px;
+  }
+  .transport {
+    gap: 2px;
+  }
+  .tl-name {
+    display: none;
+  }
+  /* プレビューに被らないよう、切り替えはキャンバスの下に置く */
+  .ed-center {
+    padding: 12px;
+  }
+  .canvas-pill {
+    position: static;
+    margin-top: 10px;
+    justify-content: center;
+  }
+}
+/* 指で操作する広い画面（タブレット横置き等）は名前を出したままにする */
+@media (pointer: coarse) and (min-width: 861px) {
+  .tl-labels {
+    flex-basis: 124px;
   }
 }

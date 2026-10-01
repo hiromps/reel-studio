@@ -1,4 +1,4 @@
-// 「AI ▾」メニュー：裏で claude を走らせる作業（テロップ・並べ替え・自由指示・ナレーション原稿）を 1 か所に。
+// 「Claude に頼む」メニュー：裏で claude を走らせる作業（テロップ・並べ替え・自由指示・ナレーション原稿）を 1 か所に。
 import React, {useEffect, useRef, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
@@ -80,8 +80,15 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
 
   return (
     <div className="ai-menu" ref={rootRef} data-tour="ai-menu">
-      <button className={`primary${open ? ' on' : ''}`} onClick={() => setOpen((v) => !v)} disabled={!hasCuts} title="裏で Claude を起動して作業を代行させます（API 課金が発生します）">
-        {aiBusy ? 'AI 作業中…' : 'AI ▾'}
+      <button className={`ai-btn${open ? ' on' : ''}${aiBusy ? ' busy' : ''}`} onClick={() => setOpen((v) => !v)} disabled={!hasCuts} title="裏で Claude を起動して作業を代行させます（API 課金が発生します）">
+        <span className="ai-eyes" aria-hidden="true">
+          <i />
+          <i />
+        </span>
+        {aiBusy ? 'AI 作業中…' : 'Claude に頼む'}
+        <span className="ai-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
       {/* 狭い画面では画面中央のダイアログになる。後ろを覆っておくと、
           どこを押せば閉じるかが分かるし、下の画面を誤って触らない */}

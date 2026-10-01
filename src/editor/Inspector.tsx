@@ -472,7 +472,7 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
           <Counter text={text} />
         </span>
       </label>
-      {isPlaceholder(text) && <div className="hint">未記入（{text}）。AI ▾ →「テロップを書いてもらう」でも埋められます</div>}
+      {isPlaceholder(text) && <div className="hint">未記入（{text}）。Claude に頼む →「テロップを書いてもらう」でも埋められます</div>}
       <div className="row">
         <label>
           向き

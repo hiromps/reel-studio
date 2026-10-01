@@ -16,7 +16,7 @@ import type {SfxLibrary} from '@shared/sfx';
 import {calcTotalFrames} from '@shared/timeline';
 import {bgAtTimelineSec, bgTimelineSec, defaultBgOf} from '@shared/thumbnail';
 import {Bin} from './Bin';
-import {Transport} from './Transport';
+import {PreviewOptions, Transport} from './Transport';
 import {Timeline, type TimelineHandle, type TrackVisibility} from './Timeline';
 import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
 import {ValidationPanel} from './ValidationPanel';
@@ -89,8 +89,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       // 「広げる → 列が伸びる → また広げる」を数 px ずつ繰り返し、開くたびに映像がじわじわ出てきた。
       // 縦積みのときは高さを画面から取って、最初から最終の大きさで出す
       const stacked = window.matchMedia('(max-width: 860px)').matches;
-      const h = (stacked ? window.innerHeight : el.clientHeight) - 40; // transport の分
-      const w = el.clientWidth - 8;
+      const h = (stacked ? window.innerHeight : el.clientHeight) - 40; // 上下の余白（キャンバスの縁と左下の切り替えピル）
+      const w = el.clientWidth - 40;
       setPreviewW(Math.max(120, Math.floor(Math.min(w, (h * 9) / 16))));
     });
     ro.observe(el);
@@ -383,21 +383,13 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         <div className="ed-center" ref={centerRef} data-tour="preview">
           {cuts ? (
             <>
-              <Preview ref={preview} cuts={debouncedCuts ?? cuts} mediaBase={s.mediaBase} width={previewW} loop={loop} controls={false} onFrame={setFrame} onPlayState={setPlaying} />
-              <Transport
-                playing={playing}
-                frame={frame}
-                fps={cuts.fps}
-                totalFrames={totalFrames}
-                currentCut={m.currentCut}
-                cutCount={cuts.cuts.length}
+              <div className="ed-stage">
+                <Preview ref={preview} cuts={debouncedCuts ?? cuts} mediaBase={s.mediaBase} width={previewW} loop={loop} controls={false} onFrame={setFrame} onPlayState={setPlaying} />
+              </div>
+              <PreviewOptions
                 loop={loop}
                 light={s.light}
                 mix={{enabled: prefsSafe.mixPreview, status: mixStatus, pending: pendingNarration(narration), hasNarration: !!narration, onToggle: (v) => setPrefs({...prefsSafe, mixPreview: v})}}
-                onToggle={toggle}
-                onStep={step}
-                onHome={() => seek(0)}
-                onEnd={() => seek(totalFrames - 1)}
                 onLoop={setLoop}
                 onLight={s.setLight}
               />
@@ -461,13 +453,20 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
 
       <div className="ed-timeline" data-tour="timeline">
         <div className="tl-toolbar">
+          <div className="tl-toolbar-side">
           <span className="hint">
             {cuts ? `${cuts.cuts.length} カット / ${m.total.toFixed(2)}s` : 'まだカットがありません'}
             {narration ? ` / ナレーション ${narration.segments.length}` : ''}
             {narration?.sfx?.length ? ` / 効果音 ${narration.sfx.length}` : ''}
           </span>
           <span className="hint tl-touch-hint">2 本指でつまむ＝拡大・縮小（広げると寄り、狭めると全体）</span>
-          <span style={{flex: 1}} />
+          </div>
+          {cuts ? (
+            <Transport playing={playing} frame={frame} fps={cuts.fps} totalFrames={totalFrames} currentCut={m.currentCut} cutCount={cuts.cuts.length} onToggle={toggle} onStep={step} onHome={() => seek(0)} onEnd={() => seek(totalFrames - 1)} />
+          ) : (
+            <span />
+          )}
+          <div className="tl-toolbar-side end">
           <label className="sb-inline tl-zoom-slider" title="拡大率（Ctrl+ホイールでも）">
             <span>拡大</span>
             <input type="range" min={PX_PER_SEC_MIN} max={PX_PER_SEC_MAX} step={1} value={prefsSafe.zoom} onChange={(e) => setPrefs({...prefsSafe, zoom: clampZoom(Number(e.target.value))})} style={{width: 110}} />
@@ -492,6 +491,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           >
             🖼 サムネイル
           </button>
+          </div>
         </div>
         <Timeline
           ref={timeline}

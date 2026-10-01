@@ -1,5 +1,5 @@
 // ガイドツアー：画面の要素をスポットライトで順に指しながら説明する。初回起動時に自動で開き、
-// 以降は「? 使い方」からいつでも呼び直せる。対象が無いステップ（案件未オープン等）は自動で飛ばす。
+// 以降は右上の「?」からいつでも呼び直せる。対象が無いステップ（案件未オープン等）は自動で飛ばす。
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 export type TourTab = 'projects' | 'materials' | 'brief' | 'timeline' | 'render' | 'settings';
@@ -44,7 +44,7 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>いまの案件の状態から、次にやるべきことを 1 行で出します。右のボタンを押すとその画面へ飛びます。</p>
-        <p className="hint">不要になったら × で消せます（「? 使い方」から戻せます）。</p>
+        <p className="hint">不要になったら × で消せます（右上の「?」から戻せます）。</p>
       </>
     ),
   },
@@ -197,7 +197,7 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>
-          「AI ▾」から、テロップの文言・ナレーション原稿・並べ替え・自由な直し（「3 カット目を短く」など）を裏で Claude に代行させられます。
+          「Claude に頼む」から、テロップの文言・ナレーション原稿・並べ替え・自由な直し（「3 カット目を短く」など）を裏で Claude に代行させられます。
         </p>
         <p className="hint">API 課金が発生します。AI の文言は下書き扱いなので必ず読み直してください。</p>
       </>
@@ -246,7 +246,7 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'ここまでです',
     body: (
       <>
-        <p>右上の「? 使い方」からこの案内・ショートカット一覧・用語集をいつでも開けます。</p>
+        <p>右上の「?」からこの案内・ショートカット一覧・用語集をいつでも開けます。</p>
         <p className="hint">困ったら「次にやること」の 1 行に従えば進めます。</p>
       </>
     ),

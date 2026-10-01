@@ -13,6 +13,7 @@ import {nextStepOf} from './components/nextStep';
 import {visibleProjects} from './components/projectList';
 import {useStringPref} from './hooks/usePref';
 import {AI_JOB_LABEL} from './components/AiJobStatus';
+import {readTheme, saveTheme, type Theme} from './theme';
 
 const TABS: {id: TourTab; label: string; sub: string}[] = [
   {id: 'projects', label: 'Projects', sub: '案件'},
@@ -37,6 +38,12 @@ export const App: React.FC = () => {
   const [tourDone, setTourDone] = useStringPref('reel-studio.tourDone', '');
   const [nextBarPref, setNextBarPref] = useStringPref('reel-studio.nextbar', '1');
   const nextBarHidden = nextBarPref === '0';
+  const [theme, setTheme] = useState<Theme>(readTheme);
+  const toggleTheme = () => {
+    const t: Theme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(t);
+    saveTheme(t);
+  };
 
   const go = (t: Tab) => setTabPref(t);
 
@@ -111,7 +118,12 @@ export const App: React.FC = () => {
   return (
     <div className="app">
       <header className="topbar" ref={topbarRef}>
-        <div className="brand">Reel Studio</div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            ▶
+          </span>
+          Reel Studio
+        </div>
         <nav className="tabs" data-tour="tabs">
           {TABS.map(({id, label, sub}, n) => (
             <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => go(id)} title={`${sub}（Ctrl+${n + 1}）`}>
@@ -121,8 +133,11 @@ export const App: React.FC = () => {
             </button>
           ))}
         </nav>
-        <button className="tab help-btn" data-tour="help" onClick={() => setHelp(true)} title="使い方・ショートカット（? キー）">
-          ? 使い方
+        <button className="icon-btn help-btn" data-tour="help" onClick={() => setHelp(true)} title="使い方・ショートカット（? キー）" aria-label="使い方">
+          ?
+        </button>
+        <button className="icon-btn theme-btn" onClick={toggleTheme} title={theme === 'dark' ? '明るい配色にする' : '暗い配色にする'} aria-label="配色を切り替える">
+          {theme === 'dark' ? '☀' : '☾'}
         </button>
         <div className="status">
           <select data-tour="project-select" value={s.active ?? ''} onChange={(e) => e.target.value && s.setActive(e.target.value)} title="編集中の案件">
@@ -182,7 +197,7 @@ export const App: React.FC = () => {
           <button className="small" onClick={() => go(next.tab)} disabled={tab === next.tab}>
             {tab === next.tab ? 'この画面です' : next.cta}
           </button>
-          <button className="small nextbar-x" title="非表示にする（「? 使い方」から戻せます）" onClick={() => setNextBarPref('0')}>
+          <button className="small nextbar-x" title="非表示にする（右上の「?」から戻せます）" onClick={() => setNextBarPref('0')}>
             ×
           </button>
         </div>

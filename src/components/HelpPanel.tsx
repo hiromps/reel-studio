@@ -129,7 +129,7 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
                 <li>素材のタグ付け（Materials の「AI にタグ付けしてもらう」。裏で Claude が起動してサムネイルを 1 枚ずつ見ます）</li>
                 <li>台本からの組み立て（Brief。素材のタグと台本を突き合わせて cuts と narration を作ります）</li>
                 <li>バズ動画の型の分析と、その型を写した台本（Brief の「バズ動画の型を写す」）</li>
-                <li>テロップの文言・ナレーション原稿・並べ替え・自由な直し（Timeline の「AI ▾」）</li>
+                <li>テロップの文言・ナレーション原稿・並べ替え・自由な直し（Timeline の「Claude に頼む」）</li>
                 <li>キャプションと店舗情報の裏取り（Render）</li>
                 <li className="hint">いずれも API 課金が発生します。モデルは横のプルダウンで選べます（opus が既定）。AI の文言は下書き扱いなので必ず読み直してください</li>
               </ul>

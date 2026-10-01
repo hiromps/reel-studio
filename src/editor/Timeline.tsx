@@ -450,16 +450,19 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
       <div className="tl-labels" aria-hidden>
         <div className="tl-label tl-label-ruler" />
         <div className="tl-label tl-label-v" title="映像：両端で尺、中を掴んで並べ替え、Alt+ドラッグで中身をずらす">
-          V
+          <span className="tl-ico v">V</span>
+          <span className="tl-name">映像</span>
         </div>
         {tracks.telop && (
           <div className="tl-label tl-label-t" title="テロップ：同じ文言が続く範囲。クリックで文言を直す">
-            T
+            <span className="tl-ico t">T</span>
+            <span className="tl-name">テロップ</span>
           </div>
         )}
         {tracks.narr && (
           <div className="tl-label tl-label-n" title="ナレーション：ドラッグで配置秒を動かす">
-            N
+            <span className="tl-ico n">N</span>
+            <span className="tl-name">ナレーション</span>
             <button className="tl-add" title="再生ヘッドの位置にナレーションを追加" onClick={() => onAddNarration(Math.round(playheadSec * 1000) / 1000)} disabled={!cuts}>
               ＋
             </button>
@@ -467,7 +470,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
         )}
         {tracks.sfx && (
           <div className="tl-label tl-label-s" title="効果音：ドラッグで配置秒を動かす">
-            S
+            <span className="tl-ico s">S</span>
+            <span className="tl-name">効果音</span>
             <button className="tl-add" title="再生ヘッドの位置に効果音を追加" onClick={() => onAddSfx(Math.round(playheadSec * 1000) / 1000)} disabled={!cuts || !narration}>
               ＋
             </button>
@@ -619,7 +623,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                 if (e.target === e.currentTarget) beginScrub(e);
               }}
             >
-              {!narration && cuts && <div className="tl-row-hint">ナレーション原稿はまだありません（AI ▾ → ナレーション原稿、または左の ＋）</div>}
+              {!narration && cuts && <div className="tl-row-hint">ナレーション原稿はまだありません（Claude に頼む → ナレーション原稿、または左の ＋）</div>}
               {nBlocks.map((b) => (
                 <div
                   key={b.id + b.index}

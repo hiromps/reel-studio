@@ -63,7 +63,7 @@ export const nextStepOf = ({active, catalog, brief, cuts, narration, caption, di
     return {
       id: 'telop',
       tab: 'timeline',
-      text: `テロップが ${placeholders} 件 未記入です（{{...}} のまま）。Timeline の「AI ▾ → テロップを書いてもらう」か、自分で書きます`,
+      text: `テロップが ${placeholders} 件 未記入です（{{...}} のまま）。Timeline の「Claude に頼む → テロップを書いてもらう」か、自分で書きます`,
       cta: 'Timeline へ',
     };
 
@@ -72,7 +72,7 @@ export const nextStepOf = ({active, catalog, brief, cuts, narration, caption, di
 
   // ナレーションは納品の必須要素。レンダーだけでは素材の音しか入らない
   if (!narration || narration.segments.length === 0)
-    return {id: 'narration', tab: 'render', text: 'ナレーションがまだありません。Render の「仕上げ」（原稿 → 音声 → レンダー → 合成 → 納品）で一気に作れます。原稿だけなら Timeline の「AI ▾」', cta: 'Render へ'};
+    return {id: 'narration', tab: 'render', text: 'ナレーションがまだありません。Render の「仕上げ」（原稿 → 音声 → レンダー → 合成 → 納品）で一気に作れます。原稿だけなら Timeline の「Claude に頼む」', cta: 'Render へ'};
 
   const needsTts = narration.segments.filter((s) => (s as {needsTts?: boolean}).needsTts || !s.durSec).length;
   if (needsTts > 0)
