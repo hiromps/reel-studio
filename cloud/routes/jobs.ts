@@ -41,7 +41,9 @@ jobsRouter.post('/:id/cancel', async (req, res) => {
 // ───────────────────────── SSE ─────────────────────────
 
 const POLL_MS = 2000;
-const MAX_MS = 55_000;
+// Vercel の maxDuration（60 秒）に対して余裕を持たせる。最後の 1 周（DB を数回引く）と後始末が
+// 55 秒から始まると 60 秒を越えて関数ごと切られ、同じインスタンスの他のリクエストも 504 になる
+const MAX_MS = 40_000;
 
 const isSame = (a: CloudJob | undefined, b: CloudJob): boolean =>
   !!a && a.status === b.status && a.progress?.done === b.progress?.done && a.progress?.phase === b.progress?.phase && a.progress?.total === b.progress?.total;

@@ -46,8 +46,9 @@ export const makeSql = (url: string): Sql => {
   return postgres(normalized, {
     // トランザクションモードのプーラーはプリペアドステートメントを跨げない
     prepare: false,
-    // 1 関数インスタンスにつき 1 本。束ねるのはプーラーの仕事
-    max: 1,
+    // 1 関数インスタンスにつき数本。Vercel は 1 インスタンスで複数リクエストを同時にさばく（Fluid compute）ので、
+    // SSE のポーリングと画面の読み込みが 1 本の接続を順番待ちしないようにする。束ねるのはプーラーの仕事
+    max: 4,
     idle_timeout: 20,
     connect_timeout: 15,
     ssl: sslOption(normalized),
