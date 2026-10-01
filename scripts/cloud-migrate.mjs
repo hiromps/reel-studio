@@ -44,6 +44,8 @@ export const openSql = async (rawUrl) => {
     prepare: false,
     max: 1,
     connect_timeout: 20,
+    // IF NOT EXISTS で「already exists, skipping」の NOTICE が表ごとに出て読みにくいので黙らせる（エラーは別経路で届く）
+    onnotice: () => {},
     ssl: mode === 'disable' ? false : mode === 'verify-full' || mode === 'verify-ca' ? 'verify-full' : 'require',
   });
 };
