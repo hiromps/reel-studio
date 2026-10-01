@@ -85,6 +85,11 @@ npm run cloud:deploy
 # 7. 確かめる（下の「確認」）。問題なければ PC のワーカーを起動し直す
 ```
 
+**Windows で `&` を含む接続文字列（Neon の `&channel_binding=require` など）を渡すときは、`npm run … --` を通さず
+`node scripts/cloud-copy-db.mjs --from "…" --to "…"` と直接呼んでください。** npm は引数を cmd.exe に渡すため、
+引用符で囲んでいても `&` でコマンドが切れます（`--to` 以降が消えて「接続文字列が要ります」になる）。
+`&channel_binding=require` を消して渡しても同じです（スクリプト側で落とすパラメータなので無くて構いません）。
+
 `psql` が入っている PC なら、4 は次でも同じです（こちらは表の作成ごと持っていくので 2 は不要。
 ただし 0003 は別途 `npm run cloud:migrate` で当てる）:
 

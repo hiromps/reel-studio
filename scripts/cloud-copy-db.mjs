@@ -3,6 +3,7 @@
 //   npm run cloud:copy-db -- --from "postgresql://…neon…" --to "postgresql://…supabase…"
 //   npm run cloud:copy-db -- --from "$NEON_DATABASE_URL"        （--to を省くと DATABASE_URL）
 //   npm run cloud:copy-db -- … --dry-run                          件数を見るだけ
+//   node scripts/cloud-copy-db.mjs --from … --to …              Windows で & を含む URL を渡すときはこちら（npm は & で切れる）
 //
 // 何を写すか: cloud/db/schema.ts にある表のすべて（projects / docs / jobs / job_logs / assets /
 // personas / kv / push_subs）。Vercel Blob の実体は URL が変わらないので触らない（assets は索引だけ）。
