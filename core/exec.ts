@@ -14,6 +14,11 @@ export type ExecOptions = {
   /** stdout/stderr を結果に保持する最大文字数（超えた分は先頭から捨てる） */
   keepChars?: number;
   timeoutMs?: number;
+  /**
+   * 標準入力に流す本文。長いプロンプトのように argv に載せられないもの（Windows はコマンドライン全体で
+   * 32,767 文字まで。超えると spawn が ENAMETOOLONG で落ちる）に使う。無ければ stdin は閉じたまま
+   */
+  input?: string;
 };
 
 export const isWindows = process.platform === 'win32';
@@ -56,9 +61,14 @@ export const exec = (cmd: string, args: string[], opt: ExecOptions = {}): Promis
     cwd: opt.cwd,
     env: {...process.env, ...opt.env},
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [opt.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     detached: !isWindows,
   });
+  if (opt.input !== undefined && child.stdin) {
+    // 子が読む前に終了したときの EPIPE で落ちないように
+    child.stdin.on('error', () => {});
+    child.stdin.end(opt.input);
+  }
   let stdout = '';
   let stderr = '';
   const push = (buf: string, chunk: Buffer | string) => {

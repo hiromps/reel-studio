@@ -122,11 +122,24 @@ type CliResult = {
   api_error_status?: unknown;
 };
 
+/**
+ * Windows の CreateProcess はコマンドライン全体で 32,767 文字まで。プロンプトが長いと spawn が ENAMETOOLONG で落ちる
+ * （人格の言語化のように動画 6 本ぶんの分析とキャプションを 1 つのプロンプトに入れると超える。2026-10-02 に実際に起きた）。
+ * この長さを超えるプロンプトは argv に載せず、短い案内だけを -p に書いて本文は標準入力で渡す。
+ * claude -p は標準入力の本文をプロンプトの一部として読む（同日に実走で確認）。
+ * 残りの引数（--json-schema の JSON・ツール名・パス）を足しても上限に収まるよう、余裕を大きく取ってある
+ */
+export const PROMPT_ARGV_MAX = 6_000;
+export const PROMPT_STDIN_LEAD = '依頼の本文（指示と材料）は標準入力で渡してある。このメッセージの前後に続く長い本文がそれ。その本文に書かれた指示にそのまま従って作業し、結果を structured output で返すこと。';
+
+/** プロンプトの渡し方。短ければ argv、長ければ案内だけ argv に書いて本文は stdin */
+export const promptTransport = (prompt: string): {arg: string; stdin?: string} => (prompt.length > PROMPT_ARGV_MAX ? {arg: PROMPT_STDIN_LEAD, stdin: prompt} : {arg: prompt});
+
 /** claude に渡す引数。テストで形を確かめられるよう runAgent から切り出してある */
 export const agentArgs = (opt: AgentOptions): string[] => {
   const args = [
     '-p',
-    opt.prompt,
+    promptTransport(opt.prompt).arg,
     // stream-json だと作業中のツール使用が 1 行ずつ流れてくる（進捗を出せる）。最後の 1 行が結果
     '--output-format',
     'stream-json',
@@ -189,10 +202,14 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
   const startedAt = Date.now();
   const heartbeat = opt.onEvent ? setInterval(() => opt.onEvent?.({kind: 'heartbeat', elapsedSec: (Date.now() - startedAt) / 1000}), opt.heartbeatMs ?? 5000) : undefined;
 
+  const transport = promptTransport(opt.prompt);
+  if (transport.stdin !== undefined) opt.onLine?.(`（プロンプトが ${opt.prompt.length.toLocaleString()} 文字と長いので標準入力で渡します）`);
   const execOpt: ExecOptions = {
     cwd: opt.cwd,
     // MCP の鍵はここでだけ子プロセスに渡る（argv にもログにも出ない）
     env: opt.mcp?.env,
+    // 長いプロンプトの本文（argv には案内だけ）
+    input: transport.stdin,
     timeoutMs: opt.timeoutMs ?? 20 * 60_000,
     signal: opt.signal,
     onLine: (line, stream) => (stream === 'stdout' ? takeLine(line) : opt.onLine?.(line)),
