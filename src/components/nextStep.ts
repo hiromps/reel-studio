@@ -56,7 +56,7 @@ export const nextStepOf = ({active, catalog, brief, cuts, narration, caption, di
   if (!brief) return {id: 'brief', tab: 'brief', text: '人格（誰の声・文体で作るか）を選んで brief（何を伝えるか）を作ります', cta: 'Brief へ'};
 
   if (!cuts || cuts.cuts.length === 0)
-    return {id: 'plan', tab: 'brief', text: 'カット構成を作ります。台本があれば Brief の「台本から組み立てる」、無ければ「プラン生成」。自分で並べるなら Timeline の素材ビンから', cta: 'Brief へ'};
+    return {id: 'plan', tab: 'brief', text: 'カット構成を作ります。Brief の「作り方の流れ」で、台本から／バズ動画の型を写す／型に流し込む のどれかを選んで進めます（自分で並べるなら Timeline の素材ビンから）', cta: 'Brief へ'};
 
   const placeholders = countPlaceholders(cuts);
   if (placeholders > 0)

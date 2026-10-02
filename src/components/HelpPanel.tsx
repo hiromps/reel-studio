@@ -6,7 +6,7 @@ import type {TourTab} from './Tour';
 const FLOW: {tab: TourTab; label: string; what: string}[] = [
   {tab: 'projects', label: '① Projects', what: '案件（動画 1 本）を作る・開く。同じ素材で別バージョンも作れる。投稿し終えた案件は「投稿済み（隠す）」で一覧から外せる（消えません）'},
   {tab: 'materials', label: '② Materials', what: '素材フォルダを読み込み、1 本ずつタグを付ける（AI に任せられる）'},
-  {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を自動生成する。台本があるなら貼って「台本から組み立てる」。他の人のバズ動画を渡して型を写すこともできる'},
+  {tab: 'brief', label: '③ Brief', what: '何を伝えるかを決めて構成を作る。上の「作り方の流れ」が順番を案内する（台本から組み立てる／バズ動画の型を写す／型に流し込む のどれか 1 つ）'},
   {tab: 'timeline', label: '④ Timeline', what: '映像・テロップ・ナレーション・効果音を 1 つのタイムラインで整えて検証する'},
   {tab: 'render', label: '⑤ Render', what: '「仕上げ」で原稿 → 音声 → レンダー → 合成 → 納品まで一気に。声の設定・効果音・キャプション・トライアルもここ'},
   {tab: 'settings', label: '⑥ Settings', what: 'データフォルダ・Fish Audio の API キー・claude の場所と既定モデル・人格（文体・声・キャプションの型）。最初に一度だけ'},

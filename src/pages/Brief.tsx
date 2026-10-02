@@ -1,11 +1,20 @@
-// Brief：ユーザーの意図（Step 0 の回答）を編集し、プランを生成して cuts.json に書く。
-import React, {useMemo, useState} from 'react';
+// Brief：ユーザーの意図（Step 0 の回答）を編集し、構成を作る。
+//
+// 画面の並び（上から順に進む）:
+//   1. 作り方の流れ（6 工程の済み／いま。構成の作り方を 3 つから 1 つ選ぶ）
+//   2. Brief（意図）の入力
+//   3. 選んだ作り方のカード（台本から組み立てる／バズ動画の型を写す／プラン＝型に流し込む）。残りの 2 つは畳んで下に置く
+import React, {useCallback, useMemo, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
-import {ScriptCard} from '../components/ScriptCard';
-import {ReferenceCard} from '../components/ReferenceCard';
+import {ScriptCard, type ScriptCardState} from '../components/ScriptCard';
+import {ReferenceCard, type ReferenceCardState} from '../components/ReferenceCard';
 import {EmptyState} from '../components/EmptyState';
+import {BriefFlow} from '../components/BriefFlow';
+import {briefFlowOf, isBriefRoute, recommendRoute, ROUTE_INFO, ROUTE_ORDER, type BriefRoute} from '../components/briefSteps';
+import type {StepTab} from '../components/nextStep';
 import {useAiModel} from '../hooks/useAiModel';
+import {useStringPref} from '../hooks/usePref';
 import {BriefSchema, type Brief, type FormatId, type SavePriority} from '@shared/schema';
 import {FORMAT_SPECS, FORMAT_IDS} from '@shared/format-specs';
 import {findPersona, getPersona} from '@shared/personas';
@@ -24,7 +33,15 @@ const PRIORITIES: {id: SavePriority; label: string}[] = [
 
 type PlanPreview = {markdown: string; warnings: {code: string; message: string}[]; table: unknown[]; cuts: {cuts: unknown[]}};
 
-export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects' | 'materials') => void}> = ({onGoTimeline, onTab}) => {
+/** 同じ画面のカードへスクロール。畳んだ「別の作り方」の中なら開いてから */
+const scrollToTour = (tour: string) => {
+  const el = document.querySelector<HTMLElement>(`[data-tour="${tour}"]`);
+  if (!el) return;
+  for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) if (!d.open) d.open = true;
+  el.scrollIntoView({behavior: 'smooth', block: 'start'});
+};
+
+export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) => void}> = ({onGoTimeline, onTab}) => {
   const s = useStudio();
   const brief = s.files.brief.data;
   const catalog = s.files.catalog.data;
@@ -34,6 +51,41 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState('');
+
+  // 台本・参考動画の有無（カードが読んだ結果を受け取る。「作り方の流れ」の判定に使う）
+  const [scriptState, setScriptState] = useState<ScriptCardState>({hasText: false, sections: 0});
+  const [refState, setRefState] = useState<ReferenceCardState>({present: false, analyzed: false});
+  const onScriptState = useCallback((st: ScriptCardState) => setScriptState(st), []);
+  const onRefState = useCallback((st: ReferenceCardState) => setRefState(st), []);
+
+  // 構成の作り方。案件ごとにブラウザが覚える。選んでいなければ状態からの推奨
+  const [routePref, setRoutePref] = useStringPref(`reel-studio.brief.route.${s.active ?? ''}`, '');
+  const recommended = recommendRoute({hasScript: scriptState.hasText, referencePresent: refState.present, referenceAnalyzed: refState.analyzed});
+  const route: BriefRoute = isBriefRoute(routePref) ? routePref : recommended;
+  const project = s.projects.find((p) => p.slug === s.active);
+  const steps = useMemo(
+    () =>
+      briefFlowOf(
+        {
+          catalog,
+          brief,
+          briefDirty: s.files.brief.dirty,
+          cuts: s.files.cuts.data,
+          narration: s.files.narration.data,
+          hasScript: scriptState.hasText,
+          referencePresent: refState.present,
+          referenceAnalyzed: refState.analyzed,
+          finalOut: !!project?.out?.final,
+        },
+        route,
+      ),
+    [catalog, brief, s.files.brief.dirty, s.files.cuts.data, s.files.narration.data, scriptState.hasText, refState.present, refState.analyzed, project?.out?.final, route],
+  );
+  const chooseRoute = (r: BriefRoute) => {
+    setRoutePref(r);
+    // 選んだカードがすぐ下に出るので、そこへ
+    setTimeout(() => scrollToTour(ROUTE_INFO[r].tour), 50);
+  };
 
   const set = (patch: Partial<Brief>) => brief && s.setFile('brief', {...brief, ...patch});
   const persona = brief ? (findPersona(brief.persona) ?? null) : null;
@@ -75,6 +127,10 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
   };
   const toggleNg = (id: string) => brief && set({ngClipIds: brief.ngClipIds.includes(id) ? brief.ngClipIds.filter((x) => x !== id) : [...brief.ngClipIds, id]});
 
+  /**
+   * Claude Code のターミナル（自分のスキル）で進める人向けの依頼文。Reel Studio の画面内の AI 機能を使うなら要らない。
+   * 貼り先は PC の別ターミナルで起動した claude（Studio 連携モードのスキルが reel コマンドで案件を進める）
+   */
   const buildPrompt = () => {
     if (!brief) return;
     const lines = [
@@ -95,9 +151,13 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
         <EmptyState title="案件が開かれていません" steps={['Projects で案件を開く']} action={{label: 'Projects へ', onClick: () => onTab('projects')}} />
       </div>
     );
+
+  const flow = <BriefFlow steps={steps} route={route} recommended={recommended} onRoute={chooseRoute} persona={persona} onTab={onTab} scrollTo={scrollToTour} />;
+
   if (!brief)
     return (
       <div className="page">
+        {flow}
         <section className="card empty-state" data-tour="brief-form">
           <h2>まず「誰の動画か」を選びます</h2>
           <p>
@@ -123,8 +183,88 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
       </div>
     );
 
+  // ── 構成の作り方のカード（選んだものを先頭に、残りは畳む） ──
+  const planCard = (
+    <section className="card" data-tour="brief-plan">
+      <div className="summary">
+        <span>
+          <b>プラン（型に流し込む）</b>
+        </span>
+        {route === 'plan' && <span className="flow-primary-tag">いまの作り方</span>}
+        <span className="hint">台本も参考動画も無いときの作り方。人格の既定の型（{spec!.id} {spec!.name}）どおりにカットを並べます</span>
+      </div>
+      <p className="hint">
+        上の意図と素材のタグから、フォーマット（{spec!.id} 等）の型どおりにカットの並び（順番・尺・役割）を自動で組みます。
+        <b>テロップの文言はこの時点では仮置き</b>（{'{{g01:hook}}'} 等）で、次に Timeline の「Claude に頼む → テロップを書いてもらう」が人格の文体で埋め、そのあと「ナレーション原稿」を書きます。
+        先に「① 冒頭フック」でクリップを選んでおくと、冒頭が型どおりに決まります。
+      </p>
+      <ol className="empty-steps">
+        <li>「プランを生成（プレビュー）」で、カット表と注意（W）を見る</li>
+        <li>よければ「cuts.json に書き込む」（brief を保存 → 並びを書く → Timeline へ移ります）</li>
+        <li>Timeline の「Claude に頼む」でテロップ → ナレーション原稿。Render の「仕上げ」で音声・レンダー・納品</li>
+      </ol>
+      <div className="row">
+        <button className="primary" onClick={() => runPlan(false)} disabled={busy || !catalog}>
+          プランを生成（プレビュー）
+        </button>
+        <button className="primary" onClick={() => runPlan(true)} disabled={busy || !catalog}>
+          cuts.json に書き込む（brief 保存 → plan → Timeline へ）
+        </button>
+        {!catalog && <span className="hint">先に Materials でカタログ化してください</span>}
+      </div>
+      {preview && (
+        <>
+          <div className="hint">
+            {preview.cuts.cuts.length} カット / warnings {preview.warnings.length}
+          </div>
+          {preview.warnings.map((w, i) => (
+            <div key={i} className="issue W">
+              <span className="code">{w.code}</span>
+              <span>{w.message}</span>
+            </div>
+          ))}
+          <pre className="md">{preview.markdown}</pre>
+        </>
+      )}
+
+      <details style={{marginTop: 8}}>
+        <summary className="hint">Claude Code のターミナルで進める人向け（上級。画面の AI 機能を使うなら不要）</summary>
+        <p className="hint">
+          Reel Studio の中の「Claude に頼む」「台本から組み立てる」を使うなら、この依頼文は要りません。
+          自分の Claude Code スキル（hiro-daihon など、Studio 連携モードに対応したもの）で進めたいときだけ使います。
+        </p>
+        <ol className="empty-steps">
+          <li>
+            先に上の「brief.json を保存」を押す（依頼文は保存済みの brief を前提にしています）
+          </li>
+          <li>
+            PC で別のターミナルを開き、Reel Studio のフォルダ（このリポジトリ）で <span className="mono">claude</span> を起動する
+          </li>
+          <li>「依頼文を作る」→「コピー」で、その claude の入力欄に貼って送る。Claude Code が <span className="mono">reel</span> コマンドで案件を進め、この画面は自動で追従します（Timeline で途中経過が見えます）</li>
+        </ol>
+        <div className="row">
+          <button onClick={buildPrompt}>依頼文を作る</button>
+          {prompt && (
+            <button className="small" onClick={() => navigator.clipboard.writeText(prompt).then(() => s.toast('コピーしました。Claude Code のターミナルに貼ってください', 'ok'))}>
+              コピー
+            </button>
+          )}
+        </div>
+        {prompt && <textarea value={prompt} readOnly style={{minHeight: 140, width: '100%'}} />}
+      </details>
+    </section>
+  );
+  const cardOf: Record<BriefRoute, React.ReactNode> = {
+    script: <ScriptCard aiModel={aiModel} onModel={changeAiModel} onState={onScriptState} primary={route === 'script'} />,
+    reference: <ReferenceCard aiModel={aiModel} onModel={changeAiModel} onState={onRefState} primary={route === 'reference'} />,
+    plan: planCard,
+  };
+  const ordered: BriefRoute[] = [route, ...ROUTE_ORDER.filter((r) => r !== route)];
+
   return (
     <div className="page">
+      {flow}
+
       <section className="card" data-tour="brief-form">
         <div className="row">
           <h2 style={{margin: 0}}>Brief（意図）</h2>
@@ -384,50 +524,22 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: 'projects
         </label>
       </section>
 
-      {/* 他の人のバズ動画の型を写す。台本（script.md）を作るので、ScriptCard の上に置く */}
-      <ReferenceCard aiModel={aiModel} onModel={changeAiModel} />
-
-      <ScriptCard aiModel={aiModel} onModel={changeAiModel} />
-
-      <section className="card" data-tour="brief-plan">
-        <h2>プラン（型に流し込む）</h2>
-        <p className="hint">
-          上の意図と素材のタグから、フォーマット（F0 等）の型どおりにカットの並びを自動で組みます。まず「プレビュー」で表を確認し、よければ「cuts.json に書き込む」。テロップの文言はこの時点では仮（{'{{g01:hook}}'} 等）で、Timeline で埋めます。
-          <b>台本がもうあるなら、上の「台本から組み立てる」を使ってください</b>（どちらか一方です）。
-        </p>
-        <div className="row">
-          <button className="primary" onClick={() => runPlan(false)} disabled={busy || !catalog}>
-            プランを生成（プレビュー）
-          </button>
-          <button className="primary" onClick={() => runPlan(true)} disabled={busy || !catalog}>
-            cuts.json に書き込む（brief 保存 → plan → Timeline へ）
-          </button>
-          <button onClick={buildPrompt}>Claude 用の依頼文を作る</button>
-          {!catalog && <span className="hint">先に Materials でカタログ化してください</span>}
-        </div>
-        {preview && (
-          <>
-            <div className="hint">
-              {preview.cuts.cuts.length} カット / warnings {preview.warnings.length}
-            </div>
-            {preview.warnings.map((w, i) => (
-              <div key={i} className="issue W">
-                <span className="code">{w.code}</span>
-                <span>{w.message}</span>
-              </div>
-            ))}
-            <pre className="md">{preview.markdown}</pre>
-          </>
-        )}
-        {prompt && (
-          <>
-            <textarea value={prompt} readOnly style={{minHeight: 140}} />
-            <button className="small" onClick={() => navigator.clipboard.writeText(prompt).then(() => s.toast('コピーしました', 'ok'))}>
-              コピー
-            </button>
-          </>
-        )}
-      </section>
+      {/*
+        選んだ作り方のカードを先頭に。残りは畳んで置く（どれか 1 つしか使わないので、並べて迷わせない）。
+        3 枚とも**同じ details で包んだまま**並び替える（key で入れ替わるだけ）。包み方を変えると React がカードを作り直し、
+        カードが読んだ台本・参考動画の状態が消えて「おすすめ」が行ったり来たりする
+      */}
+      {ordered.map((id) => {
+        const primary = id === route;
+        return (
+          <details key={id} className={primary ? 'route-primary' : 'route-alt'} open={primary || undefined}>
+            <summary>
+              別の作り方: <b>{ROUTE_INFO[id].title}</b> — {ROUTE_INFO[id].when}（開いて使うなら、上の「構成の作り方」でこれを選んでください）
+            </summary>
+            {cardOf[id]}
+          </details>
+        );
+      })}
     </div>
   );
 };

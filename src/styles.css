@@ -4117,3 +4117,160 @@ a.btn-like:hover {
     flex-basis: 124px;
   }
 }
+
+/* ── Brief：作り方の流れ ──────────────────────────────────────────────── */
+.flow-steps {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flow-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel2);
+  border: 1px solid transparent;
+}
+.flow-step.now {
+  background: var(--sel-bg);
+  border-color: var(--accent);
+}
+.flow-step.done {
+  opacity: 0.72;
+}
+.flow-step .flow-mark {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.flow-step.done .flow-mark {
+  background: var(--tint-green);
+  color: var(--tint-green-fg);
+  border-color: transparent;
+}
+.flow-step.now .flow-mark {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+.flow-step .flow-body {
+  flex: 1;
+  min-width: 0;
+}
+.flow-step .flow-body b {
+  display: block;
+  margin-bottom: 2px;
+}
+.flow-step .flow-body .hint {
+  margin: 0;
+}
+.flow-step > button {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.flow-routes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin: 6px 0;
+}
+.flow-route {
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  white-space: normal;
+  height: auto;
+  line-height: 1.5;
+}
+.flow-route:hover {
+  background: var(--hover);
+}
+.flow-route.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  background: var(--sel-bg);
+}
+.flow-route .flow-route-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.flow-route .flow-route-head b {
+  font-size: 13px;
+}
+.flow-route .hint {
+  margin: 0;
+}
+.flow-persona {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+.route-alt {
+  margin-top: 8px;
+}
+.route-alt > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 6px 4px;
+  list-style: none;
+}
+.route-alt > summary::-webkit-details-marker {
+  display: none;
+}
+.route-alt > summary::before {
+  content: '▸ ';
+}
+.route-alt[open] > summary::before {
+  content: '▾ ';
+}
+.route-alt > .card {
+  margin-top: 4px;
+}
+.flow-primary-tag {
+  font-size: 11px;
+  color: var(--tint-blue-fg);
+  background: var(--tint-blue);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+/* 選んでいる作り方は details の見出しを出さず、素のカードとして見せる（包み方を変えずに切り替えるため） */
+.route-primary > summary {
+  display: none;
+}
+.route-primary > .card {
+  margin-top: 8px;
+}
+/* スマホ幅では工程の行き先ボタンを文の下に折り返す（横に詰めると文が読めない） */
+@media (max-width: 600px) {
+  .flow-step {
+    flex-wrap: wrap;
+  }
+  .flow-step > button {
+    margin-left: 34px;
+  }
+}

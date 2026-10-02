@@ -313,6 +313,9 @@ export const Tour: React.FC<Props> = ({open, tab, onTab, onClose}) => {
       }
       const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
       if (el) {
+        // 折りたたみ（details）の中にある対象は、開いてから測る（閉じたままだと大きさが 0 で指せない。
+        // Brief の「別の作り方」に畳んだカードがこれ）
+        for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) if (!d.open) d.open = true;
         el.scrollIntoView({block: 'center', inline: 'nearest'});
         const r = el.getBoundingClientRect();
         setRect({left: r.left, top: r.top, width: r.width, height: r.height});

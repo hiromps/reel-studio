@@ -38,10 +38,27 @@ const Frame: React.FC<{src: string | null; alt: string}> = ({src, alt}) => {
   return <img src={src} alt={alt} loading="lazy" draggable={false} onError={() => setOk(false)} />;
 };
 
-export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => void}> = ({aiModel, onModel}) => {
+export type ReferenceCardState = {
+  /** 参考動画を取り込んであるか */
+  present: boolean;
+  /** 分析まで済んでいるか */
+  analyzed: boolean;
+};
+
+export const ReferenceCard: React.FC<{
+  aiModel: string;
+  onModel: (v: string) => void;
+  /** 参考動画の有無を親（Brief の「作り方の流れ」）に知らせる */
+  onState?: (st: ReferenceCardState) => void;
+  /** Brief で「いまの作り方」に選ばれている（見出しに印を出す） */
+  primary?: boolean;
+}> = ({aiModel, onModel, onState, primary}) => {
   const s = useStudio();
   const slug = s.active;
   const [ref, setRef] = useState<Reference | null>(null);
+  useEffect(() => {
+    onState?.({present: !!ref?.source, analyzed: isReferenceAnalyzed(ref)});
+  }, [ref, onState]);
   const [uploading, setUploading] = useState<{name: string; pct: number | null} | null>(null);
   const [localPath, setLocalPath] = useState('');
   const [igUrl, setIgUrl] = useState('');
@@ -194,6 +211,7 @@ export const ReferenceCard: React.FC<{aiModel: string; onModel: (v: string) => v
         <span>
           <b>バズ動画の型を写す</b>
         </span>
+        {primary && <span className="flow-primary-tag">いまの作り方</span>}
         {!ref ? (
           <span className="pill">参考動画なし</span>
         ) : analyzed ? (

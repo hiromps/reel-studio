@@ -51,7 +51,20 @@ const PLACEHOLDER = `【0〜3秒】フック
 映像： 外観、看板
 ナレーション： 深夜3時まで営業しているお店です`;
 
-export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void}> = ({aiModel, onModel}) => {
+export type ScriptCardState = {
+  /** 保存済みの script.md に中身があるか */
+  hasText: boolean;
+  sections: number;
+};
+
+export const ScriptCard: React.FC<{
+  aiModel: string;
+  onModel: (v: string) => void;
+  /** 台本の有無を親（Brief の「作り方の流れ」）に知らせる */
+  onState?: (st: ScriptCardState) => void;
+  /** Brief で「いまの作り方」に選ばれている（見出しに印を出す） */
+  primary?: boolean;
+}> = ({aiModel, onModel, onState, primary}) => {
   const s = useStudio();
   const slug = s.active;
   const [text, setText] = useState('');
@@ -59,6 +72,10 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
   const [info, setInfo] = useState<ScriptRes | null>(null);
   const [open, setOpen] = useState(false);
   const dirty = text !== saved;
+  const sectionCount = info?.sections?.length ?? 0;
+  useEffect(() => {
+    onState?.({hasText: !!saved.trim(), sections: sectionCount});
+  }, [saved, sectionCount, onState]);
   // 「バズ動画の型を写す」（ai-mimic）も script.md を書いて組み立てるので、同じく待つ
   const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'ai-script' || j.type === 'ai-mimic'));
   const unsupported = !s.supportsJob('ai-script');
@@ -150,8 +167,9 @@ export const ScriptCard: React.FC<{aiModel: string; onModel: (v: string) => void
         <span>
           <b>台本から組み立てる</b>
         </span>
+        {primary && <span className="flow-primary-tag">いまの作り方</span>}
         <span>{sections.length ? `${sections.length} 区間 / ${info?.totalSec ?? '?'} 秒` : text ? '区間が読み取れていません' : '未入力'}</span>
-        <span className="hint">書いた台本に合わせて素材を並べます。型（F0 等）に収まらない長尺もこちらで作れます</span>
+        <span className="hint">台本を下に貼って保存 → 「台本から組み立てる」。素材を区間ごとに当て、テロップとナレーションを台本どおりに入れます（型に収まらない長尺も可）</span>
       </div>
 
       <div className="row">
