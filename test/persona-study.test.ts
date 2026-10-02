@@ -28,7 +28,8 @@ import {
 import {ReferenceSchema, type Reference} from '@shared/reference';
 import {JOB_TYPES, PROJECTLESS_JOBS, isHeavyJob} from '@shared/jobs';
 import {InstagramMcpError, mcpToolJson} from '@shared/instagram-mcp';
-import {generatePersona, listStudies, personaStudiesDir, readStudy, studyDir} from '../core/persona-study';
+import {generatePersona, listStudies, migratePersonaStudies, personaStudiesDir, readStudy, studyDir} from '../core/persona-study';
+import {readReference} from '../core/reference';
 import {resetInstagramMcpEnv} from '../core/instagram-mcp';
 import {resetSettings} from '../core/settings';
 import {listPersonas} from '@shared/personas';
@@ -283,12 +284,31 @@ describe('置き場（core/persona-study.ts）', () => {
     fs.rmSync(home, {recursive: true, force: true});
   });
 
-  it('動画は <設定の置き場>/persona-studies/<user>/<code>/ に置く（名前は安全な文字だけ）', () => {
-    expect(personaStudiesDir()).toBe(path.join(home, 'persona-studies'));
-    expect(studyDir('oc.eat', 'Ddn8GJfvtiO')).toBe(path.join(home, 'persona-studies', 'oc.eat', 'Ddn8GJfvtiO'));
-    expect(studyDir('../evil', 'a/b')).toBe(path.join(home, 'persona-studies', '.._evil', 'a_b'));
+  it('動画は参考動画のライブラリ（<設定の置き場>/reference-library/ig_<code>/）に置く（案件の「型を写す」と共用。名前は安全な文字だけ）', () => {
+    expect(studyDir('oc.eat', 'Ddn8GJfvtiO')).toBe(path.join(home, 'reference-library', 'ig_Ddn8GJfvtiO'));
+    // target はフォルダ名に入らない（同じ投稿なら誰のために分析しても 1 本）
+    expect(studyDir('someone_else', 'Ddn8GJfvtiO')).toBe(studyDir('oc.eat', 'Ddn8GJfvtiO'));
+    expect(studyDir('../evil', 'a/b')).toBe(path.join(home, 'reference-library', 'ig_a_b'));
     expect(listStudies('oc.eat')).toEqual([]);
     expect(readStudy(studyDir('oc.eat', 'nope'))).toBeNull();
+  });
+
+  it('以前の置き場（persona-studies/<user>/<code>/）はライブラリへ移し、reference.json に鍵を付ける', () => {
+    const p = pickInstagramPosts(rawPosts())[0];
+    const old = path.join(personaStudiesDir(), 'oc.eat', p.code);
+    fs.mkdirSync(old, {recursive: true});
+    fs.writeFileSync(path.join(old, 'study.json'), JSON.stringify(studyFromPost('oc.eat', p, '2026-10-02T00:00:00.000Z')));
+    fs.writeFileSync(path.join(old, 'reference.json'), JSON.stringify(analyzed()));
+    expect(migratePersonaStudies()).toBe(1);
+    expect(fs.existsSync(old)).toBe(false);
+    expect(fs.existsSync(personaStudiesDir())).toBe(false);
+    const list = listStudies('oc.eat');
+    expect(list.map((e) => e.study.code)).toEqual([p.code]);
+    expect(list[0].dir).toBe(studyDir('oc.eat', p.code));
+    expect(list[0].analyzed).toBe(true);
+    expect(readReference(list[0].dir)?.source?.key).toBe(`ig_${p.code}`);
+    // もう一度呼んでも何もしない
+    expect(migratePersonaStudies()).toBe(0);
   });
 
   it('study.json があるものを新しい順に並べ、分析の有無を付ける', () => {

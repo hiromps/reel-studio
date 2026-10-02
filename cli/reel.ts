@@ -20,7 +20,7 @@
 //   reel ai facts --project P [--force] [--model m]                              （店舗情報をWebで裏取り→brief.facts。Instagram優先）
 //   reel ai caption --project P [--model m] [--no-research] ["<追加の指示>"]      （裏取り→caption.txt）
 //   reel ai hooks --project P [--count 3] [--cut-count 3] [--fresh] [--force] [--model m] ["<追加の指示>"]  （トライアル用のフック案＋パターン別キャプション→hooks.json）
-//   reel ai reference --project P --file <動画> [--model m] [--no-analyze]        （他の人のバズ動画を取り込んで型を分析→reference.json）
+//   reel ai reference --project P --file <動画> [--model m] [--no-analyze] [--force]（他の人のバズ動画を取り込んで型を分析→reference.json。同じ動画の分析がライブラリにあれば使い回す。--force で分析し直す）
 //   reel ai reference --project P --url <Instagram のリール URL> [--model m] [--no-analyze]（Smartgram MCP で動画を落として取り込む。HikerAPI 1 トークン）
 //   reel ai reference --project P [--show] | --from <別案件slug> | --remove           （分析を表示 / 別案件の分析を写す / 取り消す）
 //   reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]        （分析した型を写した台本→script.md→そのまま組み立て。--dry は割り当てを見るだけ）
@@ -67,7 +67,7 @@ import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} 
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
 import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
-import {describeReference} from '../shared/reference';
+import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
 import {localDate} from '../shared/time';
 import {claudeAvailable, claudeBin} from '../core/agent';
@@ -509,6 +509,16 @@ async function main() {
           if (!r) throw new Error('参考動画がありません（reel ai reference --project P --file <動画>）');
           for (const l of describeReference(r)) out(l);
           return;
+        }
+        // 同じ動画の分析（ライブラリから写した・済んでいる）があれば、--force が無い限り走らせない
+        {
+          const cur = readReference(dir);
+          if (cur && isReferenceAnalyzed(cur) && !bool(flags, 'force')) {
+            out(cur.reusedAt ? '同じ動画の分析をライブラリから写しました（分析し直すなら --force）' : 'この動画は分析済みです（分析し直すなら --force）');
+            for (const l of describeReference(cur)) out(l);
+            out(`次: reel ai mimic --project ${path.basename(dir)}（型を写した台本を書いて組み立てる）`);
+            return;
+          }
         }
         const r = await analyzeReference(dir, {model, onLine: (l) => err(l)});
         out(`分析: ${r.segments.length} 区間 / ${r.cuts.length} カット（$${r.costUsd.toFixed(3)}）`);

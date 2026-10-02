@@ -23,7 +23,7 @@ import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
 import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
-import {describeReference} from '../shared/reference';
+import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
@@ -281,6 +281,15 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         if (p.analyze === false) {
           const r = readReference(dir);
           return {imported: !!r, segments: r?.segments.length ?? 0};
+        }
+        // 同じ動画の分析がある（ライブラリから写した・この案件で済んでいる）なら、force が無い限り走らせない
+        {
+          const cur = readReference(dir);
+          if (cur && isReferenceAnalyzed(cur) && !p.force) {
+            onLine(cur.reusedAt ? '同じ動画の分析をライブラリから写しました（分析し直すなら「分析をやり直す」）' : 'この動画は分析済みです（分析し直すなら「分析をやり直す」）');
+            for (const l of describeReference(cur)) onLine(`  ${l}`);
+            return {reused: true, segments: cur.segments.length, cuts: cur.cuts.length, hookType: cur.pattern.hookType, summary: cur.summary, costUsd: 0};
+          }
         }
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
         const r = await analyzeReference(dir, {

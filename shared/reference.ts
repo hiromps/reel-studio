@@ -36,6 +36,11 @@ export const ReferenceSourceSchema = z.object({
   originalName: z.string().default(''),
   /** Instagram の URL から取り込んだときの元の投稿（分析の表示にだけ使う） */
   sourceUrl: z.string().optional(),
+  /**
+   * 同じ動画を見分ける鍵（ig_<投稿コード> か sha_<ファイルの sha256 の先頭 16 桁>）。
+   * 案件をまたいで分析を使い回す（ライブラリ）ときに引く。無ければ古い取り込み
+   */
+  key: z.string().optional(),
   durationSec: z.number().positive(),
   fps: z.number().positive(),
   width: z.number().int().nonnegative().default(0),
@@ -130,8 +135,16 @@ export const ReferenceSchema = z.object({
   summary: z.string().default(''),
   /** 自分の素材で同じ型を作るときに守る規則 */
   mimicRules: z.array(z.string()).default([]),
+  /** ライブラリ（別の案件や人格づくりで済ませた同じ動画の分析）を写してきた日時。無ければこの案件で分析した */
+  reusedAt: z.string().optional(),
 });
 export type Reference = z.infer<typeof ReferenceSchema>;
+
+/** 同じ動画を見分ける鍵。Instagram の投稿は投稿コード、ファイルは内容の sha256（先頭 16 桁） */
+export const referenceKeyOfInstagram = (code: string): string => `ig_${code.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+export const referenceKeyOfHash = (sha256Hex: string): string => `sha_${sha256Hex.slice(0, 16).toLowerCase()}`;
+/** フォルダ名に使える形か（鍵は上の 2 つの形だけ） */
+export const isReferenceKey = (v: unknown): v is string => typeof v === 'string' && /^(ig_[A-Za-z0-9_-]{5,64}|sha_[0-9a-f]{16})$/.test(v);
 
 export const emptyReference = (): Reference => ReferenceSchema.parse({version: 1, source: null});
 

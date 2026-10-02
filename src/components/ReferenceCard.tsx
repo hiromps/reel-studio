@@ -98,7 +98,17 @@ export const ReferenceCard: React.FC<{
     if (finished) void load();
   }, [finished?.id, finished?.status, load]);
 
-  const analyze = () => void s.addJob('ai-reference', {model: aiModel});
+  /** 分析を積む。force は「分析をやり直す」（ライブラリの再利用や済んでいる分析を無視して走らせる） */
+  const analyze = (force = false) => void s.addJob('ai-reference', {model: aiModel, ...(force ? {force: true} : {})});
+  /** 取り込みの結果が分析済み（ライブラリから写した）なら、分析は積まずに知らせる */
+  const afterImport = (data: Reference | null, name: string) => {
+    setRef(data);
+    if (isReferenceAnalyzed(data)) s.toast(`同じ動画の分析がライブラリにあったので再利用しました: ${name}`, 'ok');
+    else {
+      s.toast(`参考動画を取り込みました: ${name}`, 'ok');
+      analyze();
+    }
+  };
 
   /** 動画を取り込んで、そのまま分析まで積む */
   const pick = async (file: File) => {
@@ -119,9 +129,7 @@ export const ReferenceCard: React.FC<{
         if (job) s.toast('PC が動画を取り込んで分析します（PC オフラインなら起動後に始まります）', 'ok');
       } else {
         const r = await api.upload<Res>(`${base}/upload?filename=${encodeURIComponent(file.name)}`, file);
-        setRef(r.data.data);
-        s.toast(`参考動画を取り込みました: ${file.name}`, 'ok');
-        analyze();
+        afterImport(r.data.data, file.name);
       }
     } catch (e) {
       s.toast(`取り込みに失敗: ${(e as Error).message}`, 'error');
@@ -146,10 +154,8 @@ export const ReferenceCard: React.FC<{
     if (!slug || !localPath.trim()) return;
     try {
       const r = await api.post<Res>(`${base}/import`, {path: localPath.trim()});
-      setRef(r.data.data);
       setLocalPath('');
-      s.toast('参考動画を取り込みました', 'ok');
-      analyze();
+      afterImport(r.data.data, localPath.trim().split(/[\\/]/).pop() ?? '');
     } catch (e) {
       s.toast((e as Error).message, 'error');
     }
@@ -298,7 +304,7 @@ export const ReferenceCard: React.FC<{
           <span>
             <b>{ref.source.originalName || ref.source.file}</b>（{fmtSec(stats.durationSec)} 秒・{ref.source.width}x{ref.source.height}・音声{ref.source.hasAudio ? 'あり' : 'なし'}）
           </span>
-          <button className="primary" onClick={analyze} disabled={busy || unsupported || !claude} title="シーン検出とコンタクトシートを作り、Claude に型を言語化させます（数分・API 課金）">
+          <button className="primary" onClick={() => analyze()} disabled={busy || unsupported || !claude} title="シーン検出とコンタクトシートを作り、Claude に型を言語化させます（数分・API 課金）">
             型を分析する
           </button>
           <button className="small danger" onClick={() => void remove()} disabled={busy}>
@@ -326,6 +332,7 @@ export const ReferenceCard: React.FC<{
               {localDateTime(ref.analyzedAt)} 分析{ref.model ? ` / ${ref.model}` : ''}
               {ref.costUsd ? ` / $${ref.costUsd.toFixed(2)}` : ''}
             </span>
+            {ref.reusedAt && <span className="pill" title="同じ動画を別の案件（または人格づくり）で分析したものを写しました。分析し直すと全体に新しい方が使われます">ライブラリの分析を再利用</span>}
           </div>
           {ref.summary && <p className="reference-summary">{ref.summary}</p>}
 
@@ -453,7 +460,7 @@ export const ReferenceCard: React.FC<{
             <button onClick={() => mimic(false)} disabled={mimicDisabled} title="台本は script.md に書き、素材の割り当ては書き込まずに結果だけ残します（下の「割り当ての結果」で承認）">
               台本を作って割り当てを見るだけ
             </button>
-            <button className="small" onClick={analyze} disabled={busy || unsupported || !claude} title="同じ動画をもう一度分析します（結果は置き換わります）">
+            <button className="small" onClick={() => analyze(true)} disabled={busy || unsupported || !claude} title="同じ動画をもう一度分析します（結果は置き換わり、ライブラリにも新しい方が入ります）">
               分析をやり直す
             </button>
             <button className="small danger" onClick={() => void remove()} disabled={busy}>
@@ -469,6 +476,7 @@ export const ReferenceCard: React.FC<{
       <p className="hint reference-note">
         参考動画は分析にだけ使います。<b>映像・音声・文言そのものは使わず</b>、構成・テンポ・テロップの型を自分の素材と店の事実で再現します
         （店名・料理名・数字が参考のまま残っていたら検算で指摘します）。動画は案件フォルダの <code>.studio/reference/</code> に置かれ、クラウドにはコマだけ上がります。
+        <b>同じ動画の分析は案件をまたいで使い回します</b>（設定の置き場の <code>reference-library/</code>。Instagram の投稿コードか、ファイルの内容で同じと判定）。別の案件や「AI で人格を作る」で分析済みなら、取り込むだけで分析が付きます。
       </p>
     </section>
   );

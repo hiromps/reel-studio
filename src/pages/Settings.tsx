@@ -1052,7 +1052,7 @@ const PersonaGenerate: React.FC<{onCreated: (id: string) => void}> = ({onCreated
       <p className="hint">
         Instagram のユーザー名を入れると、Smartgram MCP で最新の投稿から動画を指定した本数だけ落とし、「バズ動画の型を写す」と同じ分析（カット・テロップ・区間・締め方）を 1 本ずつ行います。
         その分析と、案件で分析済みの参考動画、投稿のキャプションをまとめて claude に渡し、文体・締めの言い回し・フックの型・ナレーションの禁則・既定の型・キャプションの型・ハッシュタグの選び方を言語化した人格を作ります。
-        写すのは言葉の癖と型だけで、店名や料理名は人格に入りません。動画は <span className="mono">{s.config?.settingsDir ? `${s.config.settingsDir.replace(/\\/g, '/')}/persona-studies/` : '設定の置き場の persona-studies/'}</span> に置かれ、分析済みのものは次回から使い回します。
+        写すのは言葉の癖と型だけで、店名や料理名は人格に入りません。動画は参考動画のライブラリ <span className="mono">{s.config?.settingsDir ? `${s.config.settingsDir.replace(/\\/g, '/')}/reference-library/` : '設定の置き場の reference-library/'}</span> に置かれ、分析済みのものは次回から使い回します（案件の「バズ動画の型を写す」で分析した同じリールも使えます）。
         ボイスは分析からは分からないので、できた人格を下の編集欄で選んで入れてください。
       </p>
       <div className="form">

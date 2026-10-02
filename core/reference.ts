@@ -9,9 +9,11 @@
 // **参考動画の映像・音声・文言は動画に使わない。** 分析のためだけに .studio/ に置き、クラウドにはコマだけ上がる。
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {studioConfig} from '../studio.config';
+import {settingsDir} from './settings';
 import {execOk} from './exec';
 import {effectiveSize, ffprobe} from './ffprobe';
 import {detectScenes} from './scene';
@@ -39,7 +41,10 @@ import {
   fmtSec,
   FRAME_W,
   isReferenceAnalyzed,
+  isReferenceKey,
   mergeAnalysis,
+  referenceKeyOfHash,
+  referenceKeyOfInstagram,
   MimicPlanSchema,
   REFERENCE_MAX_SEC,
   ReferenceSchema,
@@ -90,11 +95,111 @@ export const writeReference = (dir: string, ref: Reference): Reference => {
   return data;
 };
 
-/** 参考動画の実体（絶対パス）。無ければ null */
-export const referenceVideoPath = (dir: string, ref: Reference): string | null => {
+/** 案件（またはライブラリの 1 本）の中にある参考動画の実体（絶対パス）。無ければ null */
+const referenceVideoPathLocal = (dir: string, ref: Reference): string | null => {
   if (!ref.source) return null;
   const abs = path.join(studioDir(dir), ref.source.file);
   return fs.existsSync(abs) ? abs : null;
+};
+
+/**
+ * 参考動画の実体（絶対パス）。案件に無ければライブラリ（同じ鍵の 1 本）を見る
+ * ——ライブラリから分析を写した案件には動画を置かないので、「分析をやり直す」はライブラリの動画で行う
+ */
+export const referenceVideoPath = (dir: string, ref: Reference): string | null => {
+  const local = referenceVideoPathLocal(dir, ref);
+  if (local) return local;
+  const key = ref.source?.key;
+  if (!isReferenceKey(key)) return null;
+  const entry = findLibraryEntry(key);
+  return entry?.videoPath ?? null;
+};
+
+// ───────────────────────── ライブラリ（同じ動画の分析を案件をまたいで使い回す） ─────────────────────────
+//
+// 同じ参考動画を別の案件で使うとき、分析（ffmpeg + claude で数分・課金あり）をやり直さない。
+// <設定の置き場>/reference-library/<鍵>/ に案件と同じ形（reference.json と .studio/reference/）で 1 本ずつ置き、
+// 取り込みのときに鍵（Instagram の投稿コード、またはファイルの sha256）で引く。
+// 人格づくり（core/persona-study.ts）も同じ置き場を使うので、人格のために分析したリールは案件でも、その逆も使い回せる。
+
+export const referenceLibraryDir = (): string => path.join(settingsDir(), 'reference-library');
+/** ライブラリの 1 本のフォルダ（案件と同じ形。analyzeReference がそのまま使える） */
+export const libraryEntryDir = (key: string): string => path.join(referenceLibraryDir(), key.replace(/[^A-Za-z0-9_.-]/g, '_'));
+
+/** ファイルの内容の sha256（16 進）。大きな動画でも読み切るだけ */
+export const hashFileSha256 = (file: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    fs.createReadStream(file)
+      .on('data', (d) => h.update(d))
+      .on('end', () => resolve(h.digest('hex')))
+      .on('error', reject);
+  });
+
+export type LibraryEntry = {key: string; dir: string; ref: Reference | null; analyzed: boolean; videoPath: string | null};
+
+/** 鍵でライブラリを引く。フォルダが無ければ null（あっても分析前なら analyzed=false） */
+export const findLibraryEntry = (key: string): LibraryEntry | null => {
+  if (!isReferenceKey(key)) return null;
+  const dir = libraryEntryDir(key);
+  if (!fs.existsSync(dir)) return null;
+  const ref = readReference(dir);
+  return {key, dir, ref, analyzed: isReferenceAnalyzed(ref), videoPath: ref ? referenceVideoPathLocal(dir, ref) : null};
+};
+
+/** ライブラリにある分析済みの一覧（新しい順）。画面の「ライブラリから使う」用 */
+export const listLibraryEntries = (): LibraryEntry[] => {
+  const root = referenceLibraryDir();
+  if (!fs.existsSync(root)) return [];
+  const out: LibraryEntry[] = [];
+  for (const name of fs.readdirSync(root)) {
+    if (!isReferenceKey(name)) continue;
+    const e = findLibraryEntry(name);
+    if (e?.analyzed) out.push(e);
+  }
+  return out.sort((a, b) => ((a.ref?.analyzedAt ?? '') < (b.ref?.analyzedAt ?? '') ? 1 : -1));
+};
+
+/**
+ * 案件の分析をライブラリに写す（動画・コマ・シート・reference.json）。同じ鍵があれば上書き（分析し直したものが新しい正）。
+ * 案件に動画が無い（ライブラリから写した案件で分析し直した）ときは、ライブラリの動画を残す
+ */
+export const storeToLibrary = (projectDir: string, ref: Reference): LibraryEntry | null => {
+  const key = ref.source?.key;
+  if (!ref.source || !isReferenceKey(key)) return null;
+  const dir = libraryEntryDir(key);
+  if (path.resolve(dir) === path.resolve(projectDir)) {
+    // 人格づくりはライブラリの中で直接分析する。自分自身への複製は要らない
+    return findLibraryEntry(key);
+  }
+  const src = referenceStudioDir(projectDir);
+  const dst = referenceStudioDir(dir);
+  fs.mkdirSync(dst, {recursive: true});
+  for (const sub of ['frames', 'sheets']) fs.rmSync(path.join(dst, sub), {recursive: true, force: true});
+  if (fs.existsSync(src)) fs.cpSync(src, dst, {recursive: true, force: true});
+  const prev = readReference(dir);
+  // 人格づくりの記録（study.json）はそのまま。reusedAt は「この案件がライブラリから写した」印なので、ライブラリ側には持たせない
+  const {reusedAt: _r, ...clean} = ref;
+  void _r;
+  writeReference(dir, {...clean, source: {...ref.source, ...(prev?.source?.sourceUrl && !ref.source.sourceUrl ? {sourceUrl: prev.source.sourceUrl} : {})}});
+  return findLibraryEntry(key);
+};
+
+/**
+ * ライブラリの分析を案件に写す（コマ・シート・reference.json）。**動画は写さない**（容量のため。再分析はライブラリの動画で行う）。
+ * 案件の前の取り込みは捨てる
+ */
+export const reuseFromLibrary = (projectDir: string, entry: LibraryEntry, opt: {originalName?: string; sourceUrl?: string} = {}): Reference => {
+  if (!entry.ref?.source || !entry.analyzed) throw new Error(`ライブラリに分析済みの動画がありません: ${entry.key}`);
+  const rdir = referenceStudioDir(projectDir);
+  fs.rmSync(rdir, {recursive: true, force: true});
+  fs.mkdirSync(rdir, {recursive: true});
+  for (const sub of ['frames', 'sheets']) {
+    const s = path.join(referenceStudioDir(entry.dir), sub);
+    if (fs.existsSync(s)) fs.cpSync(s, path.join(rdir, sub), {recursive: true});
+  }
+  const source = {...entry.ref.source, originalName: opt.originalName ?? entry.ref.source.originalName, ...(opt.sourceUrl ? {sourceUrl: opt.sourceUrl} : {})};
+  return writeReference(projectDir, {...entry.ref, source, reusedAt: new Date().toISOString()});
 };
 
 /**
@@ -115,6 +220,11 @@ export type ImportOptions = {
   move?: boolean;
   /** 元の投稿の URL（Instagram から取り込んだとき） */
   sourceUrl?: string;
+  /** 同じ動画を見分ける鍵。Instagram なら ig_<投稿コード>。無ければファイルの内容から作る */
+  key?: string;
+  /** ライブラリに同じ動画の分析があっても使わず、取り込み直す */
+  noReuse?: boolean;
+  onLine?: (l: string) => void;
 };
 
 const moveOrCopy = (src: string, dst: string, move: boolean) => {
@@ -139,6 +249,14 @@ export const importReferenceVideo = async (dir: string, srcPath: string, opt: Im
     throw new Error(`動画ファイルではありません: ${shownName}（${[...VIDEO_EXT].join(' / ')}）`);
   }
   if (!fs.existsSync(srcPath) || !fs.statSync(srcPath).isFile()) throw new Error(`ファイルが見つかりません: ${srcPath}`);
+  // 同じ動画の分析がライブラリにあれば、取り込み直さずにそれを写す（分析は数分・課金あり）
+  const key = isReferenceKey(opt.key) ? opt.key : referenceKeyOfHash(await hashFileSha256(srcPath));
+  const entry = opt.noReuse ? null : findLibraryEntry(key);
+  if (entry?.analyzed) {
+    if (opt.move) fs.rmSync(srcPath, {force: true});
+    opt.onLine?.(`同じ動画の分析がライブラリにあるので再利用します（${entry.ref?.analyzedAt?.slice(0, 10) ?? ''} 分析・${entry.ref?.segments.length ?? 0} 区間）`);
+    return reuseFromLibrary(dir, entry, {originalName: shownName, sourceUrl: opt.sourceUrl});
+  }
   const probe = await ffprobe(srcPath);
   if (!(probe.durationSec > 0.5)) throw new Error('動画の長さが取れません（壊れているか、対応していない形式です）');
   if (probe.durationSec > REFERENCE_MAX_SEC)
@@ -155,6 +273,7 @@ export const importReferenceVideo = async (dir: string, srcPath: string, opt: Im
       file: rel(studioDir(dir), dest),
       originalName: opt.originalName ?? path.basename(srcPath),
       ...(opt.sourceUrl ? {sourceUrl: opt.sourceUrl} : {}),
+      key,
       durationSec: probe.durationSec,
       fps: probe.fps,
       width,
@@ -184,9 +303,21 @@ export const fetchReferenceToInbox = async (dir: string, url: string, name: stri
  * 動画の直リンクを取り（HikerAPI 1 トークン）、受け口に落としてから importReferenceVideo に渡す。
  * 鍵は PC の設定（~/.reel-studio/settings.json か SMARTGRAM_MCP_KEY）にあるので、PC 側でだけ動く
  */
-export const importReferenceFromInstagram = async (dir: string, url: string, opt: {signal?: AbortSignal; onLine?: (l: string) => void} = {}): Promise<Reference> => {
+export const importReferenceFromInstagram = async (dir: string, url: string, opt: {signal?: AbortSignal; onLine?: (l: string) => void; noReuse?: boolean} = {}): Promise<Reference> => {
   const post = parseInstagramPostUrl(url);
   if (!post) throw new Error(`Instagram の投稿・リールの URL として読めません: ${url.slice(0, 200)}（例: https://www.instagram.com/reel/XXXXXXXXX/）`);
+  const key = referenceKeyOfInstagram(post.code);
+  // 同じ投稿がライブラリにあれば、ダウンロード（HikerAPI 1 トークン）も分析もやり直さない
+  const entry = opt.noReuse ? null : findLibraryEntry(key);
+  if (entry?.analyzed) {
+    opt.onLine?.(`同じ投稿（${post.code}）の分析がライブラリにあるので再利用します（ダウンロードもしません）`);
+    return reuseFromLibrary(dir, entry, {sourceUrl: post.url});
+  }
+  if (entry?.videoPath) {
+    // 落としてあるが分析前（人格づくりの途中など）。ダウンロードだけ省く
+    opt.onLine?.(`同じ投稿（${post.code}）の動画がライブラリにあるので、それを取り込みます`);
+    return importReferenceVideo(dir, entry.videoPath, {originalName: entry.ref?.source?.originalName || `instagram_${post.code}.mp4`, sourceUrl: post.url, key, noReuse: true, onLine: opt.onLine});
+  }
   const env = instagramMcpEnv();
   if (!env) throw new Error('Instagram の URL から取り込むには、Settings の「Instagram の情報取得」に Smartgram の MCP 用 API キーが要ります');
   opt.onLine?.(`Instagram から動画の場所を取得中: ${post.url}（Smartgram / HikerAPI 1 トークン）`);
@@ -194,7 +325,7 @@ export const importReferenceFromInstagram = async (dir: string, url: string, opt
   const name = `${info.username ? `@${info.username}_` : 'instagram_'}${post.code}.mp4`;
   opt.onLine?.(`動画をダウンロード中: ${name}`);
   const tmp = await fetchReferenceToInbox(dir, info.videoUrl, name, opt.signal);
-  return importReferenceVideo(dir, tmp, {originalName: name, move: true, sourceUrl: post.url});
+  return importReferenceVideo(dir, tmp, {originalName: name, move: true, sourceUrl: post.url, key, noReuse: true, onLine: opt.onLine});
 };
 
 /** 別の案件の分析（reference.json とコマ）をそのまま持ってくる。同じ型で別の店を作るとき用 */
@@ -437,11 +568,27 @@ export async function analyzeReference(dir: string, opt: AnalyzeOptions = {}): P
 
   const parsed = AnalysisResponseSchema.safeParse(run.data);
   if (!parsed.success) throw new Error(`分析の返答が読めませんでした: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}`);
-  const merged = mergeAnalysis(readReference(dir) ?? ref, prep, parsed.data, {model, costUsd: run.costUsd, analyzedAt: new Date().toISOString()});
+  const base = readReference(dir) ?? ref;
+  // 古い取り込み（鍵なし）には、ここで鍵を付けてライブラリに入れられるようにする
+  let source = base.source!;
+  if (!isReferenceKey(source.key)) {
+    const video = referenceVideoPathLocal(dir, base);
+    if (video) source = {...source, key: referenceKeyOfHash(await hashFileSha256(video))};
+  }
+  const {reusedAt: _r, ...own} = base;
+  void _r;
+  const merged = mergeAnalysis({...own, source}, prep, parsed.data, {model, costUsd: run.costUsd, analyzedAt: new Date().toISOString()});
   if (!merged.segments.length) throw new Error('区間が 1 つも返ってきませんでした（もう一度実行してください）');
   writeReference(dir, merged);
   log(`分析完了: ${merged.segments.length} 区間 / ${merged.cuts.length} カット / $${run.costUsd.toFixed(3)}`);
   for (const l of describeReference(merged)) log(`  ${l}`);
+  // 同じ動画を別の案件（や人格づくり）で使うときのために、ライブラリにも置く
+  try {
+    const stored = storeToLibrary(dir, merged);
+    if (stored) log(`ライブラリに保存しました（${stored.key}。同じ動画は次から分析を使い回します）`);
+  } catch (e) {
+    log(`! ライブラリへの保存に失敗（分析結果はこの案件には入っています）: ${e instanceof Error ? e.message : String(e)}`);
+  }
   return merged;
 }
 

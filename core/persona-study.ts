@@ -13,7 +13,8 @@ import {studioConfig} from '../studio.config';
 import {settingsDir} from './settings';
 import {instagramMcpEnv, type InstagramMcpEnv} from './instagram-mcp';
 import {InstagramMcpError, mcpInitialize, mcpToolJson} from '../shared/instagram-mcp';
-import {analyzeReference, fetchReferenceToInbox, importReferenceVideo, readReference} from './reference';
+import {analyzeReference, fetchReferenceToInbox, importReferenceVideo, libraryEntryDir, readReference, referenceLibraryDir} from './reference';
+import {isReferenceKey, referenceKeyOfInstagram} from '../shared/reference';
 import {runAgent, type AgentRun} from './agent';
 import {agentProgress} from './ai';
 import {listProjects, readBrief, resolveProjectDirStrict} from './project';
@@ -43,13 +44,51 @@ import {
 } from '../shared/persona-study';
 
 // ───────────────────────── 置き場 ─────────────────────────
+//
+// 動画は参考動画のライブラリ（<設定の置き場>/reference-library/ig_<投稿コード>/。core/reference.ts）に置く。
+// 案件の「バズ動画の型を写す」と同じ置き場なので、人格のために分析したリールは案件でも、案件で分析したリールは人格づくりでも使い回せる。
+// 人格づくり固有の記録（キャプション・いいね数）は同じフォルダの study.json。
 
-/** 分析した動画の置き場（<設定の置き場>/persona-studies/）。リポジトリの外 */
+/** 2026-10-02 より前の置き場（persona-studies/<user>/<code>/）。起動時にライブラリへ移す */
 export const personaStudiesDir = (): string => path.join(settingsDir(), 'persona-studies');
-export const studyUserDir = (target: string): string => path.join(personaStudiesDir(), target.replace(/[^A-Za-z0-9._]/g, '_'));
-/** 1 本ぶんのフォルダ。中身は案件と同じ形（reference.json と .studio/reference/）なので analyzeReference がそのまま使える */
-export const studyDir = (target: string, code: string): string => path.join(studyUserDir(target), studyFolderName(code));
+/** 1 本ぶんのフォルダ（ライブラリの 1 本と同じ。target は中の study.json に持つ） */
+export const studyDir = (_target: string, code: string): string => libraryEntryDir(referenceKeyOfInstagram(studyFolderName(code)));
 const studyFile = (dir: string): string => path.join(dir, 'study.json');
+
+/**
+ * 古い置き場（persona-studies/<user>/<code>/）にある分析をライブラリへ移す。同じ鍵が既にあれば古い方を残して飛ばす。
+ * 何度呼んでもよい（移すものが無ければ何もしない）
+ */
+export const migratePersonaStudies = (log: (l: string) => void = () => {}): number => {
+  const old = personaStudiesDir();
+  if (!fs.existsSync(old)) return 0;
+  let moved = 0;
+  for (const user of fs.readdirSync(old)) {
+    const udir = path.join(old, user);
+    if (!fs.statSync(udir).isDirectory()) continue;
+    for (const code of fs.readdirSync(udir)) {
+      const src = path.join(udir, code);
+      if (!fs.statSync(src).isDirectory()) continue;
+      const dst = libraryEntryDir(referenceKeyOfInstagram(code));
+      if (fs.existsSync(dst)) continue;
+      fs.mkdirSync(path.dirname(dst), {recursive: true});
+      try {
+        fs.renameSync(src, dst);
+      } catch {
+        fs.cpSync(src, dst, {recursive: true});
+        fs.rmSync(src, {recursive: true, force: true});
+      }
+      // 古い reference.json には鍵が無いので付ける（ライブラリで引けるように）
+      const ref = readReference(dst);
+      if (ref?.source && !isReferenceKey(ref.source.key)) writeJsonAtomic(path.join(dst, 'reference.json'), {...ref, source: {...ref.source, key: referenceKeyOfInstagram(code)}});
+      moved++;
+    }
+    if (!fs.readdirSync(udir).length) fs.rmSync(udir, {recursive: true, force: true});
+  }
+  if (!fs.readdirSync(old).length) fs.rmSync(old, {recursive: true, force: true});
+  if (moved) log(`以前の置き場（persona-studies/）から ${moved} 本をライブラリ（reference-library/）へ移しました`);
+  return moved;
+};
 
 export const readStudy = (dir: string): PersonaStudy | null => {
   const f = studyFile(dir);
@@ -64,16 +103,17 @@ export const readStudy = (dir: string): PersonaStudy | null => {
 
 export type StudyEntry = {dir: string; study: PersonaStudy; analyzed: boolean};
 
-/** あるユーザーについて手元にある動画（新しい順） */
+/** あるユーザーについて手元にある動画（新しい順）。ライブラリの中の study.json の target で引く */
 export const listStudies = (target: string): StudyEntry[] => {
-  const root = studyUserDir(target);
+  migratePersonaStudies();
+  const root = referenceLibraryDir();
   if (!fs.existsSync(root)) return [];
   const out: StudyEntry[] = [];
   for (const name of fs.readdirSync(root)) {
     const dir = path.join(root, name);
     if (!fs.statSync(dir).isDirectory()) continue;
     const study = readStudy(dir);
-    if (!study) continue;
+    if (!study || study.target !== target) continue;
     out.push({dir, study, analyzed: isReferenceAnalyzed(readReference(dir))});
   }
   return out.sort((a, b) => (a.study.takenAt < b.study.takenAt ? 1 : -1));
@@ -142,14 +182,15 @@ export const fetchInstagramStudyPosts = async (env: InstagramMcpEnv, target: str
  */
 export const importStudyVideo = async (target: string, post: InstagramPost, opt: {force?: boolean; signal?: AbortSignal; onLine?: (l: string) => void} = {}): Promise<{dir: string; study: PersonaStudy; analyzed: boolean}> => {
   const log = opt.onLine ?? (() => {});
+  migratePersonaStudies(log);
   const dir = studyDir(target, post.code);
   const existing = readStudy(dir);
   const ref = readReference(dir);
-  if (existing && !opt.force && isReferenceAnalyzed(ref)) {
-    // キャプションやいいね数は新しいものに更新しておく（分析は使い回す）
-    const study = studyFromPost(target, post, existing.savedAt);
+  if (!opt.force && isReferenceAnalyzed(ref)) {
+    // 分析は使い回す（案件の「バズ動画の型を写す」で分析したものでもよい）。キャプションやいいね数は新しいものに更新しておく
+    const study = studyFromPost(target, post, existing?.savedAt);
     writeJsonAtomic(studyFile(dir), study);
-    log(`  ${post.code}: 分析済みを再利用`);
+    log(`  ${post.code}: 分析済みを再利用${existing ? '' : '（案件で分析したもの）'}`);
     return {dir, study, analyzed: true};
   }
   if (!post.videoUrl) throw new Error(`${post.code} は動画ではありません`);
@@ -157,7 +198,8 @@ export const importStudyVideo = async (target: string, post: InstagramPost, opt:
   const name = `@${target}_${post.code}.mp4`;
   log(`  ${post.code}: 動画をダウンロード中（${post.takenAt.slice(0, 10) || '日付不明'}・いいね ${post.likeCount}）`);
   const tmp = await fetchReferenceToInbox(dir, post.videoUrl, name, opt.signal);
-  await importReferenceVideo(dir, tmp, {originalName: name, move: true, sourceUrl: post.url});
+  // このフォルダ自体がライブラリの 1 本なので、ライブラリの再利用は切って取り込む（鍵は投稿コード）
+  await importReferenceVideo(dir, tmp, {originalName: name, move: true, sourceUrl: post.url, key: referenceKeyOfInstagram(post.code), noReuse: true});
   const study = studyFromPost(target, post);
   writeJsonAtomic(studyFile(dir), study);
   return {dir, study, analyzed: false};
@@ -218,6 +260,7 @@ export async function generatePersona(opt: GeneratePersonaOptions): Promise<Gene
   const log = opt.onLine ?? (() => {});
   const model = opt.model ?? studioConfig.agent.model;
   const id = opt.id.trim();
+  migratePersonaStudies(log);
   const exists = findPersona(id);
   if (exists && !opt.overwrite) throw new Error(`人格「${id}」は既にあります。別の id にするか、置き換える指定（overwrite）を付けてください`);
   const base = opt.base ? findPersona(opt.base) : undefined;
@@ -282,7 +325,7 @@ export async function generatePersona(opt: GeneratePersonaOptions): Promise<Gene
   const prCount = usable.length - igCount;
   opt.onProgress?.(0, 0, `人格を言語化しています（動画 ${usable.length} 本）`);
   log(`人格を言語化: 動画 ${usable.length} 本（Instagram ${igCount} / 案件 ${prCount}・model=${model}）`);
-  const cwd = personaStudiesDir();
+  const cwd = referenceLibraryDir();
   fs.mkdirSync(cwd, {recursive: true});
   const prompt = buildPersonaPrompt({target, sources: usable, base, hint: opt.hint});
   const {onEvent} = agentProgress({onProgress: opt.onProgress, log, labels: {thinking: '言葉の癖と型を言語化しています', writing: '人格を書き出しています'}});
