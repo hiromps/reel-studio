@@ -209,6 +209,20 @@ export const libraryIndex = (): LibraryIndexEntry[] => {
   });
 };
 
+/**
+ * ライブラリの 1 本を消す（動画・コマ・シート・分析・人格づくりの記録）。**戻せない。**
+ * 案件に写した分析はそのまま残る（案件は自分の reference.json とコマを持っている）。ただし、ライブラリから写した案件は動画を
+ * 持っていないので「分析をやり直す」ができなくなる。人格づくりで同じ投稿が要るときは落とし直して再分析になる
+ */
+export const deleteLibraryEntry = (key: string): {key: string; title: string; usedBy: string[]} => {
+  const e = findLibraryEntry(key);
+  if (!e) throw new Error(`ライブラリにありません: ${key}`);
+  const usedBy = libraryIndex().find((x) => x.key === key)?.usedBy ?? [];
+  const title = e.ref?.title ?? '';
+  fs.rmSync(e.dir, {recursive: true, force: true});
+  return {key, title, usedBy};
+};
+
 /** ライブラリの 1 本に名前を付ける（空で消す）。その鍵を写している案件の表示名も揃える */
 export const setLibraryTitle = (key: string, title: string): LibraryIndexEntry => {
   const e = findLibraryEntry(key);

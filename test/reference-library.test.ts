@@ -19,6 +19,7 @@ import {
   type Reference,
 } from '@shared/reference';
 import {
+  deleteLibraryEntry,
   findLibraryEntry,
   findLibraryEntryBySha,
   hashFileSha256,
@@ -257,6 +258,28 @@ describe('ライブラリに入れる・写す', () => {
     storeToLibrary(b, readReference(b)!);
     expect(findLibraryEntry(key)?.ref?.title).toBe('名前');
     expect(findLibraryEntry(key)?.ref?.summary).toBe('直した');
+  });
+
+  it('ライブラリから消すと動画・コマ・分析が消え、案件に写した分析は残る', () => {
+    const key = 'ig_Ddd6Dp5S_wZ';
+    const a = makeListedProject('a');
+    makeProject(a, analyzed(key, {title: '消す型'}));
+    storeToLibrary(a, readReference(a)!);
+    const b = makeListedProject('b');
+    reuseFromLibrary(b, findLibraryEntry(key)!);
+    const r = deleteLibraryEntry(key);
+    expect(r).toEqual({key, title: '消す型', usedBy: expect.arrayContaining(['a-reel', 'b-reel'])});
+    expect(fs.existsSync(libraryEntryDir(key))).toBe(false);
+    expect(findLibraryEntry(key)).toBeNull();
+    expect(listLibraryEntries()).toEqual([]);
+    // 案件側はそのまま（分析もコマも）
+    expect(readReference(b)?.segments).toHaveLength(1);
+    expect(fs.existsSync(path.join(referenceStudioDir(b), 'frames', '001.jpg'))).toBe(true);
+    // 写した案件は動画を持たないので、再分析用の動画はもう引けない
+    expect(referenceVideoPath(b, readReference(b)!)).toBeNull();
+    expect(referenceVideoPath(a, readReference(a)!)).toBeTruthy();
+    expect(() => deleteLibraryEntry(key)).toThrow(/ライブラリにありません/);
+    expect(() => deleteLibraryEntry('../evil')).toThrow(/ライブラリにありません/);
   });
 
   it('鍵の無い古い取り込みを登録する：ファイル名の投稿コード → 内容の sha256 → 新規 の順で結び付ける', async () => {

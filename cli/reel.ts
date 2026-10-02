@@ -24,7 +24,7 @@
 //   reel ai reference --project P --url <Instagram のリール URL> [--model m] [--no-analyze]（Smartgram MCP で動画を落として取り込む。HikerAPI 1 トークン）
 //   reel ai reference --project P [--show] | --from <別案件slug> | --remove           （分析を表示 / 別案件の分析を写す / 取り消す）
 //   reel ai reference --project P --library <鍵> | --register [--title 名前]           （ライブラリの 1 本を写す / この案件の分析をライブラリに登録して名前を付ける）
-//   reel library [list] [--json] | rename <鍵> <名前> | name [--all] [--model m]       （同じ動画の分析を案件をまたいで使い回すライブラリの一覧・名前付け・分析から自動で名前を付ける）
+//   reel library [list] [--json] | rename <鍵> <名前> | name [--all] [--model m] | remove <鍵>（同じ動画の分析を案件をまたいで使い回すライブラリの一覧・名前付け・自動命名・削除）
 //   reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]        （分析した型を写した台本→script.md→そのまま組み立て。--dry は割り当てを見るだけ）
 //   reel sfx scan | list                                                        （効果音ライブラリの棚卸し）
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
@@ -68,7 +68,7 @@ import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatal
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, libraryIndex, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, deleteLibraryEntry, deleteReference, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, libraryIndex, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {libraryEntryLabel} from '../shared/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
@@ -246,6 +246,14 @@ async function main() {
         if (!key) throw new Error('reel library rename <鍵> <名前>（名前を空にすると消す）');
         const e = setLibraryTitle(key, title);
         out(`${e.key}: 名前を「${e.title || '（なし）'}」にしました（使用 ${e.usedBy.length} 案件）`);
+        return;
+      }
+      // 1 本を消す（動画・コマ・分析。戻せない。案件に写した分析は残る）
+      if (pos[0] === 'remove') {
+        const key = pos[1];
+        if (!key) throw new Error('reel library remove <鍵>');
+        const r = deleteLibraryEntry(key);
+        out(`ライブラリから消しました: ${r.title || r.key}（使っていた案件 ${r.usedBy.length} 件の分析はそのまま）`);
         return;
       }
       const list = libraryIndex();

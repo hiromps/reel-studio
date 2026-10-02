@@ -272,6 +272,11 @@ miscRouter.put('/reference-library/:key', async (req, res) => {
   res.json({job: await addJob('reference-library', '_studio', {op: 'rename', key: req.params.key, title})});
 });
 
+/** 1 本を消す（PC のジョブ。動画・コマ・分析が消える。案件に写した分析は残る） */
+miscRouter.delete('/reference-library/:key', async (req, res) => {
+  res.json({job: await addJob('reference-library', '_studio', {op: 'delete', key: req.params.key})});
+});
+
 miscRouter.get('/sfx', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.json((await kvGet<{lib: SfxLibrary}>('sfx'))?.lib ?? EMPTY_SFX);

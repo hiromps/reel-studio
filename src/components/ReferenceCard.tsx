@@ -212,6 +212,26 @@ export const ReferenceCard: React.FC<{
     }
   };
 
+  /** ライブラリの 1 本を消す（動画・コマ・分析。戻せない）。案件に写した分析は残る */
+  const removeFromLibrary = async () => {
+    const e = library.find((x) => x.key === libKey);
+    if (!e) return;
+    const name = libraryEntryLabel(e);
+    const used = e.usedBy.length ? `使っている案件 ${e.usedBy.length} 件（${e.usedBy.slice(0, 5).join('、')}${e.usedBy.length > 5 ? '…' : ''}）の分析はそのまま残ります。` : '使っている案件はありません。';
+    if (!window.confirm(`「${name}」をライブラリから消しますか？\n\n動画・コマ・分析が消え、戻せません。${used}\nライブラリから写した案件では「分析をやり直す」ができなくなります。`)) return;
+    try {
+      const r = await api.del<{removed?: {title: string}; job?: {id: string}}>(`/api/reference-library/${encodeURIComponent(libKey)}`);
+      if (r.data.job) s.toast('PC がライブラリから消しています', 'ok');
+      else {
+        s.toast(`ライブラリから消しました: ${name}`, 'ok');
+        await loadLibrary();
+      }
+      setLibKey('');
+    } catch (e2) {
+      s.toast((e2 as Error).message, 'error');
+    }
+  };
+
   /** ライブラリの名前を付ける。同じ動画を使う全案件の表示名も揃う */
   const saveTitle = async () => {
     const key = ref?.source?.key;
@@ -367,6 +387,14 @@ export const ReferenceCard: React.FC<{
           </label>
           <button onClick={() => void useLibrary()} disabled={!libKey || busy || !!uploading || unsupported} title="選んだ分析（コマ・シート・型）をこの案件に写します。分析は走らせません">
             この分析を使う
+          </button>
+          <button
+            className="small danger"
+            onClick={() => void removeFromLibrary()}
+            disabled={!libKey || busy || naming || unsupported}
+            title="選んだ型をライブラリから消します（動画・コマ・分析。戻せません）。案件に写した分析は残ります"
+          >
+            この型をライブラリから消す
           </button>
           {library.some((e) => !e.title.trim()) && (
             <button

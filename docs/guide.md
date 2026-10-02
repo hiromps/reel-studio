@@ -591,6 +591,9 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
   鍵の無い取り込みを登録して新しく入れるときも `autoReferenceTitle` で付く。名前の無いものに後からまとめて付けるのは
   `nameLibraryEntries`（claude 1 回で全部。`reference-library` ジョブの `op: 'name'`、CLI `reel library name [--all]`、カードの
   「名前の無い N 本に自動で名前を付ける」）。同じ名前が重なれば元のファイル名を添えて区別する
+- **消す**はカードの「この型をライブラリから消す」（`DELETE /api/reference-library/:key`、クラウドは `reference-library` ジョブの `op: 'delete'`、
+  CLI `reel library remove <鍵>`、`deleteLibraryEntry`）。フォルダごと消すので戻せない。案件に写した分析とコマは残るが、
+  写した案件は動画を持っていないので「分析をやり直す」は効かなくなる（`referenceVideoPath` が null）
 - 名前は手でも付けられる（カードの「ライブラリでの名前」→「名前を保存」。
   `PUT /api/reference-library/:key`、CLI は `reel library rename <鍵> <名前>`）。名前はライブラリと、同じ鍵を写している全案件の
   `reference.json` に入る。カードの**「ライブラリから使う」**は一覧（`GET /api/reference-library`：鍵・名前・元のファイル名・秒・区間数・
