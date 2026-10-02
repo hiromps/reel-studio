@@ -75,6 +75,7 @@ export const ReferenceCard: React.FC<{
   const jobOf = (type: string) => s.jobs.find((j) => (j.status === 'running' || j.status === 'queued') && j.type === type && j.slug === slug);
   const analyzing = jobOf('ai-reference');
   const mimicking = jobOf('ai-mimic');
+  const naming = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'reference-library');
   const scripting = jobOf('ai-script');
   const busy = !!(analyzing || mimicking || scripting);
   const unsupported = !s.supportsJob('ai-reference') || !s.supportsJob('ai-mimic');
@@ -367,6 +368,16 @@ export const ReferenceCard: React.FC<{
           <button onClick={() => void useLibrary()} disabled={!libKey || busy || !!uploading || unsupported} title="選んだ分析（コマ・シート・型）をこの案件に写します。分析は走らせません">
             この分析を使う
           </button>
+          {library.some((e) => !e.title.trim()) && (
+            <button
+              className="small"
+              onClick={() => void s.addJob('reference-library', {op: 'name', model: aiModel}, '_studio')}
+              disabled={busy || unsupported || naming || !claude}
+              title="名前の無いものに、分析の内容（フック・見せ方・締め）から Claude が名前を付けます（1 回で全部・API 課金）"
+            >
+              {naming ? '名前を付けています…' : `名前の無い ${library.filter((e) => !e.title.trim()).length} 本に自動で名前を付ける`}
+            </button>
+          )}
         </div>
       )}
       {!s.isCloud && !ref && (

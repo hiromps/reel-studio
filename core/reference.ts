@@ -44,6 +44,8 @@ import {
   isReferenceAnalyzed,
   isReferenceKey,
   mergeAnalysis,
+  autoReferenceTitle,
+  normalizeReferenceTitle,
   referenceKeyFromFilename,
   referenceKeyOfHash,
   referenceKeyOfInstagram,
@@ -241,7 +243,8 @@ export const registerReferenceToLibrary = async (projectDir: string, opt: {title
     // 案件側の鍵をライブラリに合わせる（分析はそのまま。名前はライブラリのもの）
     writeReference(projectDir, {...ref, title: opt.title?.trim() || existing.ref.title || ref.title, source: {...ref.source, key, ...(sha ? {sha} : {})}});
   } else {
-    const withKey: Reference = {...ref, source: {...ref.source, key, ...(sha ? {sha} : {})}};
+    // 新しく入れるときは、名前が無ければ分析から組み立てる（一覧で見分けられるように）
+    const withKey: Reference = {...ref, title: normalizeReferenceTitle(ref.title) || autoReferenceTitle(ref), source: {...ref.source, key, ...(sha ? {sha} : {})}};
     writeReference(projectDir, withKey);
     storeToLibrary(projectDir, withKey);
   }
@@ -529,7 +532,7 @@ export const prepareReferenceFrames = async (dir: string, ref: Reference, opt: P
 const ANALYSIS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['cuts', 'segments', 'pattern', 'summary', 'mimicRules'],
+  required: ['cuts', 'segments', 'pattern', 'summary', 'mimicRules', 'title'],
   properties: {
     cuts: {
       type: 'array',
@@ -590,8 +593,85 @@ const ANALYSIS_SCHEMA = {
     },
     summary: {type: 'string', description: 'この動画が伸びている理由を 1〜3 行'},
     mimicRules: {type: 'array', items: {type: 'string'}, description: '自分の素材で同じ型を作るときに守る規則。8〜15 個。具体的に'},
+    title: {type: 'string', description: 'この型を一覧で見分けるための名前。10〜24 文字。店名・地名・料理名・人名は入れず、フックの掛け方・見せ方（リビール・テンポ）・締めが分かるように。例「断言フック→均一0.8秒→キャプション誘導」'},
   },
 } as const;
+
+/** ライブラリの名前付け（claude がまとめて付ける）の返り */
+const TITLES_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['titles'],
+  properties: {
+    titles: {
+      type: 'array',
+      description: '渡した動画の全部について 1 件ずつ（key は変えない）',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['key', 'title'],
+        properties: {
+          key: {type: 'string', description: '渡した鍵のまま'},
+          title: {type: 'string', description: '10〜24 文字の名前。店名・地名・料理名・人名は入れない。他の動画と同じ名前にしない'},
+        },
+      },
+    },
+  },
+} as const;
+
+export type NameLibraryOptions = {
+  /** 名前があるものも付け直す */
+  all?: boolean;
+  model?: string;
+  onLine?: (l: string) => void;
+  onProgress?: (done: number, total: number, phase: string) => void;
+  signal?: AbortSignal;
+};
+
+/**
+ * ライブラリの動画に、分析の内容から名前を付ける（claude に全部まとめて 1 回で付けさせる。返ってこなければ分析から組み立てる）。
+ * 既定では名前の無いものだけ。all で全部付け直す。名前は同じ鍵を写している案件にも揃う（setLibraryTitle）
+ */
+export async function nameLibraryEntries(opt: NameLibraryOptions = {}): Promise<{named: {key: string; title: string; before: string}[]; costUsd: number}> {
+  const log = opt.onLine ?? (() => {});
+  const entries = listLibraryEntries().filter((e) => opt.all || !e.ref!.title.trim());
+  if (!entries.length) {
+    log('名前を付ける動画がありません（全部に名前があります。付け直すなら all）');
+    return {named: [], costUsd: 0};
+  }
+  const model = opt.model ?? studioConfig.agent.model;
+  const lines = entries.flatMap((e, i) => [`### ${i + 1}. key: ${e.key}${e.ref!.title ? `（いまの名前「${e.ref!.title}」）` : ''}`, ...describeReference(e.ref!).filter((l) => !l.startsWith('  - ')).map((l) => `- ${l}`), '']);
+  const prompt = [
+    'グルメのショート動画の「型」の分析に、一覧で見分けるための名前を付けてほしい。',
+    '名前は、この型で自分の動画を作るときに「どの型か」が一目で分かるためのもの。**動画の中身（店・料理・地名）ではなく、型（フックの掛け方・見せ方・テンポ・締め）を表す。**',
+    '',
+    '守ること:',
+    '- 10〜24 文字。全角。「→」や「×」で 2〜3 要素をつないでよい（例「断言フック→均一0.8秒→キャプション誘導」「数字で煽る→6秒で看板→行ってみて」）',
+    '- 店名・地名・料理名・人名・アカウント名は入れない（フックのテロップにそれらが入っていても、型の言葉に言い換える）',
+    '- 同じ名前を 2 つ以上に付けない。似た型は、違いが分かる語（リビールの秒・カット尺・締め方）で区別する',
+    '- key は渡したまま返す。全部の動画について 1 件ずつ返す',
+    '',
+    `## 動画（${entries.length} 本）`,
+    ...lines,
+  ].join('\n');
+  log(`ライブラリの名前付け: ${entries.length} 本（model=${model}）`);
+  const {onEvent} = agentProgress({onProgress: opt.onProgress, log, labels: {thinking: '型の違いが分かる名前を考えています', writing: '名前を書き出しています'}});
+  const run: AgentRun<{titles?: {key?: string; title?: string}[]}> = await runAgent({cwd: referenceLibraryDir(), prompt, schema: TITLES_SCHEMA, model, timeoutMs: studioConfig.agent.timeoutMs, onLine: log, onEvent, signal: opt.signal});
+  const got = new Map<string, string>();
+  for (const t of run.data?.titles ?? []) if (typeof t.key === 'string' && typeof t.title === 'string') got.set(t.key, normalizeReferenceTitle(t.title));
+  const used = new Set<string>();
+  const named: {key: string; title: string; before: string}[] = [];
+  for (const e of entries) {
+    let title = got.get(e.key) || autoReferenceTitle(e.ref!);
+    if (used.has(title)) title = normalizeReferenceTitle(`${title}（${e.ref!.source?.originalName || e.key}）`);
+    used.add(title);
+    const before = e.ref!.title;
+    setLibraryTitle(e.key, title);
+    named.push({key: e.key, title, before});
+    log(`  ${e.key}: ${before ? `「${before}」→ ` : ''}「${title}」`);
+  }
+  return {named, costUsd: run.costUsd};
+}
 
 export type AnalyzeOptions = {model?: string; onLine?: (l: string) => void; onProgress?: (done: number, total: number, phase: string) => void; signal?: AbortSignal};
 
@@ -640,6 +720,7 @@ export async function analyzeReference(dir: string, opt: AnalyzeOptions = {}): P
     '4. pattern に型をまとめる。hookText / ctaText はテロップそのまま。revealSec は店名や正体が分かった秒（無ければ -1）',
     '5. summary に、この動画が伸びている理由を 1〜3 行',
     '6. mimicRules に、自分の素材で同じ型を作るときに守る規則を 8〜15 個。「冒頭 1 カット目は料理の寄りを 0.8 秒」「テロップは 10 文字前後の体言止め、句点なし」「店名は 6 秒あたりで外観と一緒に」のように、**秒数・カット数・文字数・画の種類まで具体的に**',
+    '7. title に、この型を一覧で見分けるための名前を 10〜24 文字で。店名・地名・料理名・人名は入れず、フックの掛け方・見せ方（リビール・テンポ）・締めが分かるように（例「断言フック→均一0.8秒→キャプション誘導」）',
     '',
     '守ること:',
     '- 見えたものだけを書く。料理名や店名は、画面の文字で読めたときだけ書く（見た目からの推測なら「〜のような料理」と書く）',

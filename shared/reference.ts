@@ -351,8 +351,32 @@ export const AnalysisResponseSchema = z.object({
   }).default({}),
   summary: z.string().default(''),
   mimicRules: z.array(z.string()).default([]),
+  /** この型を一覧で見分けるための名前（10〜24 文字。店名・地名・料理名は入れない）。空ならコードが組み立てる */
+  title: z.string().default(''),
 });
 export type AnalysisResponse = z.infer<typeof AnalysisResponseSchema>;
+
+/** 名前の長さの上限（一覧の 1 行に収める） */
+export const REFERENCE_TITLE_MAX = 40;
+
+/**
+ * 分析から決定的に名前を組み立てる（AI が名前を返さなかったときの保険。「フック→リビール→テンポ→締め」の形）。
+ * 例「断言→店名伏せ→0.8秒カット→来店を促す言い切り」
+ */
+export const autoReferenceTitle = (ref: Pick<Reference, 'pattern' | 'cuts' | 'sceneCuts' | 'source'>): string => {
+  const p = ref.pattern;
+  const squash = (s: string, n: number) => s.replace(/\s+/g, '').replace(/[「」]/g, '').slice(0, n);
+  const hook = squash(p.hookType || p.hookText || 'フック', 12);
+  const reveal = p.revealSec === null ? '店名伏せ' : `店名${fmtSec(p.revealSec)}秒`;
+  const cuts = ref.cuts.length ? ref.cuts : ref.source ? cutBoundaries(ref.sceneCuts, ref.source.durationSec) : [];
+  const st = tempoStats(cuts, ref.source?.durationSec);
+  const tempo = st.count ? `${fmtSec(st.avgSec)}秒カット` : '';
+  const cta = squash(p.ctaStyle || p.ctaText || '締め', 12);
+  return [hook, reveal, tempo, cta].filter(Boolean).join('→').slice(0, REFERENCE_TITLE_MAX);
+};
+
+/** 名前を整える（空白を詰め、長すぎれば切る） */
+export const normalizeReferenceTitle = (title: string): string => title.replace(/\s+/g, ' ').trim().slice(0, REFERENCE_TITLE_MAX);
 
 export type PreparedReference = {
   sceneCuts: number[];
@@ -401,7 +425,7 @@ export const mergeAnalysis = (base: Reference, prep: PreparedReference, res: Ana
     revealSec: res.pattern.revealSec === null || res.pattern.revealSec < 0 || res.pattern.revealSec > dur ? null : r3(res.pattern.revealSec),
     saveReasons: (res.pattern.saveReasons ?? []).map((s) => s.trim()).filter(Boolean),
   });
-  return ReferenceSchema.parse({
+  const out = ReferenceSchema.parse({
     ...base,
     analyzedAt: meta.analyzedAt,
     model: meta.model,
@@ -415,6 +439,9 @@ export const mergeAnalysis = (base: Reference, prep: PreparedReference, res: Ana
     summary: res.summary.trim(),
     mimicRules: res.mimicRules.map((s) => s.trim()).filter(Boolean),
   });
+  // 名前：利用者が付けたもの（既存）を最優先。無ければ AI が返した名前、それも無ければ分析から組み立てる
+  const title = normalizeReferenceTitle(base.title) || normalizeReferenceTitle(res.title) || autoReferenceTitle(out);
+  return {...out, title};
 };
 
 // ───────────────────────── 表示用 ─────────────────────────

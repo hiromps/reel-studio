@@ -22,7 +22,7 @@ import {runTrial} from '../core/trial';
 import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
 import {mixNarration} from '../core/mix';
@@ -656,6 +656,12 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 参考動画のライブラリの操作（案件に属さない）。いまは名前付けだけ。クラウドから頼まれたときに PC で行う
       case 'reference-library': {
+        // 名前の無いもの（all なら全部）に、分析の内容から claude が名前を付ける
+        if (p.op === 'name') {
+          if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+          const r = await nameLibraryEntries({all: !!p.all, model: typeof p.model === 'string' ? p.model : undefined, onLine, onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}), signal});
+          return {named: r.named.length, titles: r.named, costUsd: r.costUsd};
+        }
         if (p.op !== 'rename') throw new Error(`未知の操作: ${String(p.op)}`);
         const entry = setLibraryTitle(typeof p.key === 'string' ? p.key : '', typeof p.title === 'string' ? p.title : '');
         onLine(`ライブラリの名前を「${entry.title || '（なし）'}」にしました（${entry.key}）`);

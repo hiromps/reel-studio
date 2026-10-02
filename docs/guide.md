@@ -585,7 +585,13 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
   ライブラリの 1 本は案件と同じ形（`reference.json` と `.studio/reference/`）で、人格づくり（`ai-persona`）も同じ置き場を使う——
   人格のために分析したリールは案件でも、案件で分析したリールは人格づくりでも使い回せる。「分析をやり直す」（`force`）だけが分析を走らせ直し、
   ライブラリも更新する。写した案件に動画が無くても、`referenceVideoPath` が鍵でライブラリの動画を引くので再分析できる
-- **ライブラリの 1 本には名前を付けられる**（`title`。例「大阪・炉端焼きの発見型」。カードの「ライブラリでの名前」→「名前を保存」。
+- **ライブラリの名前は分析から自動で付く**（`title`）。`ANALYSIS_SCHEMA` に `title` があり、型の分析と同じ claude の実行で
+  「断言フック→均一0.8秒→キャプション誘導」のような 10〜24 文字の名前を返させる（店名・地名・料理名は入れない）。`mergeAnalysis` は
+  **既存の名前（利用者が付けたもの）→ AI の名前 → `autoReferenceTitle`（フック→リビール→テンポ→締め の決定的な組み立て）**の順で決める。
+  鍵の無い取り込みを登録して新しく入れるときも `autoReferenceTitle` で付く。名前の無いものに後からまとめて付けるのは
+  `nameLibraryEntries`（claude 1 回で全部。`reference-library` ジョブの `op: 'name'`、CLI `reel library name [--all]`、カードの
+  「名前の無い N 本に自動で名前を付ける」）。同じ名前が重なれば元のファイル名を添えて区別する
+- 名前は手でも付けられる（カードの「ライブラリでの名前」→「名前を保存」。
   `PUT /api/reference-library/:key`、CLI は `reel library rename <鍵> <名前>`）。名前はライブラリと、同じ鍵を写している全案件の
   `reference.json` に入る。カードの**「ライブラリから使う」**は一覧（`GET /api/reference-library`：鍵・名前・元のファイル名・秒・区間数・
   使っている案件）から名前で選んで写す（`POST …/reference/use-library {key}`。クラウドは `ai-reference` ジョブの `libraryKey`）。

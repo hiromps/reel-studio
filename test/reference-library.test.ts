@@ -4,7 +4,20 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {isReferenceKey, libraryEntryLabel, referenceKeyFromFilename, referenceKeyOfHash, referenceKeyOfInstagram, ReferenceSchema, type Reference} from '@shared/reference';
+import {
+  AnalysisResponseSchema,
+  autoReferenceTitle,
+  isReferenceKey,
+  libraryEntryLabel,
+  mergeAnalysis,
+  normalizeReferenceTitle,
+  REFERENCE_TITLE_MAX,
+  referenceKeyFromFilename,
+  referenceKeyOfHash,
+  referenceKeyOfInstagram,
+  ReferenceSchema,
+  type Reference,
+} from '@shared/reference';
 import {
   findLibraryEntry,
   findLibraryEntryBySha,
@@ -24,7 +37,7 @@ import {
 } from '../core/reference';
 import {resetSettings} from '../core/settings';
 
-const analyzed = (key: string, over: Partial<Reference> = {}): Reference =>
+const analyzed = (key: string, over: Record<string, unknown> = {}): Reference =>
   ReferenceSchema.parse({
     version: 1,
     source: {file: 'reference/source.mp4', originalName: 'buzz.mp4', durationSec: 12, fps: 30, width: 1080, height: 1920, hasAudio: true, importedAt: '2026-09-22T00:00:00.000Z', key},
@@ -126,6 +139,40 @@ describe('鍵', () => {
     expect(await hashFileSha256(a)).toMatch(/^[0-9a-f]{64}$/);
     fs.writeFileSync(b, 'other');
     expect(await hashFileSha256(a)).not.toBe(await hashFileSha256(b));
+  });
+});
+
+describe('名前を自動で付ける', () => {
+  it('分析から「フック→リビール→テンポ→締め」の形で組み立てる（店名は入れない）', () => {
+    const t = autoReferenceTitle(analyzed('ig_Ddd6Dp5S_wZ', {pattern: {hookType: '数字で言い切る', hookText: '生野区で9割が知らない', revealSec: 2.5, ctaStyle: '来店を促す言い切り'}}));
+    expect(t).toBe('数字で言い切る→店名2.5秒→6秒カット→来店を促す言い切り');
+    expect(t.length).toBeLessThanOrEqual(REFERENCE_TITLE_MAX);
+    const noReveal = autoReferenceTitle(analyzed('ig_Ddd6Dp5S_wZ', {pattern: {hookType: '', hookText: '大阪で1番通ってる…', revealSec: null, ctaStyle: '', ctaText: '詳細はキャプションへ'}}));
+    expect(noReveal).toBe('大阪で1番通ってる…→店名伏せ→6秒カット→詳細はキャプションへ');
+    expect(autoReferenceTitle({...analyzed('ig_x12345'), pattern: ReferenceSchema.parse({source: null}).pattern, cuts: [], sceneCuts: [], source: null})).toBe('フック→店名伏せ→締め');
+    expect(normalizeReferenceTitle('  a  b  ')).toBe('a b');
+    expect(normalizeReferenceTitle('x'.repeat(100))).toHaveLength(REFERENCE_TITLE_MAX);
+  });
+
+  it('分析の返答の title を受け、既存の名前があればそれを守り、無ければ組み立てる', () => {
+    const base = analyzed('ig_Ddd6Dp5S_wZ', {title: '', analyzedAt: undefined, segments: [], cuts: []});
+    const prep = {sceneCuts: [2.5], cuts: [{startSec: 0, endSec: 2.5}, {startSec: 2.5, endSec: 12}], frames: ['reference/frames/001.jpg', 'reference/frames/002.jpg'], sheets: ['reference/sheets/01.jpg'], speech: []};
+    const res = AnalysisResponseSchema.parse({
+      cuts: [{index: 1, telop: 'a', role: 'hook'}, {index: 2, telop: 'b', role: 'cta'}],
+      segments: [{id: '1', label: 'x', fromSec: 0, toSec: 12, role: 'hook'}],
+      pattern: {hookType: '断言', revealSec: -1, ctaStyle: 'キャプション誘導'},
+      summary: 's',
+      mimicRules: [],
+      title: '  断言フック→均一→キャプション誘導  ',
+    });
+    const meta = {model: 'opus', costUsd: 1, analyzedAt: '2026-10-02T00:00:00.000Z'};
+    expect(mergeAnalysis(base, prep, res, meta).title).toBe('断言フック→均一→キャプション誘導');
+    // AI が名前を返さなければ組み立てる
+    expect(mergeAnalysis(base, prep, {...res, title: ''}, meta).title).toBe('断言→店名伏せ→6秒カット→キャプション誘導');
+    // 利用者が付けた名前は分析し直しても残る
+    expect(mergeAnalysis({...base, title: '私の名前'}, prep, res, meta).title).toBe('私の名前');
+    // 古い返答（title 無し）も読める
+    expect(AnalysisResponseSchema.parse({}).title).toBe('');
   });
 });
 
@@ -252,7 +299,15 @@ describe('ライブラリに入れる・写す', () => {
     const e3 = await registerReferenceToLibrary(c, {title: '別の型'});
     expect(e3.key).toMatch(/^sha_[0-9a-f]{16}$/);
     expect(e3.title).toBe('別の型');
-    expect(listLibraryEntries().map((e) => e.key).sort()).toEqual(['ig_Ddd6Dp5S_wZ', e3.key].sort());
+    // 名前を渡さずに新しく入れると、分析から名前が付く
+    const f = makeListedProject('f');
+    const refF = analyzed('ig_Fresh12345', {title: ''});
+    makeProject(f, {...refF, source: {...refF.source!, key: undefined, originalName: 'fresh.mp4'}});
+    fs.writeFileSync(path.join(referenceStudioDir(f), 'source.mp4'), 'fresh-bytes');
+    const e4 = await registerReferenceToLibrary(f);
+    expect(e4.title).toBe('数字で言い切る→店名伏せ→6秒カット→締め');
+    expect(readReference(f)?.title).toBe(e4.title);
+    expect(listLibraryEntries().map((e) => e.key).sort()).toEqual(['ig_Ddd6Dp5S_wZ', e3.key, e4.key].sort());
     expect(findLibraryEntry(e3.key)?.videoPath).toBeTruthy();
 
     // 分析前の案件は登録できない

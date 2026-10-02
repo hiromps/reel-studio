@@ -165,6 +165,7 @@ describe('mergeAnalysis', () => {
       pattern: {hookType: '数字', hookText: 'x', revealSec: -1, revealStyle: '', ctaText: '', ctaStyle: '', telopStyle: '', tempoStyle: '', saveReasons: [' アクセス ', ''], narrationStyle: ''},
       summary: ' 伸びる理由 ',
       mimicRules: ['a', ' ', 'b'],
+      title: '',
     };
     const r = mergeAnalysis(base, prep, res, {model: 'sonnet', costUsd: 0.5, analyzedAt: '2026-09-22T02:00:00.000Z'});
     expect(r.cuts).toHaveLength(3);

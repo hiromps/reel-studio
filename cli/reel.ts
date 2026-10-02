@@ -24,7 +24,7 @@
 //   reel ai reference --project P --url <Instagram のリール URL> [--model m] [--no-analyze]（Smartgram MCP で動画を落として取り込む。HikerAPI 1 トークン）
 //   reel ai reference --project P [--show] | --from <別案件slug> | --remove           （分析を表示 / 別案件の分析を写す / 取り消す）
 //   reel ai reference --project P --library <鍵> | --register [--title 名前]           （ライブラリの 1 本を写す / この案件の分析をライブラリに登録して名前を付ける）
-//   reel library [list] [--json] | rename <鍵> <名前>                                   （同じ動画の分析を案件をまたいで使い回すライブラリの一覧・名前付け）
+//   reel library [list] [--json] | rename <鍵> <名前> | name [--all] [--model m]       （同じ動画の分析を案件をまたいで使い回すライブラリの一覧・名前付け・分析から自動で名前を付ける）
 //   reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]        （分析した型を写した台本→script.md→そのまま組み立て。--dry は割り当てを見るだけ）
 //   reel sfx scan | list                                                        （効果音ライブラリの棚卸し）
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
@@ -68,7 +68,7 @@ import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatal
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, libraryIndex, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, libraryIndex, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {libraryEntryLabel} from '../shared/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
@@ -232,6 +232,14 @@ async function main() {
 
     // 参考動画のライブラリ（同じ動画の分析を案件をまたいで使い回す置き場）の一覧と名前付け
     case 'library': {
+      // 分析の内容から claude が名前を付ける（既定は名前の無いものだけ。--all で全部付け直す）
+      if (pos[0] === 'name') {
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const r = await nameLibraryEntries({all: bool(flags, 'all'), model: str(flags, 'model'), onLine: (l) => err(l)});
+        out(`${r.named.length} 本に名前を付けました（$${r.costUsd.toFixed(3)}）`);
+        for (const n of r.named) out(`  ${n.key}: ${n.before ? `「${n.before}」→ ` : ''}「${n.title}」`);
+        return;
+      }
       if (pos[0] === 'rename') {
         const key = pos[1];
         const title = pos.slice(2).join(' ') || str(flags, 'title') || '';
