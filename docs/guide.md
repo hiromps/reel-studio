@@ -585,6 +585,18 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
   ライブラリの 1 本は案件と同じ形（`reference.json` と `.studio/reference/`）で、人格づくり（`ai-persona`）も同じ置き場を使う——
   人格のために分析したリールは案件でも、案件で分析したリールは人格づくりでも使い回せる。「分析をやり直す」（`force`）だけが分析を走らせ直し、
   ライブラリも更新する。写した案件に動画が無くても、`referenceVideoPath` が鍵でライブラリの動画を引くので再分析できる
+- **ライブラリの 1 本には名前を付けられる**（`title`。例「大阪・炉端焼きの発見型」。カードの「ライブラリでの名前」→「名前を保存」。
+  `PUT /api/reference-library/:key`、CLI は `reel library rename <鍵> <名前>`）。名前はライブラリと、同じ鍵を写している全案件の
+  `reference.json` に入る。カードの**「ライブラリから使う」**は一覧（`GET /api/reference-library`：鍵・名前・元のファイル名・秒・区間数・
+  使っている案件）から名前で選んで写す（`POST …/reference/use-library {key}`。クラウドは `ai-reference` ジョブの `libraryKey`）。
+  一覧はローカルはその場で読み、クラウドは PC のワーカーが `kv` の `reference-library` に送ったもの（棚卸しと、参考動画・人格・ライブラリの
+  ジョブの直後）。クラウドでの名前付けは `reference-library` ジョブ（案件なし）で PC が行う
+- **鍵の無い古い取り込み**（ライブラリより前に手で落とした `instagram-<投稿コード>.mp4` など）は、カードの「ライブラリに登録して名前を付ける」
+  （`POST …/reference/register`、CLI `reel ai reference --register [--title 名前]`、`registerReferenceToLibrary`）で結び付ける。
+  鍵は 既存の鍵 → **ファイル名の投稿コード**（`instagram-<code>` / `instagram_<code>` / `@<user>_<code>` / `reel-<code>`。`referenceKeyFromFilename`）→
+  動画の内容の sha256 の順に決め、同じ鍵か同じ内容（`source.sha`）の 1 本が既にあれば**それに結び付ける**（案件の鍵をライブラリに合わせる。
+  分析はライブラリ側を正とする）。無ければ案件の分析をそのまま入れる。取り込みのときも同じ順で引くので、`instagram-<code>.mp4` を
+  別の案件にアップロードすれば、人格づくりや別案件で分析した同じ投稿の分析が自動で写る
 - 「別の案件の分析を使う」はローカルではその場でコピー、クラウドでは `ai-reference` ジョブ（`copyFrom`）として PC が複製する
   （ライブラリで自動的に使い回されるので、鍵の無い古い取り込みや、別の動画の分析を流用したいときに使う）
 - ジョブは `ai-reference`（`url` があれば先に取り込む／`igUrl` なら Instagram から落として取り込む／`copyFrom` なら複製だけ／`analyze: false` で取り込みだけ）と

@@ -103,6 +103,13 @@ workerRouter.post('/personas', async (req, res) => {
   res.json({ok: true, count: parsed.length});
 });
 
+/** PC の参考動画のライブラリの一覧（名前・区間数・使っている案件）。画面の「ライブラリから使う」に出す */
+workerRouter.post('/reference-library', async (req, res) => {
+  const entries = Array.isArray(req.body?.entries) ? (req.body.entries as unknown[]) : [];
+  await kvSet('reference-library', {entries, updatedAt: new Date().toISOString()});
+  res.json({ok: true, count: entries.length});
+});
+
 workerRouter.post('/sfx', async (req, res) => {
   const lib = req.body?.lib as SfxLibrary | undefined;
   if (!lib) return res.status(400).json({error: 'lib が必要'});

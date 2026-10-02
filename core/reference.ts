@@ -31,6 +31,7 @@ import {FORMAT_SPECS} from '../shared/format-specs';
 import {DOC_FILES} from '../shared/project';
 import {AngleSchema, ClipKindSchema} from '../shared/schema/catalog';
 import {SlotRoleSchema, ThemeSchema} from '../shared/schema/cuts';
+import {listProjects} from './project';
 import {
   AnalysisResponseSchema,
   checkMimicPlan,
@@ -43,8 +44,10 @@ import {
   isReferenceAnalyzed,
   isReferenceKey,
   mergeAnalysis,
+  referenceKeyFromFilename,
   referenceKeyOfHash,
   referenceKeyOfInstagram,
+  type LibraryIndexEntry,
   MimicPlanSchema,
   REFERENCE_MAX_SEC,
   ReferenceSchema,
@@ -160,6 +163,91 @@ export const listLibraryEntries = (): LibraryEntry[] => {
   return out.sort((a, b) => ((a.ref?.analyzedAt ?? '') < (b.ref?.analyzedAt ?? '') ? 1 : -1));
 };
 
+/** 動画の内容（sha256）で引く。投稿コードが分からない形（手で落としたファイル）で取り込まれた同じ動画を結び付ける */
+export const findLibraryEntryBySha = (sha: string | undefined): LibraryEntry | null => {
+  if (!sha) return null;
+  const root = referenceLibraryDir();
+  if (!fs.existsSync(root)) return null;
+  for (const name of fs.readdirSync(root)) {
+    if (!isReferenceKey(name)) continue;
+    const e = findLibraryEntry(name);
+    if (e?.ref?.source?.sha === sha) return e;
+  }
+  return null;
+};
+
+/**
+ * ライブラリの一覧（画面・クラウド用の軽い形）。どの案件が使っているかは、各案件の reference.json の鍵を見て数える
+ * （案件側は分析を写してあるので、鍵が同じ＝同じ動画の分析）
+ */
+export const libraryIndex = (): LibraryIndexEntry[] => {
+  const entries = listLibraryEntries();
+  if (!entries.length) return [];
+  const usedBy = new Map<string, string[]>();
+  for (const p of listProjects()) {
+    const key = readReference(p.dir)?.source?.key;
+    if (!isReferenceKey(key)) continue;
+    usedBy.set(key, [...(usedBy.get(key) ?? []), p.slug]);
+  }
+  return entries.map((e) => {
+    const r = e.ref!;
+    return {
+      key: e.key,
+      title: r.title,
+      originalName: r.source?.originalName ?? '',
+      ...(r.source?.sourceUrl ? {sourceUrl: r.source.sourceUrl} : {}),
+      ...(r.analyzedAt ? {analyzedAt: r.analyzedAt} : {}),
+      durationSec: r.source?.durationSec ?? 0,
+      segments: r.segments.length,
+      cuts: r.cuts.length,
+      hookType: r.pattern.hookType,
+      summary: r.summary,
+      usedBy: usedBy.get(e.key) ?? [],
+    };
+  });
+};
+
+/** ライブラリの 1 本に名前を付ける（空で消す）。その鍵を写している案件の表示名も揃える */
+export const setLibraryTitle = (key: string, title: string): LibraryIndexEntry => {
+  const e = findLibraryEntry(key);
+  if (!e?.ref) throw new Error(`ライブラリにありません: ${key}`);
+  const t = title.trim().slice(0, 60);
+  writeReference(e.dir, {...e.ref, title: t});
+  for (const p of listProjects()) {
+    const r = readReference(p.dir);
+    if (r?.source?.key === key && r.title !== t) writeReference(p.dir, {...r, title: t});
+  }
+  const row = libraryIndex().find((x) => x.key === key);
+  if (!row) throw new Error(`ライブラリにありません: ${key}`);
+  return row;
+};
+
+/**
+ * 案件の分析をライブラリに登録する（鍵の無い古い取り込み用）。
+ * 鍵は 既存の鍵 → ファイル名の投稿コード（instagram-<code>.mp4 等）→ 動画の sha256 の順に決め、
+ * 同じ鍵か同じ内容の 1 本が既にあればそれに結び付ける（案件の鍵をそちらに合わせ、分析は案件の方が新しければ入れ替えない＝既存を正とする）。
+ * 無ければ案件の分析をそのまま入れる。title を渡せば名前も付ける
+ */
+export const registerReferenceToLibrary = async (projectDir: string, opt: {title?: string} = {}): Promise<LibraryIndexEntry> => {
+  const ref = readReference(projectDir);
+  if (!ref?.source || !isReferenceAnalyzed(ref)) throw new Error('分析済みの参考動画がありません（先に「型を分析する」を実行してください）');
+  const video = referenceVideoPathLocal(projectDir, ref);
+  const sha = ref.source.sha ?? (video ? await hashFileSha256(video) : undefined);
+  let key = isReferenceKey(ref.source.key) ? ref.source.key : (referenceKeyFromFilename(ref.source.originalName) ?? (sha ? referenceKeyOfHash(sha) : null));
+  if (!key) throw new Error('鍵を決められません（動画の実体が無く、ファイル名にも投稿コードがありません）');
+  const existing = findLibraryEntry(key) ?? findLibraryEntryBySha(sha);
+  if (existing?.analyzed && existing.ref) {
+    key = existing.key;
+    // 案件側の鍵をライブラリに合わせる（分析はそのまま。名前はライブラリのもの）
+    writeReference(projectDir, {...ref, title: opt.title?.trim() || existing.ref.title || ref.title, source: {...ref.source, key, ...(sha ? {sha} : {})}});
+  } else {
+    const withKey: Reference = {...ref, source: {...ref.source, key, ...(sha ? {sha} : {})}};
+    writeReference(projectDir, withKey);
+    storeToLibrary(projectDir, withKey);
+  }
+  return setLibraryTitle(key, opt.title?.trim() || findLibraryEntry(key)?.ref?.title || '');
+};
+
 /**
  * 案件の分析をライブラリに写す（動画・コマ・シート・reference.json）。同じ鍵があれば上書き（分析し直したものが新しい正）。
  * 案件に動画が無い（ライブラリから写した案件で分析し直した）ときは、ライブラリの動画を残す
@@ -178,10 +266,15 @@ export const storeToLibrary = (projectDir: string, ref: Reference): LibraryEntry
   for (const sub of ['frames', 'sheets']) fs.rmSync(path.join(dst, sub), {recursive: true, force: true});
   if (fs.existsSync(src)) fs.cpSync(src, dst, {recursive: true, force: true});
   const prev = readReference(dir);
-  // 人格づくりの記録（study.json）はそのまま。reusedAt は「この案件がライブラリから写した」印なので、ライブラリ側には持たせない
+  // 人格づくりの記録（study.json）はそのまま。reusedAt は「この案件がライブラリから写した」印なので、ライブラリ側には持たせない。
+  // 名前（title）と元の投稿 URL は、新しい方に無ければライブラリのものを残す
   const {reusedAt: _r, ...clean} = ref;
   void _r;
-  writeReference(dir, {...clean, source: {...ref.source, ...(prev?.source?.sourceUrl && !ref.source.sourceUrl ? {sourceUrl: prev.source.sourceUrl} : {})}});
+  writeReference(dir, {
+    ...clean,
+    title: ref.title.trim() || prev?.title || '',
+    source: {...ref.source, ...(prev?.source?.sourceUrl && !ref.source.sourceUrl ? {sourceUrl: prev.source.sourceUrl} : {}), ...(prev?.source?.sha && !ref.source.sha ? {sha: prev.source.sha} : {})},
+  });
   return findLibraryEntry(key);
 };
 
@@ -249,12 +342,14 @@ export const importReferenceVideo = async (dir: string, srcPath: string, opt: Im
     throw new Error(`動画ファイルではありません: ${shownName}（${[...VIDEO_EXT].join(' / ')}）`);
   }
   if (!fs.existsSync(srcPath) || !fs.statSync(srcPath).isFile()) throw new Error(`ファイルが見つかりません: ${srcPath}`);
-  // 同じ動画の分析がライブラリにあれば、取り込み直さずにそれを写す（分析は数分・課金あり）
-  const key = isReferenceKey(opt.key) ? opt.key : referenceKeyOfHash(await hashFileSha256(srcPath));
-  const entry = opt.noReuse ? null : findLibraryEntry(key);
+  // 同じ動画の分析がライブラリにあれば、取り込み直さずにそれを写す（分析は数分・課金あり）。
+  // 鍵は 指定（Instagram の投稿コード）→ ファイル名の投稿コード（instagram-<code>.mp4 等）→ 内容の sha256 の順。内容でも引く
+  const sha = await hashFileSha256(srcPath);
+  const key = isReferenceKey(opt.key) ? opt.key : (referenceKeyFromFilename(shownName) ?? referenceKeyOfHash(sha));
+  const entry = opt.noReuse ? null : (findLibraryEntry(key) ?? findLibraryEntryBySha(sha));
   if (entry?.analyzed) {
     if (opt.move) fs.rmSync(srcPath, {force: true});
-    opt.onLine?.(`同じ動画の分析がライブラリにあるので再利用します（${entry.ref?.analyzedAt?.slice(0, 10) ?? ''} 分析・${entry.ref?.segments.length ?? 0} 区間）`);
+    opt.onLine?.(`同じ動画の分析がライブラリにあるので再利用します（${entry.ref?.title ? `「${entry.ref.title}」・` : ''}${entry.ref?.analyzedAt?.slice(0, 10) ?? ''} 分析・${entry.ref?.segments.length ?? 0} 区間）`);
     return reuseFromLibrary(dir, entry, {originalName: shownName, sourceUrl: opt.sourceUrl});
   }
   const probe = await ffprobe(srcPath);
@@ -274,6 +369,7 @@ export const importReferenceVideo = async (dir: string, srcPath: string, opt: Im
       originalName: opt.originalName ?? path.basename(srcPath),
       ...(opt.sourceUrl ? {sourceUrl: opt.sourceUrl} : {}),
       key,
+      sha,
       durationSec: probe.durationSec,
       fps: probe.fps,
       width,
@@ -569,11 +665,13 @@ export async function analyzeReference(dir: string, opt: AnalyzeOptions = {}): P
   const parsed = AnalysisResponseSchema.safeParse(run.data);
   if (!parsed.success) throw new Error(`分析の返答が読めませんでした: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}`);
   const base = readReference(dir) ?? ref;
-  // 古い取り込み（鍵なし）には、ここで鍵を付けてライブラリに入れられるようにする
+  // 古い取り込み（鍵なし）には、ここで鍵を付けてライブラリに入れられるようにする（ファイル名の投稿コード → 内容の sha256）
   let source = base.source!;
   if (!isReferenceKey(source.key)) {
     const video = referenceVideoPathLocal(dir, base);
-    if (video) source = {...source, key: referenceKeyOfHash(await hashFileSha256(video))};
+    const sha = source.sha ?? (video ? await hashFileSha256(video) : undefined);
+    const key = referenceKeyFromFilename(source.originalName) ?? (sha ? referenceKeyOfHash(sha) : undefined);
+    if (key) source = {...source, key, ...(sha ? {sha} : {})};
   }
   const {reusedAt: _r, ...own} = base;
   void _r;

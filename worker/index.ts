@@ -29,6 +29,7 @@ import {readLibrary, writeLibrary} from '../core/sfx';
 import {SettingsPatchSchema} from '../shared/schema/settings';
 import {canStartJob, PROJECTLESS_JOBS, type JobType} from '../shared/jobs';
 import {runJobBody, type JobRunCtx} from '../server/jobs';
+import {libraryIndex} from '../core/reference';
 import type {CloudJob} from '../cloud/store';
 import type {WorkerStatus} from '../cloud/worker-status';
 import {CloudClient, CloudError, cloudConfig} from './client';
@@ -243,6 +244,14 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
         ctx.onLine(`※ 人格の反映に失敗: ${(e as Error).message}（次の同期で入ります）`);
       }
     }
+    // 参考動画のライブラリ（分析の追加・名前の変更・使っている案件）も、その場でスマホの一覧に出す
+    if ((job.type === 'ai-reference' || job.type === 'ai-persona' || job.type === 'reference-library') && !abort.signal.aborted) {
+      try {
+        await client.pushReferenceLibrary(libraryIndex());
+      } catch (e) {
+        ctx.onLine(`※ ライブラリの一覧の反映に失敗: ${(e as Error).message}（次の同期で入ります）`);
+      }
+    }
 
     // 取り込んだ・消したフォントは、その場でクラウドへ反映する（スマホの一覧と見本に出す）
     if (job.type === 'fonts' && !abort.signal.aborted) {
@@ -333,6 +342,7 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
   try {
     await client.pushPersonas(listPersonas());
     await client.pushSfx(readLibrary());
+    await client.pushReferenceLibrary(libraryIndex());
     await client.pushSettings(await currentSettingsView());
     // 自前フォント（スマホのプレビューで PC と同じ絵を出すため）
     if (blobToken) {

@@ -3,7 +3,7 @@
 import {Router, type Request} from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import {copyReferenceFrom, deleteReference, importReferenceVideo, readReference, referenceInboxDir, referencePath} from '../../core/reference';
+import {copyReferenceFrom, deleteReference, findLibraryEntry, importReferenceVideo, readReference, referenceInboxDir, referencePath, registerReferenceToLibrary, reuseFromLibrary} from '../../core/reference';
 import {resolveProjectDirStrict} from '../../core/project';
 import {fileEtag} from '../../core/json-io';
 import {jobs} from '../jobs';
@@ -95,6 +95,37 @@ referenceRouter.post('/reference/copy-from', (req, res) => {
   try {
     const data = copyReferenceFrom(dir, resolveProjectDirStrict(from));
     res.json({etag: fileEtag(referencePath(dir)), data});
+  } catch (e) {
+    res.status(400).json({error: (e as Error).message});
+  }
+});
+
+/** ライブラリ（同じ動画の分析を案件をまたいで使い回す置き場）の 1 本を、名前で選んでこの案件に写す */
+referenceRouter.post('/reference/use-library', (req, res) => {
+  const dir = resolveProjectDirStrict(slugOf(req));
+  const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+  if (!key) return res.status(400).json({error: 'key（ライブラリの鍵）が必要'});
+  const busy = busyOf(dir);
+  if (busy) return res.status(409).json({error: `この案件でジョブ（${busy.type}）が動いています。終わってから写してください`});
+  const entry = findLibraryEntry(key);
+  if (!entry?.analyzed) return res.status(404).json({error: `ライブラリに分析済みの動画がありません: ${key}`});
+  try {
+    const data = reuseFromLibrary(dir, entry);
+    res.json({etag: fileEtag(referencePath(dir)), data});
+  } catch (e) {
+    res.status(400).json({error: (e as Error).message});
+  }
+});
+
+/** この案件の分析をライブラリに登録して名前を付ける（鍵の無い古い取り込み用。同じ動画が既にあればそれに結び付ける） */
+referenceRouter.post('/reference/register', async (req, res) => {
+  const dir = resolveProjectDirStrict(slugOf(req));
+  const title = typeof req.body?.title === 'string' ? req.body.title : undefined;
+  const busy = busyOf(dir);
+  if (busy) return res.status(409).json({error: `この案件でジョブ（${busy.type}）が動いています。終わってから登録してください`});
+  try {
+    const entry = await registerReferenceToLibrary(dir, {title});
+    res.json({entry, etag: fileEtag(referencePath(dir)), data: readReference(dir)});
   } catch (e) {
     res.status(400).json({error: (e as Error).message});
   }

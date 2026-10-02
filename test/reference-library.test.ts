@@ -4,17 +4,21 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {isReferenceKey, referenceKeyOfHash, referenceKeyOfInstagram, ReferenceSchema, type Reference} from '@shared/reference';
+import {isReferenceKey, libraryEntryLabel, referenceKeyFromFilename, referenceKeyOfHash, referenceKeyOfInstagram, ReferenceSchema, type Reference} from '@shared/reference';
 import {
   findLibraryEntry,
+  findLibraryEntryBySha,
   hashFileSha256,
   libraryEntryDir,
+  libraryIndex,
   listLibraryEntries,
   readReference,
   referenceLibraryDir,
   referenceStudioDir,
   referenceVideoPath,
+  registerReferenceToLibrary,
   reuseFromLibrary,
+  setLibraryTitle,
   storeToLibrary,
   writeReference,
 } from '../core/reference';
@@ -54,16 +58,28 @@ const makeProject = (dir: string, ref: Reference, opt: {video?: boolean} = {}) =
 
 let home: string;
 let work: string;
+let dataRoot: string;
+/** listProjects() が見る案件（work/<slug>-reel/ に GourmetReel.tsx があるもの）を作る */
+const makeListedProject = (slug: string): string => {
+  const dir = path.join(dataRoot, 'work', `${slug}-reel`);
+  fs.mkdirSync(path.join(dir, 'src'), {recursive: true});
+  fs.writeFileSync(path.join(dir, 'src', 'GourmetReel.tsx'), '// stub');
+  return dir;
+};
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-lib-'));
   work = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-lib-work-'));
+  dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-lib-data-'));
   process.env.REEL_STUDIO_HOME = home;
+  process.env.REEL_STUDIO_DATA_ROOT = dataRoot;
   resetSettings();
 });
 afterEach(() => {
+  delete process.env.REEL_STUDIO_DATA_ROOT;
   resetSettings();
   fs.rmSync(home, {recursive: true, force: true});
   fs.rmSync(work, {recursive: true, force: true});
+  fs.rmSync(dataRoot, {recursive: true, force: true});
 });
 
 describe('鍵', () => {
@@ -78,6 +94,27 @@ describe('鍵', () => {
     expect(isReferenceKey(undefined)).toBe(false);
     expect(libraryEntryDir('ig_Ddn8GJfvtiO')).toBe(path.join(home, 'reference-library', 'ig_Ddn8GJfvtiO'));
     expect(referenceLibraryDir()).toBe(path.join(home, 'reference-library'));
+  });
+
+  it.each([
+    ['instagram-Ddd6Dp5S_wZ.mp4', 'ig_Ddd6Dp5S_wZ'],
+    ['instagram_Ddd6Dp5S_wZ.MOV', 'ig_Ddd6Dp5S_wZ'],
+    ['Instagram-Ddd6Dp5S_wZ.mp4', 'ig_Ddd6Dp5S_wZ'],
+    ['@osk_gurume_Ddd6Dp5S_wZ.mp4', 'ig_Ddd6Dp5S_wZ'],
+    ['reel-Ddd6Dp5S_wZ.mp4', 'ig_Ddd6Dp5S_wZ'],
+    ['C:\\Users\\x\\Downloads\\instagram-Abc12345.mp4', 'ig_Abc12345'],
+  ])('ファイル名から投稿コードを読む: %s', (name, key) => {
+    expect(referenceKeyFromFilename(name)).toBe(key);
+  });
+
+  it.each(['buzz.mp4', 'IMG_1234.MOV', 'ig_abc.mp4', 'instagram.mp4', '2026-09-22 reel.mp4'])('投稿コードが無いファイル名: %s', (name) => {
+    expect(referenceKeyFromFilename(name)).toBeNull();
+  });
+
+  it('一覧の呼び名は 名前 > 元のファイル名 > 鍵', () => {
+    expect(libraryEntryLabel({title: '炉端の型', originalName: 'a.mp4', key: 'ig_x12345'})).toBe('炉端の型');
+    expect(libraryEntryLabel({title: '  ', originalName: 'a.mp4', key: 'ig_x12345'})).toBe('a.mp4');
+    expect(libraryEntryLabel({title: '', originalName: '', key: 'ig_x12345'})).toBe('ig_x12345');
   });
 
   it('同じ中身のファイルは同じ sha256', async () => {
@@ -143,6 +180,85 @@ describe('ライブラリに入れる・写す', () => {
     expect(storeToLibrary(c, readReference(c)!)?.analyzed).toBe(false);
     expect(() => reuseFromLibrary(path.join(work, 'd-reel'), findLibraryEntry('ig_NotYet12345')!)).toThrow(/分析済みの動画がありません/);
     expect(listLibraryEntries().map((e) => e.key)).toEqual([key]);
+  });
+
+  it('名前を付けると、同じ動画を写している案件の表示名も揃う。一覧には使っている案件が出る', () => {
+    const key = 'ig_Ddd6Dp5S_wZ';
+    const a = makeListedProject('a');
+    makeProject(a, analyzed(key));
+    storeToLibrary(a, readReference(a)!);
+    const b = makeListedProject('b');
+    reuseFromLibrary(b, findLibraryEntry(key)!);
+    makeListedProject('c'); // 参考動画なし
+
+    const row = setLibraryTitle(key, '  大阪・炉端焼きの発見型  ');
+    expect(row.title).toBe('大阪・炉端焼きの発見型');
+    expect(row.usedBy.sort()).toEqual(['a-reel', 'b-reel']);
+    expect(readReference(a)?.title).toBe('大阪・炉端焼きの発見型');
+    expect(readReference(b)?.title).toBe('大阪・炉端焼きの発見型');
+    expect(findLibraryEntry(key)?.ref?.title).toBe('大阪・炉端焼きの発見型');
+    // 空で消す
+    expect(setLibraryTitle(key, '').title).toBe('');
+    expect(() => setLibraryTitle('ig_nothing1', 'x')).toThrow(/ライブラリにありません/);
+
+    const idx = libraryIndex();
+    expect(idx).toHaveLength(1);
+    expect(idx[0]).toMatchObject({key, originalName: 'buzz.mp4', durationSec: 12, segments: 1, cuts: 2, hookType: '数字で言い切る', usedBy: expect.arrayContaining(['a-reel', 'b-reel'])});
+    // 写した案件でライブラリから分析し直しても、ライブラリの名前は残る
+    writeReference(b, {...readReference(b)!, summary: '直した'});
+    setLibraryTitle(key, '名前');
+    storeToLibrary(b, readReference(b)!);
+    expect(findLibraryEntry(key)?.ref?.title).toBe('名前');
+    expect(findLibraryEntry(key)?.ref?.summary).toBe('直した');
+  });
+
+  it('鍵の無い古い取り込みを登録する：ファイル名の投稿コード → 内容の sha256 → 新規 の順で結び付ける', async () => {
+    // ライブラリに ig_Ddd6Dp5S_wZ がある（人格づくりで分析したもの）
+    const lib = libraryEntryDir('ig_Ddd6Dp5S_wZ');
+    makeProject(lib, analyzed('ig_Ddd6Dp5S_wZ', {title: '炉端の型'}));
+    // 1. 別のツールで落とした instagram-<code>.mp4 を手で取り込んであった案件（鍵なし・中身も違う）
+    const a = makeListedProject('a');
+    const refA = analyzed('ig_Ddd6Dp5S_wZ', {summary: '案件 a の分析'});
+    makeProject(a, {...refA, source: {...refA.source!, key: undefined, originalName: 'instagram-Ddd6Dp5S_wZ.mp4'}});
+    fs.writeFileSync(path.join(referenceStudioDir(a), 'source.mp4'), 'different-bytes');
+    const e1 = await registerReferenceToLibrary(a);
+    expect(e1.key).toBe('ig_Ddd6Dp5S_wZ');
+    expect(e1.title).toBe('炉端の型');
+    expect(e1.usedBy).toEqual(['a-reel']);
+    expect(readReference(a)?.source?.key).toBe('ig_Ddd6Dp5S_wZ');
+    expect(readReference(a)?.title).toBe('炉端の型');
+    // 既存のライブラリの分析が正（案件の分析で上書きしない）
+    expect(findLibraryEntry('ig_Ddd6Dp5S_wZ')?.ref?.summary).toBe('テスト');
+    expect(listLibraryEntries()).toHaveLength(1);
+
+    // 2. ファイル名に手がかりが無いが、中身がライブラリの動画と同じ案件
+    const libSha = await hashFileSha256(path.join(referenceStudioDir(lib), 'source.mp4'));
+    writeReference(lib, {...readReference(lib)!, source: {...readReference(lib)!.source!, sha: libSha}});
+    const b = makeListedProject('b');
+    const refB = analyzed('ig_Ddd6Dp5S_wZ');
+    makeProject(b, {...refB, source: {...refB.source!, key: undefined, originalName: 'buzz.mp4'}});
+    expect(findLibraryEntryBySha(libSha)?.key).toBe('ig_Ddd6Dp5S_wZ');
+    const e2 = await registerReferenceToLibrary(b, {title: '新しい名前'});
+    expect(e2.key).toBe('ig_Ddd6Dp5S_wZ');
+    expect(e2.title).toBe('新しい名前');
+    expect(e2.usedBy.sort()).toEqual(['a-reel', 'b-reel']);
+    expect(readReference(a)?.title).toBe('新しい名前');
+
+    // 3. どこにも無い動画は、内容の鍵で新しく入る
+    const c = makeListedProject('c');
+    const refC = analyzed('ig_Other12345');
+    makeProject(c, {...refC, source: {...refC.source!, key: undefined, originalName: 'another.mp4'}});
+    fs.writeFileSync(path.join(referenceStudioDir(c), 'source.mp4'), 'brand-new-bytes');
+    const e3 = await registerReferenceToLibrary(c, {title: '別の型'});
+    expect(e3.key).toMatch(/^sha_[0-9a-f]{16}$/);
+    expect(e3.title).toBe('別の型');
+    expect(listLibraryEntries().map((e) => e.key).sort()).toEqual(['ig_Ddd6Dp5S_wZ', e3.key].sort());
+    expect(findLibraryEntry(e3.key)?.videoPath).toBeTruthy();
+
+    // 分析前の案件は登録できない
+    const d = makeListedProject('d');
+    writeReference(d, {...analyzed('ig_NotYet12345'), analyzedAt: undefined, segments: [], cuts: [], source: {...analyzed('ig_NotYet12345').source!, key: undefined}});
+    await expect(registerReferenceToLibrary(d)).rejects.toThrow(/分析済みの参考動画がありません/);
   });
 
   it('鍵の無い古い取り込みはライブラリに入れない。ライブラリの 1 本の中で分析したときは自分自身へ写さない', () => {

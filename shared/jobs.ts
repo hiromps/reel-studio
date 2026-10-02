@@ -39,6 +39,8 @@ export const JOB_TYPES = [
    * Smartgram MCP で最新の動画を落として 1 本ずつ型を分析し、案件の参考動画の分析と合わせて人格にする
    */
   'ai-persona',
+  /** 参考動画のライブラリの操作（名前を付ける）。案件に属さない。クラウドから頼まれたときだけ出る（PC では直接ルートで行う） */
+  'reference-library',
   'trial',
   'winner',
   'build',
@@ -93,7 +95,7 @@ export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
 ]);
 
 /** 案件に属さないジョブ（案件を開いていなくても投げられる） */
-export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts', 'ai-persona']);
+export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts', 'ai-persona', 'reference-library']);
 
 export const isHeavyJob = (type: string): boolean => HEAVY_JOBS.has(type as JobType);
 

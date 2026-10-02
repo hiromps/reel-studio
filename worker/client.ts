@@ -84,4 +84,6 @@ export class CloudClient {
   pullPersonas = () => this.call<{personas: unknown[]}>('GET', '/personas');
   pushPersonas = (personas: unknown[]) => this.call<{ok: true; count: number}>('POST', '/personas', {personas});
   pushSfx = (lib: SfxLibrary) => this.call<{ok: true}>('POST', '/sfx', {lib});
+  /** 参考動画のライブラリの一覧（名前・区間数・使っている案件）。スマホの「ライブラリから使う」用 */
+  pushReferenceLibrary = (entries: unknown[]) => this.call<{ok: true; count: number}>('POST', '/reference-library', {entries});
 }

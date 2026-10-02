@@ -200,6 +200,19 @@ docsRouter.post('/reference/copy-from', async (req, res) => {
   res.json({job: await addJob('ai-reference', slugOf(req), {copyFrom: normalizeSlug(from)})});
 });
 
+/** ライブラリ（PC の reference-library/）の 1 本を名前で選んで写す。実体が PC にあるので PC のジョブで行う */
+docsRouter.post('/reference/use-library', async (req, res) => {
+  const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+  if (!key) return res.status(400).json({error: 'key（ライブラリの鍵）が必要'});
+  res.json({job: await addJob('ai-reference', slugOf(req), {libraryKey: key})});
+});
+
+/** この案件の分析をライブラリに登録して名前を付ける（PC のジョブ） */
+docsRouter.post('/reference/register', async (req, res) => {
+  const title = typeof req.body?.title === 'string' ? req.body.title : '';
+  res.json({job: await addJob('ai-reference', slugOf(req), {register: true, title})});
+});
+
 /** 取り消し。ファイルを消す代わりに墓標（source: null）を書き、ワーカーの同期で PC 側も消える */
 docsRouter.delete('/reference', async (req, res) => {
   const slug = slugOf(req);

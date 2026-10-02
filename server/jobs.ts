@@ -22,7 +22,7 @@ import {runTrial} from '../core/trial';
 import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
 import {mixNarration} from '../core/mix';
@@ -266,6 +266,21 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           onLine(`${p.copyFrom} の分析を写しました`);
           for (const l of describeReference(r)) onLine(`  ${l}`);
           return {copied: true, from: p.copyFrom, segments: r.segments.length, cuts: r.cuts.length};
+        }
+        // ライブラリの 1 本を名前で選んで写す（AI は走らせない）
+        if (typeof p.libraryKey === 'string' && p.libraryKey.trim()) {
+          const entry = findLibraryEntry(p.libraryKey.trim());
+          if (!entry?.analyzed) throw new Error(`ライブラリに分析済みの動画がありません: ${p.libraryKey}`);
+          const r = reuseFromLibrary(dir, entry);
+          onLine(`ライブラリ「${r.title || r.source?.originalName || entry.key}」の分析を写しました`);
+          for (const l of describeReference(r)) onLine(`  ${l}`);
+          return {reused: true, key: entry.key, segments: r.segments.length, cuts: r.cuts.length};
+        }
+        // この案件の分析をライブラリに登録して名前を付ける（AI は走らせない）
+        if (p.register) {
+          const entry = await registerReferenceToLibrary(dir, {title: typeof p.title === 'string' ? p.title : undefined});
+          onLine(`ライブラリに登録しました: ${entry.title || entry.originalName}（${entry.key}）`);
+          return {registered: true, key: entry.key, title: entry.title};
         }
         // Instagram のリール・投稿の URL（PC の Smartgram 鍵で動画を落とす。スマホからもこの形で積まれる）
         if (typeof p.igUrl === 'string' && p.igUrl.trim()) {
@@ -638,6 +653,13 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           signal,
         });
         return {reverted: r.items.filter((i) => i.result === 'reverted').length, items: r.items};
+      }
+      // 参考動画のライブラリの操作（案件に属さない）。いまは名前付けだけ。クラウドから頼まれたときに PC で行う
+      case 'reference-library': {
+        if (p.op !== 'rename') throw new Error(`未知の操作: ${String(p.op)}`);
+        const entry = setLibraryTitle(typeof p.key === 'string' ? p.key : '', typeof p.title === 'string' ? p.title : '');
+        onLine(`ライブラリの名前を「${entry.title || '（なし）'}」にしました（${entry.key}）`);
+        return {key: entry.key, title: entry.title};
       }
       // deface を <設定の置き場>/deface-venv に入れる（案件に属さない）
       case 'mosaic-setup': {

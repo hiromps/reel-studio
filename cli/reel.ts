@@ -23,6 +23,8 @@
 //   reel ai reference --project P --file <動画> [--model m] [--no-analyze] [--force]（他の人のバズ動画を取り込んで型を分析→reference.json。同じ動画の分析がライブラリにあれば使い回す。--force で分析し直す）
 //   reel ai reference --project P --url <Instagram のリール URL> [--model m] [--no-analyze]（Smartgram MCP で動画を落として取り込む。HikerAPI 1 トークン）
 //   reel ai reference --project P [--show] | --from <別案件slug> | --remove           （分析を表示 / 別案件の分析を写す / 取り消す）
+//   reel ai reference --project P --library <鍵> | --register [--title 名前]           （ライブラリの 1 本を写す / この案件の分析をライブラリに登録して名前を付ける）
+//   reel library [list] [--json] | rename <鍵> <名前>                                   （同じ動画の分析を案件をまたいで使い回すライブラリの一覧・名前付け）
 //   reel ai mimic --project P [--model m] [--dry] [--force] [--no-assemble]        （分析した型を写した台本→script.md→そのまま組み立て。--dry は割り当てを見るだけ）
 //   reel sfx scan | list                                                        （効果音ライブラリの棚卸し）
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
@@ -66,7 +68,8 @@ import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatal
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
-import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
+import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, libraryIndex, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
+import {libraryEntryLabel} from '../shared/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
 import {localDate} from '../shared/time';
@@ -224,6 +227,25 @@ async function main() {
       out('|---|---|---|---|---|---|');
       for (const p of list) out(`| ${p.id} | ${p.label} | ${p.defaultFormat} | ${p.narration.voiceId ? p.narration.voiceTitle || p.narration.voiceId : '（未設定）'} | ${p.narration.speed} | ${p.skillDir ?? ''} |`);
       out(`（${personasFile()}。編集は GUI の Settings「人格」）`);
+      return;
+    }
+
+    // 参考動画のライブラリ（同じ動画の分析を案件をまたいで使い回す置き場）の一覧と名前付け
+    case 'library': {
+      if (pos[0] === 'rename') {
+        const key = pos[1];
+        const title = pos.slice(2).join(' ') || str(flags, 'title') || '';
+        if (!key) throw new Error('reel library rename <鍵> <名前>（名前を空にすると消す）');
+        const e = setLibraryTitle(key, title);
+        out(`${e.key}: 名前を「${e.title || '（なし）'}」にしました（使用 ${e.usedBy.length} 案件）`);
+        return;
+      }
+      const list = libraryIndex();
+      if (bool(flags, 'json')) return out(JSON.stringify(list, null, 2));
+      out('| 鍵 | 名前 | 元 | 秒 | 区間 | 使用案件 | 分析日 |');
+      out('|---|---|---|---|---|---|---|');
+      for (const e of list) out(`| ${e.key} | ${e.title || '-'} | ${e.originalName || e.sourceUrl || '-'} | ${e.durationSec.toFixed(1)} | ${e.segments} | ${e.usedBy.join(', ') || '-'} | ${e.analyzedAt?.slice(0, 10) ?? '-'} |`);
+      out(`（${list.length} 本。名前を付けるには reel library rename <鍵> <名前>。案件へ写すには reel ai reference --project P --library <鍵>）`);
       return;
     }
 
@@ -493,6 +515,21 @@ async function main() {
           const r = copyReferenceFrom(dir, resolveProjectDir(from));
           out(`${from} の分析を写しました`);
           for (const l of describeReference(r)) out(`  ${l}`);
+          return;
+        }
+        // ライブラリの 1 本を名前（鍵）で選んで写す／この案件の分析をライブラリに登録して名前を付ける
+        const libraryKey = str(flags, 'library');
+        if (libraryKey) {
+          const e = findLibraryEntry(libraryKey);
+          if (!e?.analyzed) throw new Error(`ライブラリに分析済みの動画がありません: ${libraryKey}（reel library list で一覧）`);
+          const r = reuseFromLibrary(dir, e);
+          out(`ライブラリ「${r.title || r.source?.originalName || e.key}」の分析を写しました（分析は走らせていません）`);
+          for (const l of describeReference(r)) out(`  ${l}`);
+          return;
+        }
+        if (bool(flags, 'register')) {
+          const e = await registerReferenceToLibrary(dir, {title: str(flags, 'title')});
+          out(`ライブラリに登録しました: ${e.title || e.originalName}（${e.key}・使用 ${e.usedBy.length} 案件）`);
           return;
         }
         if (url) {

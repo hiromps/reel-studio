@@ -11,6 +11,7 @@ import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type SettingsView} from 
 import {probeInstagramMcp} from '../../shared/instagram-mcp';
 import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
 import {SfxSoundSchema, type SfxLibrary} from '../../shared/sfx';
+import type {LibraryIndexEntry} from '../../shared/reference';
 import {JOB_TYPES} from '../../shared/jobs';
 import {normalizeSlug} from '../../shared/project';
 import {blobPath} from '../blob';
@@ -257,6 +258,19 @@ miscRouter.delete('/fonts/:file', async (req, res) => {
 // ───────────────────────── 効果音 ─────────────────────────
 
 const EMPTY_SFX: SfxLibrary = {version: 1, sounds: []};
+
+// ───────────────────────── 参考動画のライブラリ（PC が一覧を送ってくる） ─────────────────────────
+
+miscRouter.get('/reference-library', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({entries: (await kvGet<{entries: LibraryIndexEntry[]}>('reference-library'))?.entries ?? []});
+});
+
+/** 名前を付ける。実体は PC にあるので PC のジョブで行い、終わったら PC が一覧を送り直す */
+miscRouter.put('/reference-library/:key', async (req, res) => {
+  const title = typeof req.body?.title === 'string' ? req.body.title : '';
+  res.json({job: await addJob('reference-library', '_studio', {op: 'rename', key: req.params.key, title})});
+});
 
 miscRouter.get('/sfx', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache');

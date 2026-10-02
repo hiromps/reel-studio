@@ -9,7 +9,7 @@ import {api} from '../api';
 import {useStudio} from '../state/store';
 import {AiModelSelect} from '../hooks/useAiModel';
 import {AiJobStatus} from './AiJobStatus';
-import {fmtSec, isReferenceAnalyzed, referenceStats, type Reference, type ReferenceCut} from '@shared/reference';
+import {fmtSec, isReferenceAnalyzed, libraryEntryLabel, referenceStats, type LibraryIndexEntry, type Reference, type ReferenceCut} from '@shared/reference';
 import {localDateTime} from '@shared/time';
 import {parseInstagramPostUrl} from '@shared/instagram-mcp';
 
@@ -63,6 +63,10 @@ export const ReferenceCard: React.FC<{
   const [localPath, setLocalPath] = useState('');
   const [igUrl, setIgUrl] = useState('');
   const [from, setFrom] = useState('');
+  // ライブラリ（同じ動画の分析を案件をまたいで使い回す置き場）。名前で選んで写す・この案件の分析に名前を付ける
+  const [library, setLibrary] = useState<LibraryIndexEntry[]>([]);
+  const [libKey, setLibKey] = useState('');
+  const [title, setTitle] = useState('');
   const [showCuts, setShowCuts] = useState(false);
   const [showRules, setShowRules] = useState(true);
   const input = useRef<HTMLInputElement>(null);
@@ -92,11 +96,27 @@ export const ReferenceCard: React.FC<{
     void load();
   }, [load]);
 
-  // 分析・複製のジョブが終わったら（失敗でも）結果を取り直す
-  const finished = s.jobs.find((j) => j.type === 'ai-reference' && j.slug === slug && (j.status === 'done' || j.status === 'failed'));
+  const loadLibrary = useCallback(async () => {
+    try {
+      const r = await api.get<{entries: LibraryIndexEntry[]}>('/api/reference-library');
+      setLibrary(r.data.entries ?? []);
+    } catch {
+      setLibrary([]); // 古いサーバーには無い
+    }
+  }, []);
   useEffect(() => {
-    if (finished) void load();
-  }, [finished?.id, finished?.status, load]);
+    void loadLibrary();
+  }, [loadLibrary]);
+  // 名前の入力欄は、いま写してある分析の名前から始める
+  useEffect(() => setTitle(ref?.title ?? ''), [ref?.title, ref?.source?.key]);
+
+  // 分析・複製・ライブラリのジョブが終わったら（失敗でも）結果と一覧を取り直す
+  const finished = s.jobs.find((j) => ((j.type === 'ai-reference' && j.slug === slug) || j.type === 'reference-library') && (j.status === 'done' || j.status === 'failed'));
+  useEffect(() => {
+    if (!finished) return;
+    void load();
+    void loadLibrary();
+  }, [finished?.id, finished?.status, load, loadLibrary]);
 
   /** 分析を積む。force は「分析をやり直す」（ライブラリの再利用や済んでいる分析を無視して走らせる） */
   const analyze = (force = false) => void s.addJob('ai-reference', {model: aiModel, ...(force ? {force: true} : {})});
@@ -169,6 +189,54 @@ export const ReferenceCard: React.FC<{
       else {
         setRef(r.data.data);
         s.toast(`${from} の分析を写しました`, 'ok');
+      }
+    } catch (e) {
+      s.toast((e as Error).message, 'error');
+    }
+  };
+
+  /** ライブラリの 1 本を名前で選んで写す（ローカルはその場で、クラウドは PC のジョブ） */
+  const useLibrary = async () => {
+    if (!slug || !libKey) return;
+    try {
+      const r = await api.post<Res & {job?: {id: string}}>(`${base}/use-library`, {key: libKey});
+      if (r.data.job) s.toast('PC がライブラリの分析を写しています（PC オフラインなら起動後に始まります）', 'ok');
+      else {
+        setRef(r.data.data);
+        s.toast('ライブラリの分析を写しました（分析は走らせていません）', 'ok');
+      }
+      setLibKey('');
+    } catch (e) {
+      s.toast((e as Error).message, 'error');
+    }
+  };
+
+  /** ライブラリの名前を付ける。同じ動画を使う全案件の表示名も揃う */
+  const saveTitle = async () => {
+    const key = ref?.source?.key;
+    if (!key) return;
+    try {
+      const r = await api.put<{entry?: LibraryIndexEntry; job?: {id: string}}>(`/api/reference-library/${encodeURIComponent(key)}`, {title});
+      if (r.data.job) s.toast('PC がライブラリの名前を更新しています', 'ok');
+      else {
+        s.toast(`名前を保存しました: ${r.data.entry?.title || '（なし）'}`, 'ok');
+        await Promise.all([load(), loadLibrary()]);
+      }
+    } catch (e) {
+      s.toast((e as Error).message, 'error');
+    }
+  };
+
+  /** 鍵の無い古い取り込みをライブラリに登録して名前を付ける（同じ動画が既にあればそれに結び付く） */
+  const register = async () => {
+    if (!slug) return;
+    try {
+      const r = await api.post<{entry?: LibraryIndexEntry; data?: Reference | null; job?: {id: string}}>(`${base}/register`, {title});
+      if (r.data.job) s.toast('PC がライブラリに登録しています', 'ok');
+      else {
+        if (r.data.data) setRef(r.data.data);
+        s.toast(`ライブラリに登録しました${r.data.entry?.title ? `: ${r.data.entry.title}` : ''}（${r.data.entry?.key ?? ''}）`, 'ok');
+        await loadLibrary();
       }
     } catch (e) {
       s.toast((e as Error).message, 'error');
@@ -281,6 +349,26 @@ export const ReferenceCard: React.FC<{
         {igUrl.trim() && !igParsed && <span className="pill warn">Instagram の投稿・リールの URL ではありません</span>}
         {!igReady && <span className="hint">Settings の「Instagram の情報取得」に Smartgram の鍵が要ります</span>}
       </div>
+      {library.length > 0 && (
+        <div className="row">
+          <label className="grow" title="同じ動画の分析は案件をまたいで 1 本に貯めてあります（設定の置き場の reference-library/）。名前で選んで写せば、ダウンロードも分析も要りません">
+            ライブラリから使う（分析済みの動画に付けた名前で選ぶ）
+            <select value={libKey} onChange={(e) => setLibKey(e.target.value)} disabled={busy || !!uploading}>
+              <option value="">（選択）</option>
+              {library.map((e) => (
+                <option key={e.key} value={e.key}>
+                  {libraryEntryLabel(e)}
+                  {e.title ? `（${e.originalName || e.key}）` : ''} — {fmtSec(e.durationSec)} 秒・{e.segments} 区間
+                  {e.usedBy.length ? `・使用 ${e.usedBy.length} 案件` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={() => void useLibrary()} disabled={!libKey || busy || !!uploading || unsupported} title="選んだ分析（コマ・シート・型）をこの案件に写します。分析は走らせません">
+            この分析を使う
+          </button>
+        </div>
+      )}
       {!s.isCloud && !ref && (
         <div className="row">
           <label className="grow">
@@ -333,6 +421,26 @@ export const ReferenceCard: React.FC<{
               {ref.costUsd ? ` / $${ref.costUsd.toFixed(2)}` : ''}
             </span>
             {ref.reusedAt && <span className="pill" title="同じ動画を別の案件（または人格づくり）で分析したものを写しました。分析し直すと全体に新しい方が使われます">ライブラリの分析を再利用</span>}
+          </div>
+          <div className="row">
+            <label className="grow" title="ライブラリでの呼び名。同じ動画を使っている全案件に同じ名前が出ます（例: 大阪・炉端焼きの発見型）">
+              ライブラリでの名前{ref.source!.key ? `（${ref.source!.key}）` : '（未登録。鍵の無い古い取り込み）'}
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例: 大阪・炉端焼きの発見型" disabled={busy} />
+            </label>
+            {ref.source!.key && library.some((e) => e.key === ref.source!.key) ? (
+              <button className="small" onClick={() => void saveTitle()} disabled={busy || unsupported || title.trim() === (ref.title ?? '').trim()}>
+                名前を保存
+              </button>
+            ) : (
+              <button
+                className="small"
+                onClick={() => void register()}
+                disabled={busy || unsupported}
+                title="この分析をライブラリに入れます。同じ動画（ファイル名の投稿コードか内容）が既にあれば、新しく作らずそれに結び付けます"
+              >
+                ライブラリに登録して名前を付ける
+              </button>
+            )}
           </div>
           {ref.summary && <p className="reference-summary">{ref.summary}</p>}
 

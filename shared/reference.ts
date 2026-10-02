@@ -41,6 +41,8 @@ export const ReferenceSourceSchema = z.object({
    * 案件をまたいで分析を使い回す（ライブラリ）ときに引く。無ければ古い取り込み
    */
   key: z.string().optional(),
+  /** 動画ファイルの内容の sha256（16 進 64 桁）。投稿コードが違う形で取り込まれた同じ動画を結び付けるのに使う */
+  sha: z.string().optional(),
   durationSec: z.number().positive(),
   fps: z.number().positive(),
   width: z.number().int().nonnegative().default(0),
@@ -119,6 +121,8 @@ export const ReferenceSchema = z.object({
   version: z.literal(1).default(1),
   /** null ＝ 取り込んでいない（消したあとの墓標。クラウドと同期するので、ファイルを消す代わりにこれを書く） */
   source: ReferenceSourceSchema.nullable().default(null),
+  /** ライブラリでの呼び名（利用者が付ける。例「大阪・炉端焼きの発見型」）。案件に写すときも一緒に写る */
+  title: z.string().default(''),
   analyzedAt: z.string().optional(),
   model: z.string().default(''),
   costUsd: z.number().default(0),
@@ -145,6 +149,38 @@ export const referenceKeyOfInstagram = (code: string): string => `ig_${code.repl
 export const referenceKeyOfHash = (sha256Hex: string): string => `sha_${sha256Hex.slice(0, 16).toLowerCase()}`;
 /** フォルダ名に使える形か（鍵は上の 2 つの形だけ） */
 export const isReferenceKey = (v: unknown): v is string => typeof v === 'string' && /^(ig_[A-Za-z0-9_-]{5,64}|sha_[0-9a-f]{16})$/.test(v);
+
+/**
+ * ファイル名から Instagram の投稿コードを読んで鍵にする。無ければ null。
+ * 受けるもの: instagram-<code>.mp4 / instagram_<code>.mp4（ダウンロード系のツールの命名）、@<user>_<code>.mp4（Reel Studio の命名）、
+ * reel-<code>.mp4。投稿コードは英数字と _- の 10〜12 文字が普通だが、5〜64 で受ける
+ */
+export const referenceKeyFromFilename = (name: string): string | null => {
+  const base = name.replace(/\\/g, '/').split('/').pop() ?? '';
+  const stem = base.replace(/\.[A-Za-z0-9]+$/, '');
+  const m = /^(?:instagram|reel|ig)[-_]([A-Za-z0-9_-]{5,64})$/i.exec(stem) ?? /^@[A-Za-z0-9._]{1,30}_([A-Za-z0-9_-]{5,64})$/.exec(stem);
+  return m ? referenceKeyOfInstagram(m[1]) : null;
+};
+
+/** ライブラリの一覧の 1 行（画面・クラウドへ渡す形。ファイルには触れない） */
+export type LibraryIndexEntry = {
+  key: string;
+  /** 利用者が付けた名前（無ければ空。画面では元のファイル名で代用） */
+  title: string;
+  originalName: string;
+  sourceUrl?: string;
+  analyzedAt?: string;
+  durationSec: number;
+  segments: number;
+  cuts: number;
+  hookType: string;
+  summary: string;
+  /** この分析を使っている案件（slug） */
+  usedBy: string[];
+};
+
+/** 一覧での呼び名（名前 > 元のファイル名 > 鍵） */
+export const libraryEntryLabel = (e: Pick<LibraryIndexEntry, 'title' | 'originalName' | 'key'>): string => e.title.trim() || e.originalName || e.key;
 
 export const emptyReference = (): Reference => ReferenceSchema.parse({version: 1, source: null});
 
