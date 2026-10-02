@@ -2,6 +2,8 @@
 // Reel Studio CLI。Claude（スキル）と人が同じ関数を叩く入口。
 //   reel settings show [--json] | path | import-legacy [--from <dir>]   （設定の確認・旧来の置き場から Fish Audio の鍵を取り込む）
 //   reel personas list [--json]                                          （人格の一覧。編集は GUI の Settings）
+//   reel personas generate --id <id> [--label 名] [--instagram <ユーザー名> --count 6] [--projects a,b|all] [--base <人格id>] [--hint "補足"] [--overwrite] [--force] [--model m]
+//                                                                        （Instagram の最新の動画と案件の参考動画の分析から人格を言語化して作る。ボイスは Settings で入れる）
 //   reel projects
 //   reel new <slug> --persona <人格id> [--shop 店名]
 //   reel new <slug> --from <既存slug> [--shop 別ブランド名] [--persona p] [--no-facts] [--carry-timeline]   （同じ素材で別バージョン。素材はリンク共有。--carry-timeline で cuts・narration もそのまま引き継ぐ＝ボイスやフックの一部だけ変えたい版用）
@@ -66,6 +68,7 @@ import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
 import {aiMimic, analyzeReference, copyReferenceFrom, deleteReference, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
 import {describeReference} from '../shared/reference';
+import {generatePersona} from '../core/persona-study';
 import {localDate} from '../shared/time';
 import {claudeAvailable, claudeBin} from '../core/agent';
 import {generateTts} from '../core/tts';
@@ -191,6 +194,30 @@ async function main() {
     }
 
     case 'personas': {
+      // 人格を分析済みの動画から作る（Instagram の最新の動画 → 1 本ずつ型を分析 → 案件の参考動画と合わせて言語化）
+      if (pos[0] === 'generate') {
+        const id = str(flags, 'id') ?? pos[1];
+        if (!id) throw new Error('reel personas generate --id <id> [--label 名] [--instagram <ユーザー名> --count 6] [--projects a,b|all] [--base <人格id>] [--hint "補足"] [--overwrite] [--force] [--model m]');
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const instagram = str(flags, 'instagram');
+        const projects = str(flags, 'projects');
+        const r = await generatePersona({
+          id,
+          label: str(flags, 'label'),
+          instagram: instagram ? {target: instagram, count: num(flags, 'count')} : undefined,
+          projects: projects === 'all' ? 'all' : projects ? projects.split(',').map((s) => s.trim()).filter(Boolean) : [],
+          base: str(flags, 'base'),
+          hint: str(flags, 'hint'),
+          overwrite: bool(flags, 'overwrite'),
+          force: bool(flags, 'force'),
+          model: str(flags, 'model'),
+          onLine: (l) => err(l),
+        });
+        out(`人格「${r.persona.label}」（${r.persona.id}）を${r.replaced ? '置き換えました' : '追加しました'}（動画 ${r.sources.instagram + r.sources.projects} 本・新しく分析 ${r.analyzed} 本・$${r.costUsd.toFixed(3)}）`);
+        for (const l of r.lines) out(l);
+        out(`次: GUI の Settings「人格」で Fish Audio のボイスを入れる（${personasFile()}）`);
+        return;
+      }
       const list = listPersonas();
       if (bool(flags, 'json')) return out(JSON.stringify(list, null, 2));
       out('| id | 表示名 | 型 | ボイス | speed | skillDir |');

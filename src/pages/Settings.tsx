@@ -10,7 +10,8 @@ import {DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type InstagramAccount, type Mosaic
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
-import {AI_MODELS} from '../hooks/useAiModel';
+import {AI_MODELS, AiModelSelect, useAiModel} from '../hooks/useAiModel';
+import {DEFAULT_STUDY_VIDEOS, MAX_STUDY_VIDEOS, normalizeInstagramUser} from '@shared/persona-study';
 import {AiJobStatus} from '../components/AiJobStatus';
 import {useMosaicStatus} from '../components/MosaicPanel';
 
@@ -959,6 +960,188 @@ const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise
   );
 };
 
+// ───────────────────────── 人格を AI で作る ─────────────────────────
+
+type PersonaJobResult = {
+  persona?: {id: string; label: string};
+  summary?: string;
+  evidence?: string[];
+  sources?: {instagram: number; projects: number};
+  analyzed?: number;
+  costUsd?: number;
+  replaced?: boolean;
+};
+
+/**
+ * 分析済みの動画から人格を言語化して作る。Instagram のユーザー名を入れると、PC が Smartgram MCP で最新の動画を落として
+ * 1 本ずつ型を分析し（Brief の「バズ動画の型を写す」と同じ分析）、案件で分析済みの参考動画と合わせて claude が人格にする。
+ * ボイスは分析からは分からないので、できた人格を下の編集欄で選んで入れる。
+ */
+const PersonaGenerate: React.FC<{onCreated: (id: string) => void}> = ({onCreated}) => {
+  const s = useStudio();
+  const [aiModel, setAiModel] = useAiModel();
+  const [id, setId] = useState('');
+  const [label, setLabel] = useState('');
+  const [target, setTarget] = useState('');
+  const [count, setCount] = useState(DEFAULT_STUDY_VIDEOS);
+  const [base, setBase] = useState('');
+  const [hint, setHint] = useState('');
+  const [overwrite, setOverwrite] = useState(false);
+  // 「バズ動画の型を写す」で参考動画を取り込んである案件。外したものだけ覚える（候補が増えたら自動で材料に入る）
+  const [unpicked, setUnpicked] = useState<string[]>([]);
+  const candidates = s.projects.filter((p) => p.has.reference);
+  const selected = candidates.map((p) => p.slug).filter((slug) => !unpicked.includes(slug));
+
+  const job = s.jobs.find((j) => j.type === 'ai-persona' && (j.status === 'running' || j.status === 'queued'));
+  const last = s.jobs.find((j) => j.type === 'ai-persona' && (j.status === 'done' || j.status === 'failed'));
+  const user = normalizeInstagramUser(target);
+  const igWanted = target.trim() !== '';
+  const igReady = !!s.config?.instagramMcp;
+  const claude = s.config?.claude !== false;
+  const stale = !s.supportsJob('ai-persona');
+  const tid = id.trim();
+  const idTaken = s.personas.some((p) => p.id === tid);
+  const problem = !ID_RE.test(tid)
+    ? 'id は英小文字で始まり、英数字とハイフンだけ（最大 31 文字）'
+    : idTaken && !overwrite
+      ? `id「${tid}」は既にあります（置き換えるなら「同じ id の人格を置き換える」を入れる）`
+      : igWanted && !user
+        ? 'Instagram のユーザー名として読めません（@ 無しの英数字・ピリオド・アンダースコア）'
+        : igWanted && !igReady
+          ? 'Settings の「Instagram の情報取得」に Smartgram の鍵が要ります'
+          : !igWanted && !selected.length
+            ? 'Instagram のユーザー名を入れるか、分析済みの案件を 1 つ以上選んでください'
+            : !claude
+              ? 'claude が見つかりません（Settings の「AI」）'
+              : stale
+                ? 'Reel Studio を再起動してください（サーバーが古いプロセスです）'
+                : null;
+
+  // 終わったら人格を読み直し、できた人格を下の編集欄に出す（ボイスを入れてもらう）
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!last || last.status !== 'done' || handled.current === last.id) return;
+    handled.current = last.id;
+    const r = last.result as PersonaJobResult | undefined;
+    void s.loadPersonas().then(() => {
+      if (!r?.persona) return;
+      onCreated(r.persona.id);
+      s.toast(`人格「${r.persona.label}」を${r.replaced ? '置き換えました' : '追加しました'}。ボイスを入れて保存してください`, 'ok');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [last?.id, last?.status]);
+
+  const run = async () => {
+    if (problem || job) return;
+    const j = await s.addJob(
+      'ai-persona',
+      {id: tid, label: label.trim() || undefined, instagram: user ? {target: user, count} : undefined, projects: selected, base: base || undefined, hint: hint.trim() || undefined, overwrite, model: aiModel},
+      '_studio',
+    );
+    if (j) s.toast(s.isCloud ? 'PC が動画を分析して人格を作ります（PC オフラインなら起動後に始まります）' : '動画を分析して人格を作ります（1 本あたり数分・API 課金）', 'ok');
+  };
+
+  const result = last?.status === 'done' ? (last.result as PersonaJobResult | undefined) : undefined;
+  const parts = [user ? `Instagram ${count} 本` : '', selected.length ? `案件 ${selected.length} 本` : ''].filter(Boolean);
+
+  return (
+    <details className="persona-generate" data-tour="settings-persona-generate">
+      <summary>
+        <b>AI で人格を作る</b>（分析した動画から言語化）
+      </summary>
+      <p className="hint">
+        Instagram のユーザー名を入れると、Smartgram MCP で最新の投稿から動画を指定した本数だけ落とし、「バズ動画の型を写す」と同じ分析（カット・テロップ・区間・締め方）を 1 本ずつ行います。
+        その分析と、案件で分析済みの参考動画、投稿のキャプションをまとめて claude に渡し、文体・締めの言い回し・フックの型・ナレーションの禁則・既定の型・キャプションの型・ハッシュタグの選び方を言語化した人格を作ります。
+        写すのは言葉の癖と型だけで、店名や料理名は人格に入りません。動画は <span className="mono">{s.config?.settingsDir ? `${s.config.settingsDir.replace(/\\/g, '/')}/persona-studies/` : '設定の置き場の persona-studies/'}</span> に置かれ、分析済みのものは次回から使い回します。
+        ボイスは分析からは分からないので、できた人格を下の編集欄で選んで入れてください。
+      </p>
+      <div className="form">
+        <label title="英小文字で始まり、英数字とハイフンだけ（最大 31 文字）。案件の brief.json が参照するので後から変えられません">
+          新しい人格の id
+          <input value={id} onChange={(e) => setId(e.target.value)} placeholder="例: osshi-style" spellCheck={false} disabled={!!job} />
+        </label>
+        <label title="空なら AI が付けます">
+          表示名（任意）
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例: おっしー風（関西・発見型）" disabled={!!job} />
+        </label>
+        <label className="full" title="このアカウントの最新の投稿から動画だけを選び、1 本ずつ型を分析します（Smartgram の鍵が要ります）">
+          元にする Instagram のユーザー名（任意・@ 無し）
+          <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="例: oc.eat" spellCheck={false} inputMode="url" disabled={!!job} />
+        </label>
+        <label title={`最新の投稿から動画だけを数えます（1〜${MAX_STUDY_VIDEOS}）。1 本あたり数分と API 課金がかかります。分析済みの動画は使い回すので 2 回目以降は速い`}>
+          最新の動画数
+          <input type="number" min={1} max={MAX_STUDY_VIDEOS} value={count} onChange={(e) => setCount(Math.max(1, Math.min(MAX_STUDY_VIDEOS, Math.round(Number(e.target.value) || DEFAULT_STUDY_VIDEOS))))} disabled={!!job || !igWanted} />
+        </label>
+        <label title="ボイス・話速・誘導アカウントを引き継ぎ、分析から読み取れた項目だけ変えます">
+          出発点にする人格（任意）
+          <select value={base} onChange={(e) => setBase(e.target.value)} disabled={!!job}>
+            <option value="">（なし・ボイスは空）</option>
+            {s.personas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}（{p.id}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <AiModelSelect value={aiModel} onChange={setAiModel} />
+        <label className="full" title="AI への補足。分析から読み取れないこと（性別・方言の強さ・一人称など）をここで指定します">
+          補足（任意）
+          <input value={hint} onChange={(e) => setHint(e.target.value)} placeholder="例: 女性の口調で。関西弁は控えめに" disabled={!!job} />
+        </label>
+        {candidates.length > 0 && (
+          <div className="full">
+            <div className="hint">「バズ動画の型を写す」で参考動画を分析した案件（チェックしたものも材料にします。未分析の案件は飛ばします）</div>
+            <div className="row">
+              {candidates.map((p) => (
+                <label key={p.slug} className="inline">
+                  <input type="checkbox" checked={!unpicked.includes(p.slug)} onChange={(e) => setUnpicked((u) => (e.target.checked ? u.filter((x) => x !== p.slug) : [...u, p.slug]))} disabled={!!job} />
+                  <span>{p.slug}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {idTaken && (
+          <label title="既にある人格を、分析し直した内容で置き換えます（ボイスは残りません。「出発点にする人格」に同じものを選ぶとボイスが引き継がれます）">
+            <span>同じ id の人格を置き換える</span>
+            <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} disabled={!!job} />
+          </label>
+        )}
+      </div>
+      <div className="row">
+        {problem && <span className="pill warn">{problem}</span>}
+        <span style={{flex: 1}} />
+        <button
+          className="primary"
+          onClick={() => void run()}
+          disabled={!!problem || !!job}
+          title={problem ?? `動画を 1 本ずつ分析してから人格を言語化します（${parts.join(' + ')}。1 本あたり数分・API 課金）`}
+        >
+          {job ? '人格を作成中…' : `動画を分析して人格を作る${parts.length ? `（${parts.join(' + ')}）` : ''}`}
+        </button>
+      </div>
+      {job && <AiJobStatus job={job} onCancel={(id) => void s.cancelJob(id)} compact lines={5} />}
+      {last?.status === 'failed' && <p className="warn-text">失敗: {last.error}</p>}
+      {result?.persona && (
+        <div className="hint persona-generate-result">
+          <div>
+            <b>{result.persona.label}</b>（{result.persona.id}）を{result.replaced ? '置き換えました' : '追加しました'}。材料: Instagram {result.sources?.instagram ?? 0} 本・案件 {result.sources?.projects ?? 0} 本
+            {typeof result.costUsd === 'number' ? ` / $${result.costUsd.toFixed(2)}` : ''}
+          </div>
+          {result.summary && <p>{result.summary}</p>}
+          {(result.evidence ?? []).length > 0 && (
+            <ul className="tour-list">
+              {(result.evidence ?? []).map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </details>
+  );
+};
+
 // ───────────────────────── 人格 ─────────────────────────
 
 const PersonasCard: React.FC = () => {
@@ -1066,6 +1249,8 @@ const PersonasCard: React.FC = () => {
           この人格を削除
         </button>
       </div>
+
+      <PersonaGenerate onCreated={setSel} />
 
       {draft && (
         <>

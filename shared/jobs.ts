@@ -34,6 +34,11 @@ export const JOB_TYPES = [
   'ai-reference',
   /** 分析した型を写した台本（script.md）を書き、そのまま「台本から組み立てる」まで行う */
   'ai-mimic',
+  /**
+   * 人格（persona）を分析済みの動画から言語化して作る（案件に属さない）。Instagram のユーザー名があれば
+   * Smartgram MCP で最新の動画を落として 1 本ずつ型を分析し、案件の参考動画の分析と合わせて人格にする
+   */
+  'ai-persona',
   'trial',
   'winner',
   'build',
@@ -88,7 +93,7 @@ export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
 ]);
 
 /** 案件に属さないジョブ（案件を開いていなくても投げられる） */
-export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts']);
+export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts', 'ai-persona']);
 
 export const isHeavyJob = (type: string): boolean => HEAVY_JOBS.has(type as JobType);
 

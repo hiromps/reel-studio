@@ -121,6 +121,21 @@ const toolJson = <T>(r: ToolResult): T => {
   return JSON.parse(text) as T;
 };
 
+/** initialize（セッションの開始）。Reel Studio が直接ツールを叩く前に 1 回呼ぶ */
+export const mcpInitialize = (conn: InstagramMcpConn, opt: {signal?: AbortSignal} = {}): Promise<unknown> =>
+  mcpCall(conn, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'reel-studio', version: '0'}}, {signal: opt.signal, id: 1});
+
+/** ツールを 1 回呼んで、結果の JSON を返す（claude を介さず Reel Studio が直接叩くとき用） */
+export const mcpToolJson = async <T = unknown>(conn: InstagramMcpConn, name: string, args: Record<string, unknown>, opt: {signal?: AbortSignal; id?: number} = {}): Promise<T> => {
+  const r = await mcpCall<ToolResult>(conn, 'tools/call', {name, arguments: args}, {signal: opt.signal, id: opt.id ?? 2});
+  try {
+    return toolJson<T>(r);
+  } catch (e) {
+    if (e instanceof InstagramMcpError) throw e;
+    throw new InstagramMcpError(`${name} の結果を読めません: ${e instanceof Error ? e.message : String(e)}`);
+  }
+};
+
 export type InstagramMcpProbe = {
   ok: boolean;
   status?: number;

@@ -547,6 +547,46 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
 型（構成・テンポ・見せ方）を学ぶのは正当なやり方だが、映像・音声・文言の流用は他人の投稿の盗用になるので、
 ツールはそこを分けて作ってある（プロンプトでも禁じ、検算でも指摘する）。
 
+## 人格を AI で作る（`ai-persona`）
+
+Settings の「人格」カードにある「AI で人格を作る」。**分析済みの動画から、人格（文体・締め・フック・キャプションの型）を言語化する**。
+元にできるのは 2 種類で、どちらか（両方でも）が要る。
+
+- **Instagram のユーザー名と「最新の動画数」**。PC が Smartgram MCP の `get_user_posts`（`count` は最大 50。写真が混ざるので欲しい本数の 2 倍、
+  12〜50 件を取る）で最新の投稿を取り、動画だけを新しい順にその本数だけ選ぶ。`get_user_posts` は動画の直リンク（`videoUrl`・署名付きで数時間で失効）と
+  キャプション全文を一緒に返すので、**1 本ごとの `download_reel_video`（HikerAPI 1 トークン）は要らない**。落とした動画は
+  `~/.reel-studio/persona-studies/<ユーザー名>/<投稿コード>/` に、案件と同じ形（`reference.json` と `.studio/reference/`）で置き、
+  `analyzeReference`（上の「バズ動画の型を写す」と同じ分析）を 1 本ずつ直列に回す。分析済みの動画は次回から使い回す（`--force` で分析し直す）
+- **案件で分析済みの参考動画**（「バズ動画の型を写す」で分析したもの）。チェックで選ぶ。未分析の案件は飛ばす
+
+```
+Instagram @user ──get_user_posts──▶ 最新の動画 N 本（videoUrl・caption・likeCount・takenAt）
+動画 1 本ずつ ──importReferenceVideo → analyzeReference──▶ persona-studies/<user>/<code>/reference.json
+分析 N 本 ＋ 案件の reference.json ＋ 投稿のキャプション ──claude（PERSONA_DRAFT_SCHEMA）──▶ 下書き
+下書き ──personaFromDraft──▶ Persona → personas.json に追加（id は利用者が決める。ボイスは空か「出発点にする人格」のもの）
+```
+
+### 何を言語化するか（`shared/persona-study.ts` の `buildPersonaPrompt`）
+
+- `tone`（文体 1 行）・`cta` / `ctaPatterns`（締めテロップで実際に使われていた言い回しの一般形）・`hookStyle`（「エリア名＋一桁数字」型なら areaDigit）・
+  `narrationRules`（根拠のあるものだけ）・`defaultFormat`（F0〜F7 で一番近い型）・`theme`・`allowEmptyReveal`
+- `captionGuide` / `hashtagBank`（markdown）。投稿のキャプションがあれば、その構成（行数・順番・絵文字・区切り線・「頂いたもの」・実用情報・タグの位置と本数）を
+  **番号付きの手順**として書かせる。`hashtags` はタグ本数の中央値、`maxChars` は典型の長さ
+- `summary` と `evidence`（「動画 2 の締め「〜」」のように出どころを添える）。画面の結果とログに出る
+- **店名・料理名・地名・価格・数字そのものは人格に入れない**（プロンプトで禁じる）。推測で方言や口調を決めず、根拠が無い項目は無難な既定にする
+- 返答は `--json-schema` で形を固定し、`PersonaDraftSchema` で緩く受けて `personaFromDraft`（純粋・テストあり）が `PersonaSchema` に通す。
+  通らなければ保存しない
+
+### 操作
+
+- 画面：id（必須）・表示名・Instagram のユーザー名・最新の動画数（1〜20、既定 6）・出発点にする人格（ボイス・話速・誘導アカウントを引き継ぐ）・
+  モデル・補足（「女性の口調で」など、分析から読み取れないこと）・材料にする案件のチェック。同じ id があれば「置き換える」を入れないと止まる
+- できた人格は編集欄に出るので、**Fish Audio のボイスを入れて保存する**（ボイスが空のままだと音声生成が「未設定です」で止まる）
+- CLI：`reel personas generate --id <id> [--label 名] [--instagram <ユーザー名> --count 6] [--projects a,b|all] [--base <人格id>] [--hint "補足"] [--overwrite] [--force] [--model m]`
+- ジョブは `ai-persona`（案件に属さない。slug は `_studio`）。クラウドからも積めて PC が実行し、終わったらその場で人格をクラウドへ反映する
+  （`worker/index.ts`。5 分ごとの棚卸しを待たない）
+- Smartgram の API は 1 時間 200 回の上限がある。実行前に `get_api_usage` を見て、`danger` なら止まり、`warning` なら知らせて続ける
+
 ## AI に並べ替えてもらう（`reel order`）
 
 `reel plan` は format-spec の区間テンプレに沿って**決定論で**クリップを割り当てる。これに対し

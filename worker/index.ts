@@ -230,6 +230,15 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
                 ? runSync(ctx)
                 : await runJobBody({type: job.type as Parameters<typeof runJobBody>[0]['type'], slug: job.slug, params: job.params}, ctx);
 
+    // AI が作った人格は、その場でクラウドへ反映する（5 分ごとの棚卸しを待たずにスマホの Settings に出す）
+    if (job.type === 'ai-persona' && !abort.signal.aborted) {
+      try {
+        await client.pushPersonas(listPersonas());
+      } catch (e) {
+        ctx.onLine(`※ 人格の反映に失敗: ${(e as Error).message}（次の同期で入ります）`);
+      }
+    }
+
     // 取り込んだ・消したフォントは、その場でクラウドへ反映する（スマホの一覧と見本に出す）
     if (job.type === 'fonts' && !abort.signal.aborted) {
       try {

@@ -24,6 +24,7 @@ import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
 import {aiMimic, analyzeReference, copyReferenceFrom, fetchReferenceToInbox, importReferenceFromInstagram, importReferenceVideo, readReference} from '../core/reference';
 import {describeReference} from '../shared/reference';
+import {generatePersona} from '../core/persona-study';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
 import {applyMosaic, revertMosaic, setupMosaic} from '../core/mosaic';
@@ -315,6 +316,27 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           costUsd: r.costUsd,
           assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec, fixes: r.assembled.fixes} : null,
         };
+      }
+      // 人格を分析済みの動画から言語化して作る（案件に属さない。slug は _studio）。
+      // Instagram のユーザー名があれば Smartgram MCP で最新の動画を落として 1 本ずつ型を分析し、案件の参考動画の分析と合わせる
+      case 'ai-persona': {
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const ig = p.instagram && typeof p.instagram === 'object' ? (p.instagram as {target?: unknown; count?: unknown}) : null;
+        const r = await generatePersona({
+          id: typeof p.id === 'string' ? p.id : '',
+          label: typeof p.label === 'string' ? p.label : undefined,
+          instagram: ig && typeof ig.target === 'string' && ig.target.trim() ? {target: ig.target, count: typeof ig.count === 'number' ? ig.count : undefined} : undefined,
+          projects: p.projects === 'all' ? 'all' : Array.isArray(p.projects) ? (p.projects as unknown[]).map(String) : [],
+          base: typeof p.base === 'string' && p.base ? p.base : undefined,
+          hint: typeof p.hint === 'string' ? p.hint : undefined,
+          overwrite: !!p.overwrite,
+          force: !!p.force,
+          model: typeof p.model === 'string' ? p.model : undefined,
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
+        return {persona: r.persona, summary: r.draft.summary, evidence: r.draft.evidence, sources: r.sources, analyzed: r.analyzed, costUsd: r.costUsd, replaced: r.replaced, lines: r.lines};
       }
       case 'ai-caption': {
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);

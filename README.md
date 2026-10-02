@@ -123,6 +123,9 @@ npm run update      # git pull → 依存の導入 → 画面のビルド をま
    キャプションの型（markdown）をここで決めると、AI のテロップ・ナレーション・キャプションに効きます。
    同梱のサンプル 3 つ（スタンダード／発見型／カジュアル）はボイス未設定なので、**Fish Audio のボイスを入れてから**使ってください。
    自分の Claude Code スキル（`SKILL.md` と `references/hashtag-bank.md`）を型として使いたい人格は「外部のスキルフォルダ」に絶対パスを入れます。
+   **AI で人格を作る** — 「人格」カードの「AI で人格を作る」に Instagram のユーザー名と動画数を入れると、Smartgram MCP で最新の投稿から
+   動画をその本数だけ落として「バズ動画の型を写す」と同じ分析を 1 本ずつ行い、案件で分析済みの参考動画と投稿のキャプションも合わせて、
+   文体・締めの言い回し・フックの型・キャプションの型を言語化した人格を作ります（ボイスは分からないので手で入れる。CLI は `bin/reel personas generate`）。
 
 CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）、`bin/reel personas list` で人格の一覧が見られます。
 以前 Claude Code の `settings.local.json` / `.mcp.json` に鍵を置いていた場合は `bin/reel settings import-legacy --from <そのフォルダ>` で取り込めます（値は表示されません）。
