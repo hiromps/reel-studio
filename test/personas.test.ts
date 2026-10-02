@@ -2,7 +2,7 @@ import {afterEach, describe, expect, it} from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {BUILTIN_PERSONAS, defaultPersonaId, findPersona, getPersona, listPersonas, setPersonas} from '@shared/personas';
+import {BUILTIN_PERSONAS, defaultPersonaId, findPersona, getPersona, listPersonas, mergePersonasWithCloud, setPersonas} from '@shared/personas';
 import {validateCuts} from '@shared/validate';
 import {FORMAT_SPECS} from '@shared/format-specs';
 import {ReelDataSchema} from '@shared/schema';
@@ -13,6 +13,44 @@ import {TEST_PERSONAS, fixtures, makePersona, readJson} from './helpers';
 afterEach(() => {
   // 他のテストが見る一覧をテスト用に戻す
   setPersonas(Object.values(TEST_PERSONAS));
+});
+
+describe('クラウドとの突き合わせ（mergePersonasWithCloud）', () => {
+  const hiro = makePersona({id: 'hiro', label: 'hiro'});
+  const nagi = makePersona({id: 'nagi', label: 'nagi'});
+  const umaimon = makePersona({id: 'umaimon', label: 'うまいもん'});
+
+  it('クラウドにある id はクラウドの内容、PC で新しくできた id は残して押し戻す', () => {
+    const cloudHiro = {...hiro, label: 'hiro（画面で直した）'};
+    const r = mergePersonasWithCloud([hiro, nagi, umaimon], [cloudHiro, nagi], ['hiro', 'nagi']);
+    expect(r.merged.map((p) => p.id)).toEqual(['hiro', 'nagi', 'umaimon']);
+    expect(r.merged[0].label).toBe('hiro（画面で直した）');
+    expect(r.kept).toEqual(['umaimon']);
+    expect(r.dropped).toEqual([]);
+  });
+
+  it('前回の同期で見ていてクラウドから消えた id は、画面で消されたものとして落とす', () => {
+    const r = mergePersonasWithCloud([hiro, nagi, umaimon], [hiro], ['hiro', 'nagi', 'umaimon']);
+    expect(r.merged.map((p) => p.id)).toEqual(['hiro']);
+    expect(r.dropped).toEqual(['nagi', 'umaimon']);
+    expect(r.kept).toEqual([]);
+  });
+
+  it('同期の記録が無い（初回・起動直後）なら何も落とさない。2026-10-02 に起動時の上書きで作ったばかりの人格が消えた件', () => {
+    const r = mergePersonasWithCloud([hiro, nagi, umaimon], [hiro, nagi], null);
+    expect(r.merged.map((p) => p.id)).toEqual(['hiro', 'nagi', 'umaimon']);
+    expect(r.kept).toEqual(['umaimon']);
+    expect(r.dropped).toEqual([]);
+  });
+
+  it('クラウドにしか無い id（画面で作った）は入る。両方同じなら何も変わらない', () => {
+    const sayuri = makePersona({id: 'sayuri', label: 'さゆり'});
+    const r = mergePersonasWithCloud([hiro], [hiro, sayuri], ['hiro']);
+    expect(r.merged.map((p) => p.id)).toEqual(['hiro', 'sayuri']);
+    expect(r.kept).toEqual([]);
+    const same = mergePersonasWithCloud([hiro, nagi], [hiro, nagi], ['hiro', 'nagi']);
+    expect(same).toEqual({merged: [hiro, nagi], kept: [], dropped: []});
+  });
 });
 
 describe('人格レジストリ', () => {

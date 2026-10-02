@@ -119,3 +119,38 @@ export const getPersona = (id: string): Persona => {
 
 /** 新規案件の既定（一覧の先頭） */
 export const defaultPersonaId = (): string => listPersonas()[0]?.id ?? 'standard';
+
+// ───────────────────────── クラウドとの突き合わせ ─────────────────────────
+
+export type PersonaMergeResult = {
+  merged: Persona[];
+  /** クラウドに無いが PC で新しく作られたので残した id（押し戻しが要る） */
+  kept: string[];
+  /** 画面（クラウド）で消されたので PC からも落とした id */
+  dropped: string[];
+};
+
+/**
+ * クラウドの一覧を正にしつつ、**PC で増えた人格を消さない**。
+ * - クラウドにある id → クラウドの内容（画面で編集されたもの）
+ * - クラウドに無く、前回の同期で見た（synced）id → 画面で消されたもの。落とす
+ * - クラウドに無く、synced にも無い id → PC で新しく作られたもの（ai-persona をローカルで走らせた等）。残して押し戻す
+ * synced が null（記録が無い＝初回）なら、何も落とさず全部残す（消す側に倒さない）。
+ * 2026-10-02 に、ワーカーが起動時にクラウドの 4 件で PC の 6 件を上書きし、作ったばかりの人格が消えたことへの対策
+ */
+export const mergePersonasWithCloud = (local: readonly Persona[], cloud: readonly Persona[], synced: readonly string[] | null): PersonaMergeResult => {
+  const cloudIds = new Set(cloud.map((p) => p.id));
+  const seen = synced ? new Set(synced) : null;
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  const extra: Persona[] = [];
+  for (const p of local) {
+    if (cloudIds.has(p.id)) continue;
+    if (seen && seen.has(p.id)) dropped.push(p.id);
+    else {
+      kept.push(p.id);
+      extra.push(p);
+    }
+  }
+  return {merged: [...cloud, ...extra], kept, dropped};
+};

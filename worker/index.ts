@@ -21,10 +21,11 @@ import {ttsAvailable, resetFishEnv} from '../core/tts';
 import {resetInstagramMcpEnv} from '../core/instagram-mcp';
 import {mosaicStatus, resetMosaicStatus} from '../core/mosaic';
 import {listProjects, resolveProjectDir} from '../core/project';
-import {loadSettings, mergeSettings, resetSettings, saveSettings, settingsView} from '../core/settings';
+import {loadSettings, mergeSettings, resetSettings, saveSettings, settingsDir, settingsView} from '../core/settings';
 import {listFonts} from '../core/fonts';
 import {loadPersonasFromDisk, savePersonas} from '../core/personas-store';
-import {listPersonas, PersonaSchema, type Persona} from '../shared/personas';
+import {listPersonas, mergePersonasWithCloud, PersonaSchema, type Persona} from '../shared/personas';
+import {createHash} from 'node:crypto';
 import {readLibrary, writeLibrary} from '../core/sfx';
 import {SettingsPatchSchema} from '../shared/schema/settings';
 import {canStartJob, PROJECTLESS_JOBS, type JobType} from '../shared/jobs';
@@ -100,6 +101,43 @@ const status = async (running: {slug: string; type: string}[]): Promise<Omit<Wor
 let lastPersonasRev = 0;
 let lastSfxRev = 0;
 
+// ───────────────────────── 人格の同期の記録 ─────────────────────────
+//
+// クラウドが正だが、PC で増えた人格（Settings の「AI で人格を作る」をローカルで走らせた等）を消さないために、
+// 「前回クラウドと合わせたときの id と内容のハッシュ」を <設定の置き場>/cloud-personas.json に残す。
+// - 取り込み（pull）では、クラウドに無い id のうち前回見ていないものは PC で新しくできたものとして残し、押し戻す
+// - PC 側で personas.json が変わったら（ハッシュが違う）、棚卸しを待たずにその場でクラウドへ送る
+
+type PersonasSyncState = {ids: string[]; hash: string};
+const personasSyncFile = () => path.join(settingsDir(), 'cloud-personas.json');
+const personasHash = (list: readonly Persona[]): string => createHash('sha1').update(JSON.stringify(list)).digest('hex');
+const readPersonasSync = (): PersonasSyncState | null => {
+  try {
+    const j = JSON.parse(fs.readFileSync(personasSyncFile(), 'utf8')) as Partial<PersonasSyncState>;
+    return Array.isArray(j.ids) && typeof j.hash === 'string' ? {ids: j.ids.map(String), hash: j.hash} : null;
+  } catch {
+    return null;
+  }
+};
+const writePersonasSync = (list: readonly Persona[]): void => {
+  try {
+    fs.mkdirSync(settingsDir(), {recursive: true});
+    fs.writeFileSync(personasSyncFile(), JSON.stringify({ids: list.map((p) => p.id), hash: personasHash(list), at: new Date().toISOString()}, null, 2));
+  } catch (e) {
+    log('人格の同期の記録を書けません:', (e as Error).message);
+  }
+};
+
+/** PC 側で personas.json が変わっていれば（ローカルの Settings や ai-persona）、その場でクラウドへ送る */
+const pushLocalPersonaChanges = async (client: CloudClient): Promise<void> => {
+  const list = loadPersonasFromDisk(); // ローカルのサーバーが書いた最新を読み直す
+  const h = personasHash(list);
+  if (readPersonasSync()?.hash === h) return;
+  await client.pushPersonas(list);
+  writePersonasSync(list);
+  log(`人格 ${list.length} 件をクラウドへ送りました（PC 側の変更）`);
+};
+
 const applyRemoteChanges = async (client: CloudClient, reply: Awaited<ReturnType<CloudClient['hello']>>): Promise<void> => {
   // 設定（フォルダ・AI のモデル・顔モザイクの python など）
   if (reply.settingsPatch && Object.keys(reply.settingsPatch.patch).length) {
@@ -118,19 +156,23 @@ const applyRemoteChanges = async (client: CloudClient, reply: Awaited<ReturnType
     }
     await client.pushSettings(await currentSettingsView(), reply.settingsPatch.rev);
   }
-  // 人格（画面で編集されたもの）。クラウドが正なので PC の personas.json を合わせる
+  // 人格（画面で編集されたもの）。クラウドを正に PC の personas.json を合わせるが、**PC で増えた人格は消さず押し戻す**
   if (reply.personasRev && reply.personasRev !== lastPersonasRev) {
     lastPersonasRev = reply.personasRev;
     try {
       const {personas} = await client.pullPersonas();
-      const list: Persona[] = [];
+      const cloud: Persona[] = [];
       for (const p of personas) {
         const r = PersonaSchema.safeParse(p);
-        if (r.success) list.push(r.data);
+        if (r.success) cloud.push(r.data);
       }
-      if (list.length) {
-        savePersonas(list);
-        log(`人格を ${list.length} 件、クラウドに合わせました`);
+      if (cloud.length) {
+        const local = loadPersonasFromDisk();
+        const {merged, kept, dropped} = mergePersonasWithCloud(local, cloud, readPersonasSync()?.ids ?? null);
+        savePersonas(merged);
+        if (kept.length) await client.pushPersonas(merged);
+        writePersonasSync(merged);
+        log(`人格を ${merged.length} 件、クラウドに合わせました${kept.length ? `（PC で増えた ${kept.join(', ')} は残して送りました）` : ''}${dropped.length ? `（画面で消された ${dropped.join(', ')} を落としました）` : ''}`);
       }
     } catch (e) {
       log('人格の取り込みに失敗:', (e as Error).message);
@@ -340,7 +382,9 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
     }
   }
   try {
-    await client.pushPersonas(listPersonas());
+    const personas = loadPersonasFromDisk();
+    await client.pushPersonas(personas);
+    writePersonasSync(personas);
     await client.pushSfx(readLibrary());
     await client.pushReferenceLibrary(libraryIndex());
     await client.pushSettings(await currentSettingsView());
@@ -401,6 +445,12 @@ const main = async (): Promise<void> => {
       blobToken = reply.blobToken;
       backoff = 0;
       await applyRemoteChanges(client, reply);
+      // PC 側で人格が変わっていれば（ローカルの Settings・ai-persona）、棚卸しを待たずに送る
+      try {
+        await pushLocalPersonaChanges(client);
+      } catch (e) {
+        log('人格の送信に失敗:', (e as Error).message);
+      }
 
       // 待たない（上の hello とジョブの取得を止めないため）
       if (!sweeping && running.size === 0 && Date.now() - lastSweep > SWEEP_MS) {
