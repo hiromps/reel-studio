@@ -402,6 +402,12 @@ label > textarea {
 }
 select {
   max-width: 100%;
+  /* WebKit（iPhone の Safari）は、箱を width で縮めても**いちばん長い option の文字幅**を
+     「中身のはみ出し」として親へ伝える（Chrome は select の中で閉じる）。
+     親に overflow が無いモバイルの Timeline では文書ごと横に伸びて画面が右へスクロールでき、
+     カットのシート（.ed-inspector.sel）では「素材」の長い説明ぶん中身が横に流れていた。
+     layout 包含にすると、はみ出しはこの要素の中で閉じる。見た目は変わらない（文字はもともと箱で切れる） */
+  contain: layout;
 }
 /* チェックボックスは文字の横に置く（label の既定は縦積みなので、そのままだと
    文字の下にぽつんと箱が出る）。:where() で詳細度 0 にしてあるので、
@@ -3425,10 +3431,14 @@ a.btn-like:hover {
     /* 横スクロールは中の .tl-scroll が受け持つ */
     padding: 4px 6px 6px;
   }
-  /* 拡大ボタン・全体ボタンが押せなくならないよう折り返す */
+  /* 拡大ボタン・全体ボタンが押せなくならないよう折り返す。
+     左右の負のマージンは上の .ed-timeline の余白（6px）に揃える
+     （広い画面用の -12px のままだと、下線がカードの枠の外まで 6px はみ出していた） */
   .tl-toolbar {
     flex-wrap: wrap;
     gap: 6px;
+    margin: 0 -6px 6px;
+    padding: 0 6px 8px;
   }
   .ed-storyboard {
     order: 3;
