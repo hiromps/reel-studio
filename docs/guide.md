@@ -552,8 +552,9 @@ script.md ──「台本から組み立てる」（ai-script）──▶ cuts.j
 Settings の「人格」カードにある「AI で人格を作る」。**分析済みの動画から、人格（文体・締め・フック・キャプションの型）を言語化する**。
 元にできるのは 2 種類で、どちらか（両方でも）が要る。
 
-- **Instagram のユーザー名と「最新の動画数」**。PC が Smartgram MCP の `get_user_posts`（`count` は最大 50。写真が混ざるので欲しい本数の 2 倍、
-  12〜50 件を取る）で最新の投稿を取り、動画だけを新しい順にその本数だけ選ぶ。`get_user_posts` は動画の直リンク（`videoUrl`・署名付きで数時間で失効）と
+- **Instagram のユーザー名と「最新の動画数」**。PC が Smartgram MCP の `get_user_posts`（スキーマ上は `count` 最大 50 だが、
+  **実際は最新 12 件しか返らない**。2026-10-02 に count=40 で実測。ページ送りの引数も無い）で最新の投稿を取り、動画だけを新しい順にその本数だけ選ぶ。
+  なので 1 アカウントから取れるのは最大 12 本（`MAX_STUDY_VIDEOS`）。`get_user_posts` は動画の直リンク（`videoUrl`・署名付きで数時間で失効）と
   キャプション全文を一緒に返すので、**1 本ごとの `download_reel_video`（HikerAPI 1 トークン）は要らない**。落とした動画は
   `~/.reel-studio/persona-studies/<ユーザー名>/<投稿コード>/` に、案件と同じ形（`reference.json` と `.studio/reference/`）で置き、
   `analyzeReference`（上の「バズ動画の型を写す」と同じ分析）を 1 本ずつ直列に回す。分析済みの動画は次回から使い回す（`--force` で分析し直す）
@@ -579,7 +580,7 @@ Instagram @user ──get_user_posts──▶ 最新の動画 N 本（videoUrl�
 
 ### 操作
 
-- 画面：id（必須）・表示名・Instagram のユーザー名・最新の動画数（1〜20、既定 6）・出発点にする人格（ボイス・話速・誘導アカウントを引き継ぐ）・
+- 画面：id（必須）・表示名・Instagram のユーザー名・最新の動画数（1〜12、既定 6）・出発点にする人格（ボイス・話速・誘導アカウントを引き継ぐ）・
   モデル・補足（「女性の口調で」など、分析から読み取れないこと）・材料にする案件のチェック。同じ id があれば「置き換える」を入れないと止まる
 - できた人格は編集欄に出るので、**Fish Audio のボイスを入れて保存する**（ボイスが空のままだと音声生成が「未設定です」で止まる）
 - CLI：`reel personas generate --id <id> [--label 名] [--instagram <ユーザー名> --count 6] [--projects a,b|all] [--base <人格id>] [--hint "補足"] [--overwrite] [--force] [--model m]`

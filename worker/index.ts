@@ -27,7 +27,7 @@ import {loadPersonasFromDisk, savePersonas} from '../core/personas-store';
 import {listPersonas, PersonaSchema, type Persona} from '../shared/personas';
 import {readLibrary, writeLibrary} from '../core/sfx';
 import {SettingsPatchSchema} from '../shared/schema/settings';
-import {canStartJob} from '../shared/jobs';
+import {canStartJob, PROJECTLESS_JOBS, type JobType} from '../shared/jobs';
 import {runJobBody, type JobRunCtx} from '../server/jobs';
 import type {CloudJob} from '../cloud/store';
 import type {WorkerStatus} from '../cloud/worker-status';
@@ -156,6 +156,9 @@ const currentSettingsView = async () => {
 
 const running = new Map<string, {slug: string; type: string; abort: AbortController}>();
 
+/** 案件フォルダを持たないジョブか（種別で判定する。slug の形には頼らない） */
+const isProjectless = (job: {type: string; slug: string}): boolean => PROJECTLESS_JOBS.has(job.type as JobType) || job.slug === '_studio' || job.slug === '_studio-reel';
+
 /**
  * 画面の「最新に」ボタンから積まれる同期ジョブ。
  * 実体は**この前後で必ず走る** syncDocs（取り込み）と pushAfterJob（押し上げ）なので、ここは知らせるだけ。
@@ -207,7 +210,9 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
 
   try {
     // ジョブが読む契約ファイルを、実行前にクラウドと合わせる
-    if (job.type !== 'create-project' && job.type !== 'ingest' && job.type !== 'fonts' && job.slug !== '_studio') {
+    // 案件に属さないジョブ（mosaic-setup / fonts / ai-persona）は slug に関わらず案件フォルダを見ない
+    // （以前のクラウドは slug を _studio-reel に正規化していて、ここで「案件フォルダがありません」と止まった）
+    if (job.type !== 'create-project' && job.type !== 'ingest' && !isProjectless(job)) {
       const dir = resolveProjectDir(job.slug);
       // 案件が PC に無いなら、ここで止める。先へ進めると「何もしなかったのに成功」になる種類の
       // ジョブ（sync-engine など）があり、原因が分からなくなる
@@ -285,7 +290,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
 };
 
 const pushAfterJob = async (client: CloudClient, job: CloudJob, blobToken: string | null, onLine: (l: string) => void): Promise<void> => {
-  if (job.type === 'ingest' || job.slug === '_studio') return;
+  if (job.type === 'ingest' || isProjectless(job)) return;
   const dir = resolveProjectDir(job.slug);
   if (!fs.existsSync(dir)) return;
   const r = await syncDocs(client, dir);

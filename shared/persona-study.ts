@@ -14,8 +14,11 @@ import {HookStyleSchema, PersonaSchema, type Persona} from './schema/persona';
 import {FORMAT_SPECS, FORMAT_IDS} from './format-specs';
 import {describeReference, isReferenceAnalyzed, type Reference} from './reference';
 
-/** 1 回で分析する動画数の上限（1 本あたり数分・API 課金があるので抑える） */
-export const MAX_STUDY_VIDEOS = 20;
+/**
+ * 1 回で分析する動画数の上限。Smartgram の get_user_posts は count を大きくしても**最新 12 件（1 ページ）しか返さない**
+ * （2026-10-02 に count=40 で実測。ページ送りの引数も無い）ので、それより多くは指定できない
+ */
+export const MAX_STUDY_VIDEOS = 12;
 export const DEFAULT_STUDY_VIDEOS = 6;
 /** get_user_posts の count の上限（MCP 側の制約） */
 export const POSTS_FETCH_MAX = 50;

@@ -14,7 +14,8 @@ jobsRouter.post('/', (req, res) => {
   const {type, slug, params} = req.body ?? {};
   if (!isJobType(type))
     return res.status(400).json({error: `この機能は起動中のサーバーにありません（画面だけ新しい状態です）。Reel Studio を再起動してください。\n  受け付けられる type: ${JOB_TYPES.join('|')}`});
-  const target = slug ?? state.activeSlug ?? (PROJECTLESS_JOBS.has(type) ? '_studio' : null);
+  // 案件に属さないジョブは常に _studio（開いている案件に紐づけると、その案件のジョブと同時に走れなくなる）
+  const target = PROJECTLESS_JOBS.has(type) ? '_studio' : (slug ?? state.activeSlug);
   if (!target) return res.status(400).json({error: 'slug が無い（active project も未設定）'});
   const job = jobs.add(type, target, params ?? {});
   res.json(jobs.publicJob(job));

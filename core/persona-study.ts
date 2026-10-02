@@ -130,7 +130,7 @@ export const fetchInstagramStudyPosts = async (env: InstagramMcpEnv, target: str
   if (!all.length) throw new InstagramMcpError(`@${target} の投稿が取れませんでした（非公開アカウントか、ユーザー名の誤りか、投稿が無い）`);
   const posts = selectStudyPosts(all, count);
   if (!posts.length) throw new InstagramMcpError(`@${target} の最新 ${all.length} 件に動画がありませんでした`);
-  if (posts.length < count) log(`! 最新 ${all.length} 件のうち動画は ${posts.length} 本でした（${count} 本に届きません）`);
+  if (posts.length < count) log(`! Smartgram が返した最新 ${all.length} 件のうち動画は ${posts.length} 本でした（${count} 本には届きません。これより古い投稿は取れません）`);
   return {posts, fetched: all.length, executor, usage};
 };
 

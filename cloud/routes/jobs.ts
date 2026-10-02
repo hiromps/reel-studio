@@ -22,7 +22,9 @@ jobsRouter.post('/', async (req, res) => {
   const {type, slug, params} = req.body ?? {};
   if (!isJobType(type)) return res.status(400).json({error: `知らないジョブです。\n  受け付けられる type: ${JOB_TYPES.join('|')}`});
   const active = (await kvGet<{slug: string | null}>('active-slug'))?.slug ?? null;
-  const target = slug ? normalizeSlug(String(slug)) : (active ?? (PROJECTLESS_JOBS.has(type) ? '_studio' : null));
+  // 案件に属さないジョブは常に _studio（画面が slug を渡してきても -reel を付けない。付けると PC のワーカーが
+  // 「この PC に案件フォルダがありません: work/_studio-reel」で止まる。2026-10-02 に ai-persona で起きた）
+  const target = PROJECTLESS_JOBS.has(type) ? '_studio' : slug ? normalizeSlug(String(slug)) : active;
   if (!target) return res.status(400).json({error: 'slug が無い（active project も未設定）'});
   res.json(await addJob(type, target, (params ?? {}) as Record<string, unknown>));
 });
