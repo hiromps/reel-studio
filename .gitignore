@@ -21,6 +21,7 @@ dist/
 # PWA 用にビルド前へコピーするフォント（実体は engine/public/fonts/）
 /public/fonts/
 
+# Vercel CLI が作る作業用（公開しない）
 .vercel
 
 # Vercel Functions 用のバンドル（scripts/build-api.mjs が生成）

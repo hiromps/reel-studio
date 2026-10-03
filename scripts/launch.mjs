@@ -146,12 +146,26 @@ const startChild = (label, argv) => {
   return child;
 };
 
+/** 更新があれば 1 行知らせる（勝手に更新はしない）。失敗しても起動は止めない */
+const noticeUpdate = async () => {
+  try {
+    const {checkUpdate} = await import('./check-update.mjs');
+    const r = await checkUpdate(root);
+    if (!r) return;
+    console.log(`${C.yellow}!${C.reset} 更新があります（${r.behind} 件）${r.subject ? `: ${r.subject}` : ''}`);
+    console.log(`  ${C.dim}「Reel Studio 更新.cmd」をダブルクリック（または npm run update）して、起動し直してください${C.reset}\n`);
+  } catch {
+    /* 調べられなくても使えるので黙っておく */
+  }
+};
+
 async function main() {
   console.log(`\n${C.cyan}Reel Studio${C.reset} ${C.dim}${root}${C.reset}\n`);
+  await noticeUpdate();
 
   if (depsStale()) {
     const first = !fs.existsSync(path.join(root, 'node_modules', 'remotion'));
-    runNpm(['install', '--no-audit', '--no-fund'], first ? '依存パッケージを導入しています（初回のみ・数分かかります）' : '更新で増えた依存パッケージを入れています（少し時間がかかります）');
+    runNpm(['install', '--no-audit', '--no-fund'], first ? '依存パッケージを導入しています（初回のみ・数分かかります）' : '依存パッケージを更新に合わせています（少し時間がかかります）');
   }
 
   // すでに起動していれば、二重に立ち上げずブラウザだけ開く
