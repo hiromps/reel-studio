@@ -1736,6 +1736,20 @@ pre.md {
 .ai-log > div:last-child {
   color: var(--fg);
 }
+/* 広げたとき：全文を折り返して、長ければ枠の中でスクロール */
+.ai-log.expanded {
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+}
+.ai-log .mono-wrap {
+  font-family: Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-block: 1px;
+}
+.ai-log-toggle {
+  margin-top: 4px;
+}
 /* 総数が分からないとき（起動中など）は流れる帯で「動いている」ことを示す */
 .progress.indeterminate {
   position: relative;

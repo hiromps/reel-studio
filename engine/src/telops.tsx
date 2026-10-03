@@ -147,7 +147,7 @@ const LAYOUT = {
   badgeRadius: 6, // 角はごく僅かに丸めるだけ（シャープな長方形）
   badgePadX: 34,
   badgePadY: 16,
-  badgeGap: 24, // バッジ下端とメインテロップの最小すき間
+  badgeGap: 60, // バッジ下端と横書きメインテロップのすき間（24 だと詰まって見えた）
   badgeBgAlpha: 0.6, // 下地の不透明度の既定値。cuts.json の badgeOpacity で上書きできる
 } as const;
 

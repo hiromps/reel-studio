@@ -57,6 +57,24 @@ export const AiJobStatus: React.FC<{job: Job | undefined; onCancel: (id: string)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
 
+  // 「ログを広げる」：末尾数行ではなく全文を折り返して見せる。一覧の logTail は末尾 5 行だけ、
+  // SSE で溜まる分も画面を開いてから届いた行だけなので、広げたときにサーバーから全文を取り直す
+  const [expanded, setExpanded] = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
+  const stickBottom = useRef(true);
+  useEffect(() => {
+    setExpanded(false);
+  }, [job?.id]);
+  useEffect(() => {
+    if (expanded && job) void s.fetchJobLog(job.id).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, job?.id]);
+  // 広げている間は新しい行が来たら下へ追従する（自分で上へスクロールして読んでいる間は動かさない）
+  useEffect(() => {
+    const el = logRef.current;
+    if (expanded && el && stickBottom.current) el.scrollTop = el.scrollHeight;
+  }, [expanded, log.length]);
+
   if (!job) return null;
   const el = elapsedOf(job);
   const sinceSec = Math.round((Date.now() - lastSeen.current.at) / 1000);
@@ -89,13 +107,32 @@ export const AiJobStatus: React.FC<{job: Job | undefined; onCancel: (id: string)
         {determinate ? `${job.progress!.done} / ${job.progress!.total}` : '進捗は数えられない工程です（AI が考えている間）。上の段階と経過秒、下のログが更新されていれば動いています'}
       </div>
       {log.length > 0 && (
-        <div className="ai-log">
-          {log.slice(-lines).map((l, i) => (
-            <div key={i} className="mono-ellipsis">
-              {l}
-            </div>
-          ))}
-        </div>
+        <>
+          <div
+            ref={logRef}
+            className={`ai-log${expanded ? ' expanded' : ''}`}
+            onScroll={(e) => {
+              const t = e.currentTarget;
+              stickBottom.current = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
+            }}
+          >
+            {(expanded ? log : log.slice(-lines)).map((l, i) => (
+              <div key={i} className={expanded ? 'mono-wrap' : 'mono-ellipsis'}>
+                {l}
+              </div>
+            ))}
+          </div>
+          <button
+            className="small ai-log-toggle"
+            onClick={() => {
+              stickBottom.current = true;
+              setExpanded((v) => !v);
+            }}
+            aria-expanded={expanded}
+          >
+            {expanded ? 'ログをたたむ' : 'ログを広げる（全文）'}
+          </button>
+        </>
       )}
     </div>
   );
