@@ -2,6 +2,7 @@
 // レンダー（Remotion）には手を入れない：narration は mix 工程で載せるものなので、エンジンに入れると二重になる。
 // ここで出した「いつ・どこから・どれだけ鳴らすか」を useMixPreview が AudioBufferSourceNode に渡す。
 import type {Narration, NarrationSegment, Sfx} from '@shared/schema';
+import {NARRATION_GAIN_DB_DEFAULT} from '@shared/schema';
 import {sfxEndSec, type SfxLibrary} from '@shared/sfx';
 
 export type MixClip = {
@@ -37,7 +38,7 @@ const wavReady = (s: NarrationSegment): boolean => !(s as {needsTts?: boolean}).
 export const mixClipsOf = (narration: Narration | null, mediaBase: string | null, lib?: SfxLibrary | null): MixClip[] => {
   if (!narration || !mediaBase) return [];
   const out: MixClip[] = [];
-  const narrGain = NARR_BASE_GAIN * dbToGain(narration.narrationGainDb ?? 0);
+  const narrGain = NARR_BASE_GAIN * dbToGain(narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT);
   for (const s of narration.segments) {
     if (!wavReady(s)) continue;
     out.push({key: `narr:${s.id}:${s.durSec}`, url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`, kind: 'narr', id: s.id, at: s.at, gain: narrGain});

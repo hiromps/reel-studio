@@ -59,7 +59,8 @@ const SN_RMS = 0.15;         // 体感音量の目安（RMSターゲット。ピ
 const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
 // narration.json で上書きできる（GUI の Render 画面のスライダー）。指定が無ければ従来値
 const AMBIENT_GAIN = typeof spec.ambientGain === 'number' ? spec.ambientGain : 0.22; // 元音声のダッキング量
-const NARR_GAIN_DB = typeof spec.narrationGainDb === 'number' ? spec.narrationGainDb : 0; // ナレーション帯域に足すゲイン
+// ナレーション帯域に足すゲイン。既定は shared/schema/narration.ts の NARRATION_GAIN_DB_DEFAULT と同じ値
+const NARR_GAIN_DB = typeof spec.narrationGainDb === 'number' ? spec.narrationGainDb : 10;
 const segs = spec.segments;
 // 効果音（narration.json の sfx）。環境音のダッキングとは無関係の別レイヤーとして足す。
 // 音源は公開リポジトリに入れられない（効果音ラボは素材の再配布が禁止）ので、

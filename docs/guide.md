@@ -968,7 +968,7 @@ Render のナレーションカードの **「ボイス」** で読み上げる�
 
 ### 声と環境音の音量
 
-`narration.json` の `narrationGainDb`（−6〜+12 dB）と `ambientGain`（0〜0.6・既定 0.22）をスライダーで変える。
+`narration.json` の `narrationGainDb`（−6〜+12 dB・既定 +10）と `ambientGain`（0〜0.6・既定 0.22）をスライダーで変える。
 `scripts/mix-narration.cjs`がこれを読む。**変えても音声の再生成は不要**で、mix をやり直すだけでよい。
 
 ## 仕上げ（Render 画面・`reel build`）

@@ -38,6 +38,12 @@ export const SfxSchema = z
   .passthrough();
 export type Sfx = z.infer<typeof SfxSchema>;
 
+/**
+ * 声の大きさ（narrationGainDb）の既定。narration.json に指定が無い案件はこれで混ぜる。
+ * scripts/mix-narration.cjs は TS を読めないので同じ値を直書きしている。変えるときは両方直す
+ */
+export const NARRATION_GAIN_DB_DEFAULT = 10;
+
 export const NarrationSchema = z
   .object({
     voice: z.string(),
@@ -46,7 +52,7 @@ export const NarrationSchema = z
     speed: z.number().optional(),
     temperature: z.number().optional(),
     videoSec: z.number().optional(),
-    /** ナレーション帯域に足すゲイン（dB）。0 が従来。上げると声が前に出る（混合後に -14 LUFS へ正規化される） */
+    /** ナレーション帯域に足すゲイン（dB）。省略時は NARRATION_GAIN_DB_DEFAULT。上げると声が前に出る（混合後に -14 LUFS へ正規化される） */
     narrationGainDb: z.number().min(-12).max(12).optional(),
     /** 元素材の環境音の音量（0〜1）。既定 0.22。下げるとナレーションが相対的に立つ */
     ambientGain: z.number().min(0).max(1).optional(),

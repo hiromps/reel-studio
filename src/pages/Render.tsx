@@ -14,6 +14,7 @@ import {AliasFixNotice} from '../components/AliasFix';
 import {AI_JOB_LABEL, AiJobStatus} from '../components/AiJobStatus';
 import type {Job} from '../api';
 import type {Narration, NarrationSegment} from '@shared/schema';
+import {NARRATION_GAIN_DB_DEFAULT} from '@shared/schema';
 import {findPersona} from '@shared/personas';
 import {checkNarration} from '@shared/narration';
 import {localTime} from '@shared/time';
@@ -458,10 +459,10 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
               <label title="ナレーション帯域に足すゲイン。混合後に -14 LUFS へ正規化されるので、上げると声が環境音より前に出ます">
                 声の大きさ
                 <span className="btns">
-                  <input type="range" min={-6} max={12} step={0.5} value={narration.narrationGainDb ?? 0} onChange={(e) => setNarr({...narration, narrationGainDb: Number(e.target.value)})} style={{width: 130}} />
+                  <input type="range" min={-6} max={12} step={0.5} value={narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT} onChange={(e) => setNarr({...narration, narrationGainDb: Number(e.target.value)})} style={{width: 130}} />
                   <span className="counter">
-                    {(narration.narrationGainDb ?? 0) > 0 ? '+' : ''}
-                    {(narration.narrationGainDb ?? 0).toFixed(1)} dB
+                    {(narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT) > 0 ? '+' : ''}
+                    {(narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT).toFixed(1)} dB
                   </span>
                 </span>
               </label>
