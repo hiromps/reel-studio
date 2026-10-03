@@ -5,6 +5,8 @@ import {cutFrames, cutRanges, telopGroupsOf, totalSec} from '../shared/timeline'
 import {validateCuts} from '../shared/validate';
 import type {Cut, ReelData} from '../shared/schema/cuts';
 import type {Narration} from '../shared/schema/narration';
+import type {Clip, ClipKind} from '../shared/schema/catalog';
+import {makeClip} from './helpers';
 
 const FPS = 30;
 const cut = (id: string, src: string, inSec: number, outSec: number, telop?: string, extra: Partial<Cut> = {}): Cut => ({id, src, inSec, outSec, ...(telop ? {main: {text: telop}} : {}), ...extra});
@@ -15,6 +17,35 @@ const clip6 = () => 6;
 const texts = (d: ReelData) => telopGroupsOf(d).map((g) => g.def.text);
 const frames = (d: ReelData) => d.cuts.map((c) => cutFrames(c, d.fps));
 const noE = (d: ReelData) => expect(validateCuts(d).errors.map((e) => `${e.code} ${e.message}`)).toEqual([]);
+/** 見た目の指紋（全バイト同じ値）。値の差がそのまま指紋の距離になる */
+const sigOf = (v: number) => Buffer.from(new Uint8Array(336).fill(v)).toString('base64');
+/** catalog の素材（src を指定できる。look は指紋の値と鮮明さ） */
+const clipAt = (id: string, src: string, o: {look?: number; sharp?: number; kind?: ClipKind; dur?: number} = {}): Clip => ({
+  ...makeClip({id, slug: `s${id}`, dur: o.dur ?? 6, kind: o.kind ?? 'sizzle', angle: 'close', sizzle: 4, subject: `料理${id}`}),
+  src,
+  ...(o.look !== undefined ? {look: {v: 1 as const, sig: sigOf(o.look), sharp: o.sharp ?? 1000}} : {}),
+});
+/** 素材ごとにばらばらの白黒模様の指紋（どの 2 本も距離はおよそ 127 で、似ていない） */
+const noiseSig = (seed: number) => {
+  let x = seed * 2654435761 % 4294967296;
+  const b = new Uint8Array(336).map(() => {
+    x = (x * 1664525 + 1013904223) % 4294967296;
+    return x / 4294967296 < 0.5 ? 0 : 255;
+  });
+  return Buffer.from(b).toString('base64');
+};
+/** 01〜n の素材（src は s01.mp4 …）。どれも似ていない */
+const library = (n: number, extra: Clip[] = []): Clip[] => [
+  ...extra,
+  ...Array.from({length: n}, (_, i) => String(i + 1).padStart(2, '0'))
+    .filter((id) => !extra.some((c) => c.id === id))
+    .map((id) => ({...clipAt(id, `s${id}.mp4`), look: {v: 1 as const, sig: noiseSig(Number(id)), sharp: 1000}})),
+];
+const MIN_F = Math.round(0.7 * FPS);
+const MAX_F = Math.round(0.8 * FPS);
+const noSameRun = (d: ReelData) => {
+  for (let i = 1; i < d.cuts.length; i++) expect(d.cuts[i].src, `カット${i}と${i + 1}`).not.toBe(d.cuts[i - 1].src);
+};
 
 describe('allocateByWeight', () => {
   it('重み比例で配り、端数は小数部の大きい順に足す', () => {
@@ -36,18 +67,26 @@ describe('fitCutsToNarration', () => {
   const base = () => reel([cut('c01', 'a.mp4', 0, 2, 'A'), cut('c02', 'b.mp4', 0, 2, 'B'), cut('c03', 'c.mp4', 0, 2, 'C')]);
   const two = () => narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}, {id: 'n2', at: 3, durSec: 2.4, text: 'い'}]);
 
-  it('音声の合計に映像を合わせ、0.75〜0.8 秒のカットに刻む', () => {
-    const r = fitCutsToNarration(base(), two(), {clipDurationOf: clip6});
+  // a / b / c は catalog の 01 / 02 / 03。ほかに 04〜12 がある
+  const lib = () => library(12, [clipAt('01', 'a.mp4', {look: 10}), clipAt('02', 'b.mp4', {look: 60}), clipAt('03', 'c.mp4', {look: 110})]);
+
+  it('音声の合計に映像を合わせ、どのカットも 0.70〜0.80 秒に刻む', () => {
+    const r = fitCutsToNarration(base(), two(), {clipDurationOf: clip6, clips: lib()});
     expect(r.ok).toBe(true);
     // 各ブロックの映像 ≥ 音声（フレーム切り上げ）で、はみ出しは無い
     expect(r.blocks.map((b) => b.videoSec >= b.audioSec)).toEqual([true, true]);
     expect(r.blocks.map((b) => b.shortSec)).toEqual([0, 0]);
     expect(totalSec(r.cuts)).toBeGreaterThanOrEqual(5.5);
     expect(totalSec(r.cuts)).toBeLessThan(5.5 + 0.2);
-    // 平均は目標の範囲
-    expect(r.after.avgCutSec).toBeGreaterThanOrEqual(0.75);
-    expect(r.after.avgCutSec).toBeLessThanOrEqual(0.8);
+    // どのカットも 0.70〜0.80 秒（フックは 0.8 秒）。3.1 秒 → 4 カット、2.4 秒 → 3 カット
+    for (const f of frames(r.cuts)) {
+      expect(f).toBeGreaterThanOrEqual(MIN_F);
+      expect(f).toBeLessThanOrEqual(MAX_F);
+    }
     expect(r.after.cutCount).toBe(7);
+    // 同じ素材は続けない。足りないぶんは補った素材
+    noSameRun(r.cuts);
+    expect(r.supplemented.length).toBe(4);
     // narration.at はブロックの頭、videoSec は新しい合計
     expect(r.narration.segments.map((s) => s.at)).toEqual([0, r.blocks[0].videoSec]);
     expect(r.narration.videoSec).toBe(r.after.totalSec);
@@ -56,17 +95,18 @@ describe('fitCutsToNarration', () => {
   });
 
   it('テロップは順番どおり全部残り、同じ文言は連続する', () => {
-    const r = fitCutsToNarration(base(), two(), {clipDurationOf: clip6});
+    const r = fitCutsToNarration(base(), two(), {clipDurationOf: clip6, clips: lib()});
     expect(texts(r.cuts)).toEqual(['A', 'B', 'C']);
-    // 元カットの並びも保たれる（同じ src は連続でしか現れない）
+    // 元カットの並びも保たれ、どの素材も 1 回だけ
     const srcs = r.cuts.cuts.map((c) => c.src);
-    expect([...new Set(srcs)]).toEqual(['a.mp4', 'b.mp4', 'c.mp4']);
+    expect(srcs.filter((x) => ['a.mp4', 'b.mp4', 'c.mp4'].includes(x))).toEqual(['a.mp4', 'b.mp4', 'c.mp4']);
+    expect(new Set(srcs).size).toBe(srcs.length);
   });
 
   it('カットの尺はフレームで揃い、outSec から同じフレーム数が出る', () => {
-    const r = fitCutsToNarration(base(), two(), {clipDurationOf: clip6});
+    const r = fitCutsToNarration(base(), two(), {clipDurationOf: clip6, clips: lib()});
     const fr = frames(r.cuts);
-    for (const f of fr) expect(f).toBeGreaterThanOrEqual(Math.ceil(0.6 * FPS));
+    for (const f of fr) expect(f).toBeGreaterThanOrEqual(MIN_F);
     expect(fr.reduce((a, b) => a + b, 0)).toBe(Math.round(totalSec(r.cuts) * FPS));
     // ブロックのフレーム数 = ceil(音声 × fps) 以上
     const ranges = cutRanges(r.cuts);
@@ -74,29 +114,78 @@ describe('fitCutsToNarration', () => {
     expect(ranges[n1 - 1].from + ranges[n1 - 1].dur).toBeGreaterThanOrEqual(Math.ceil(3.1 * FPS));
   });
 
-  it('同じ素材から複数取るときは場所をずらす（ジャンプカット）', () => {
-    // 1 カット 6 秒（テロップ A）を 3.1 秒の音声に → 4 カット。素材の中で in がずれていく
-    const r = fitCutsToNarration(reel([cut('c01', 'a.mp4', 0, 6, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6});
+  it('同じ素材は続けて刻まず、撮影順で前後に撮った素材で補う', () => {
+    // 1 カット 6 秒（素材 05・テロップ A）を 3.1 秒の音声に → 4 カット。足りない 3 カットは 05 の前後から
+    const r = fitCutsToNarration(reel([cut('c01', 's05.mp4', 0, 6, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6, clips: library(12)});
     expect(r.after.cutCount).toBe(4);
-    const ins = r.cuts.cuts.map((c) => c.inSec);
-    for (let i = 1; i < ins.length; i++) expect(ins[i]).toBeGreaterThan(r.cuts.cuts[i - 1].outSec);
-    expect(r.notes.some((n) => n.includes('ジャンプカット'))).toBe(true);
+    noSameRun(r.cuts);
+    expect([...r.supplemented].sort()).toEqual(['03', '04', '06']);
+    // ブロックの中は撮影順（フックの先頭 05 は動かさない）
+    expect(r.cuts.cuts.map((c) => c.src)).toEqual(['s05.mp4', 's03.mp4', 's04.mp4', 's06.mp4']);
     expect(texts(r.cuts)).toEqual(['A']);
+    expect(r.notes.some((n) => n.includes('撮影順で近い'))).toBe(true);
   });
 
-  it('元の区間が足りなければ素材の残りを使い、素材そのものが短ければ重ねて使って注記する', () => {
-    // 元は 1 秒しか採っていないが素材は 6 秒ある → 区間の外を使う
+  it('catalog が無ければ補えないので、同じ素材を刻まずにカットを長くして注記する', () => {
+    const r = fitCutsToNarration(reel([cut('c01', 'a.mp4', 0, 6, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6});
+    expect(r.after.cutCount).toBe(1);
+    expect(r.blocks[0].shortSec).toBe(0);
+    expect(r.notes.some((n) => n.includes('長いカット'))).toBe(true);
+  });
+
+  it('近くに続く似た構図はまとめ、最も鮮明な素材を残す（カニ蔵の卓上全景）', () => {
+    // 01・02・03 は指紋がほぼ同じ（卓上全景）。鮮明さは 02 が一番。04 は別の構図
+    const clips = library(12, [
+      clipAt('01', 'z01.mp4', {look: 100, sharp: 2700, kind: 'serving'}),
+      clipAt('02', 'z02.mp4', {look: 105, sharp: 3100, kind: 'serving'}),
+      clipAt('03', 'z03.mp4', {look: 110, sharp: 2100, kind: 'serving'}),
+      clipAt('04', 'z04.mp4', {look: 200}),
+    ]);
+    const data = reel([cut('c01', 'z01.mp4', 0, 1, 'H', {badge: '三宮'}), cut('c02', 'z03.mp4', 0, 1, 'H'), cut('c03', 'z02.mp4', 0, 1, 'P'), cut('c04', 'z04.mp4', 0, 1, 'P')]);
+    const r = fitCutsToNarration(data, narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6, clips});
+    const srcs = r.cuts.cuts.map((c) => c.src);
+    // 卓上全景は 1 本だけ（最も鮮明な 02）。テロップ H・P は両方残る
+    expect(srcs.filter((x) => ['z01.mp4', 'z02.mp4', 'z03.mp4'].includes(x))).toEqual(['z02.mp4']);
+    expect(srcs[0]).toBe('z02.mp4');
+    expect(texts(r.cuts)).toEqual(['H', 'P']);
+    expect(r.cuts.cuts[0].badge).toBe('三宮');
+    expect(r.merged).toEqual([{kept: '02', dropped: ['01', '03']}]);
+    noSameRun(r.cuts);
+    for (const f of frames(r.cuts)) expect(f).toBeLessThanOrEqual(MAX_F);
+    noE(r.cuts);
+  });
+
+  it('同じ素材が続いていたら 1 カットにまとめ、足りないぶんは別の素材で埋める', () => {
+    // カニ蔵の 36（つゆに浸ける → 持ち上げる）を 3 カット続けていた形
+    const data = reel([cut('c01', 's05.mp4', 0.4, 1.2, 'K'), cut('c02', 's05.mp4', 4, 4.8, 'K'), cut('c03', 's05.mp4', 7.4, 8.2, 'K')]);
+    const r = fitCutsToNarration(data, narr([{id: 'n1', at: 0, durSec: 2.3, text: 'あ'}]), {clipDurationOf: () => 9.2, clips: library(12)});
+    expect(r.cuts.cuts.filter((c) => c.src === 's05.mp4')).toHaveLength(1);
+    expect(r.after.cutCount).toBe(3);
+    noSameRun(r.cuts);
+    expect(r.notes.some((n) => n.includes('同じ素材が続いていた'))).toBe(true);
+  });
+
+  it('離れた位置なら同じ構図でもまとめない（冒頭と締めの全景）', () => {
+    const clips = library(20, [clipAt('01', 'z01.mp4', {look: 100}), clipAt('09', 'z09.mp4', {look: 102})]);
+    const mid = ['s03.mp4', 's05.mp4', 's07.mp4', 's11.mp4'].map((src, i) => cut(`m${i}`, src, 0, 0.8, `T${i}`));
+    const data = reel([cut('c01', 'z01.mp4', 0, 0.8, 'H'), ...mid, cut('c09', 'z09.mp4', 0, 0.8, 'E')]);
+    const r = fitCutsToNarration(data, narr([{id: 'n1', at: 0, durSec: 4.7, text: 'あ'}]), {clipDurationOf: clip6, clips});
+    expect(r.cuts.cuts.map((c) => c.src)).toContain('z09.mp4');
+    expect(r.merged).toEqual([]);
+  });
+
+  it('元の区間が足りなければ素材の残りを使い、素材そのものが短ければ次のナレーションを後ろへ送って注記する', () => {
+    // 元は 1 秒しか採っていないが素材は 6 秒ある → 区間の外を使う（catalog が無いので 1 カットのまま長くなる）
     const a = fitCutsToNarration(reel([cut('c01', 'a.mp4', 1, 2, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6});
     expect(a.blocks[0].shortSec).toBe(0);
     expect(a.cuts.cuts.every((c) => c.outSec <= 6)).toBe(true);
     expect(a.notes.some((n) => n.includes('素材の残り'))).toBe(true);
-    // 素材が 1.2 秒しか無い → 重ねて使う。それでも音声ぶんは埋まらない（shortSec > 0）
+    // 素材が 1.2 秒しか無い → 同じ場面を重ねて使わない。足りないぶんは次へ送る（shortSec > 0）
     const b = fitCutsToNarration(reel([cut('c01', 'a.mp4', 0, 1.2, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: () => 1.2});
     expect(b.cuts.cuts.every((c) => c.outSec <= 1.2 && c.inSec >= 0)).toBe(true);
-    expect(b.notes.some((n) => n.includes('重ねて使った'))).toBe(true);
-    // 重ねて使えば時間は埋まる（同じ場面が繰り返るだけ）
-    expect(b.blocks[0].shortSec).toBe(0);
-    // 素材が 1 カットぶん（0.8 秒）にも満たなければ映像が音声より短いまま → 注記（スローや別クリップの流用はしない）
+    noSameRun(b.cuts);
+    expect(b.blocks[0].shortSec).toBeGreaterThan(0);
+    // 素材が 1 カットぶんにも満たなければ映像が音声より短いまま → 注記（スローや別クリップの流用はしない）
     const c = fitCutsToNarration(reel([cut('c01', 'a.mp4', 0, 0.5, 'A')]), narr([{id: 'n1', at: 0, durSec: 1.0, text: 'あ'}]), {clipDurationOf: () => 0.5});
     expect(c.cuts.cuts.every((x) => x.outSec <= 0.5 && x.playbackRate === undefined)).toBe(true);
     expect(c.blocks[0].shortSec).toBeGreaterThan(0);
@@ -133,11 +222,11 @@ describe('fitCutsToNarration', () => {
     // （3 カットに刻まれるが、つなげると 0〜2.0 を連続で通る＝同じ場面の重ね使いは無い）
     const a = fitCutsToNarration(reel([cut('c01', 'a.mp4', 1.0, 1.5, 'A')]), narr([{id: 'n1', at: 0, durSec: 2.0, text: 'あ'}]), {clipDurationOf: () => 2.0});
     expect(a.blocks[0].shortSec).toBe(0);
+    // 同じ素材は刻まない → 1 カットで素材を丸ごと（0〜2.0）通す
+    expect(a.cuts.cuts).toHaveLength(1);
     expect(a.cuts.cuts[0].inSec).toBe(0);
-    expect(a.cuts.cuts[a.cuts.cuts.length - 1].outSec).toBe(2);
-    for (let i = 1; i < a.cuts.cuts.length; i++) expect(a.cuts.cuts[i].inSec).toBeCloseTo(a.cuts.cuts[i - 1].outSec, 2);
+    expect(a.cuts.cuts[0].outSec).toBe(2);
     expect(a.cuts.cuts.every((c) => c.playbackRate === undefined)).toBe(true);
-    expect(a.notes.some((n) => n.includes('重ねて使った'))).toBe(false);
     expect(a.notes.some((n) => n.includes('素材の残り'))).toBe(true);
     // 素材が 0.5 秒しか無いのに 1.0 秒の音声 ×2 → 1 本目は 0.5 秒足りない → 2 本目の at をその分だけ後ろへ。被りは無い
     const b = fitCutsToNarration(
@@ -157,8 +246,9 @@ describe('fitCutsToNarration', () => {
     const r = fitCutsToNarration(reel([cut('c01', 'a.mp4', 1, 2, 'A')]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]));
     expect(r.cuts.cuts.every((c) => c.inSec >= 0 && c.outSec <= 2)).toBe(true);
     expect(r.cuts.cuts[0].inSec).toBe(0);
-    // 0〜2 の 2 秒しか無いので 3.1 秒は埋まらない → 重ねて使い、それでも足りないぶんは注記
-    expect(r.notes.some((n) => n.includes('重ねて使った'))).toBe(true);
+    // 0〜2 の 2 秒しか無いので 3.1 秒は埋まらない → 同じ場面は重ねず、足りないぶんは注記
+    expect(r.blocks[0].shortSec).toBeGreaterThan(0);
+    expect(r.notes.some((n) => n.includes('catalog に無い'))).toBe(true);
   });
 
   it('テロップが 1 カットしか無いところは 0.8 秒に伸ばす（読めない E を出さない）', () => {
@@ -166,7 +256,6 @@ describe('fitCutsToNarration', () => {
     const r = fitCutsToNarration(reel([cut('c01', 'a.mp4', 0, 1, 'A'), cut('c02', 'b.mp4', 0, 1, 'B')]), narr([{id: 'n1', at: 0, durSec: 1.0, text: 'あ'}]), {clipDurationOf: clip6});
     expect(texts(r.cuts)).toEqual(['A', 'B']);
     for (const f of frames(r.cuts)) expect(f).toBeGreaterThanOrEqual(Math.ceil(0.8 * FPS));
-    expect(r.notes.some((n) => n.includes('0.8 秒に伸ばして'))).toBe(true);
     noE(r.cuts);
   });
 
@@ -208,11 +297,13 @@ describe('fitCutsToNarration', () => {
       telopGroups: [{id: 'g01', cutIds: ['c01', 'c02'], intent: 'hook', placeholder: '{{g01:hook}}', minSec: 1.2}],
       generated: {tool: 't', at: 'x', briefHash: 'b', catalogHash: 'c', specId: 'F0'},
     });
-    const r = fitCutsToNarration(data, narr([{id: 'n1', at: 0, durSec: 4.65, text: 'あ'}]), {clipDurationOf: clip6});
+    const clips = library(12, [clipAt('01', 'a.mp4', {look: 10}), clipAt('02', 'b.mp4', {look: 60})]);
+    const r = fitCutsToNarration(data, narr([{id: 'n1', at: 0, durSec: 4.65, text: 'あ'}]), {clipDurationOf: clip6, clips});
     expect(r.after.cutCount).toBe(6);
     expect(r.cuts.cuts.map((c) => c.id)).toEqual(['c01', 'c02', 'c03', 'c04', 'c05', 'c06']);
     expect(r.cuts.meta?.slots?.map((s) => s.cutId)).toEqual(['c01', 'c02', 'c03', 'c04', 'c05', 'c06']);
-    expect(r.cuts.meta?.slots?.map((s) => s.clipId)).toEqual(['01', '01', '01', '02', '02', '02']);
+    // 補った素材の slot は、その素材の id になる。並びは撮影順（先頭のフックは動かさない）
+    expect(r.cuts.meta?.slots?.map((s) => s.clipId)).toEqual(['01', '02', '03', '04', '05', '06']);
     expect(r.cuts.meta?.telopGroups?.[0].cutIds).toEqual(['c01', 'c02', 'c03', 'c04', 'c05', 'c06']);
     expect(r.cuts.meta?.generated?.specId).toBe('F0');
     expect(r.cuts.cuts.filter((c) => c.badge).length).toBe(1);
@@ -276,11 +367,9 @@ describe('fitCutsToNarration', () => {
     expect(go.notes.some((x) => x.includes('見積もり'))).toBe(true);
   });
 
-  it('短いブロックが混ざっても、長いブロックで刻み方を調整して全体の平均を 0.75〜0.8 秒に寄せる', () => {
-    // ちるぷるー凪の実データに近い形: 0.99 / 1.10 / 2.65 / 3.35 / 0.72 秒。ブロック単位の丸めだけだと
-    // 1+1+3+4+1 = 10 カットで平均 0.88 秒。3.35 秒のブロックを 5 カット（0.67 秒）にすると 11 カットで 0.80 秒
-    // 元の構成は 1 文 1 カット（2.4 秒ずつ・テロップ 1 つずつ）で、ナレーションの窓と揃っている
-    const cuts: Cut[] = ['A', 'B', 'C', 'D', 'E'].map((t, i) => cut(`c${String(i + 1).padStart(2, '0')}`, `s${i}.mp4`, 0, 2.4, t));
+  it('短いブロックが混ざっても、どのカットも 0.70〜0.80 秒（短すぎるブロックは映像を少し長くする）', () => {
+    // ちるぷるー凪の実データに近い形: 0.99 / 1.10 / 2.65 / 3.35 / 0.72 秒。元の構成は 1 文 1 カット（2.4 秒ずつ）
+    const cuts: Cut[] = ['A', 'B', 'C', 'D', 'E'].map((t, i) => cut(`c${String(i + 1).padStart(2, '0')}`, `s${String(i * 4 + 1).padStart(2, '0')}.mp4`, 0, 2.4, t));
     const durs = [0.99, 1.1, 2.65, 3.35, 0.72];
     let at = 0;
     const segs = durs.map((d, i) => {
@@ -288,13 +377,16 @@ describe('fitCutsToNarration', () => {
       at += 2.4;
       return s;
     });
-    const r = fitCutsToNarration(reel(cuts), narr(segs), {clipDurationOf: clip6});
+    const r = fitCutsToNarration(reel(cuts), narr(segs), {clipDurationOf: clip6, clips: library(24)});
     expect(r.ok).toBe(true);
-    expect(r.after.avgCutSec).toBeGreaterThanOrEqual(0.75);
-    expect(r.after.avgCutSec).toBeLessThanOrEqual(0.82); // 0.8 秒の最低表示で少しだけ超えることがある
-    expect(r.blocks.map((b) => b.cutCount)).toEqual([1, 1, 3, 5, 1]);
-    // 0.6 秒未満のカットは作らない
-    for (const f of frames(r.cuts)) expect(f).toBeGreaterThanOrEqual(Math.ceil(0.6 * FPS));
+    // 音声 ÷ 0.8 秒の切り上げ
+    expect(r.blocks.map((b) => b.cutCount)).toEqual([2, 2, 4, 5, 1]);
+    for (const f of frames(r.cuts)) {
+      expect(f).toBeGreaterThanOrEqual(MIN_F);
+      expect(f).toBeLessThanOrEqual(MAX_F);
+    }
+    expect(r.blocks.every((b) => b.videoSec >= b.audioSec && b.shortSec === 0)).toBe(true);
+    noSameRun(r.cuts);
     noE(r.cuts);
   });
 
@@ -308,9 +400,9 @@ describe('fitCutsToNarration', () => {
     expect(JSON.stringify(n)).toBe(snapN);
   });
 
-  it('長いナレーション（30 秒）でも平均は 0.75〜0.8 秒に収まり、E は出ない', () => {
+  it('長いナレーション（30 秒）でもどのカットも 0.70〜0.80 秒に収まり、E は出ない', () => {
     const cuts: Cut[] = [];
-    for (let i = 0; i < 12; i++) cuts.push(cut(`c${String(i + 1).padStart(2, '0')}`, `s${i}.mp4`, 0.2, 2.7, i % 3 === 2 ? undefined : `テロップ${i}`));
+    for (let i = 0; i < 12; i++) cuts.push(cut(`c${String(i + 1).padStart(2, '0')}`, `s${String(i * 3 + 1).padStart(2, '0')}.mp4`, 0.2, 2.7, i % 3 === 2 ? undefined : `テロップ${i}`));
     const segs = [];
     let at = 0;
     for (let i = 0; i < 8; i++) {
@@ -318,10 +410,13 @@ describe('fitCutsToNarration', () => {
       segs.push({id: `n${i}`, at, durSec: dur, text: 'あ'});
       at += 3.75; // 元は 30 秒 = 12 カット × 2.5 秒。ナレーションは合計 ≈ 25.6 秒
     }
-    const r = fitCutsToNarration(reel(cuts), narr(segs), {clipDurationOf: clip6});
+    const r = fitCutsToNarration(reel(cuts), narr(segs), {clipDurationOf: clip6, clips: library(40)});
     expect(r.ok).toBe(true);
-    expect(r.after.avgCutSec).toBeGreaterThanOrEqual(0.75);
-    expect(r.after.avgCutSec).toBeLessThanOrEqual(0.8);
+    for (const f of frames(r.cuts)) {
+      expect(f).toBeGreaterThanOrEqual(MIN_F);
+      expect(f).toBeLessThanOrEqual(MAX_F);
+    }
+    noSameRun(r.cuts);
     expect(r.blocks.every((b) => b.shortSec === 0)).toBe(true);
     expect(texts(r.cuts)).toEqual(cuts.filter((c) => c.main).map((c) => c.main!.text));
     noE(r.cuts);

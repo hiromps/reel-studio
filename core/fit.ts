@@ -12,6 +12,7 @@ import {FORMAT_SPECS} from '../shared/format-specs';
 import {resolveClip, validateCuts, type ValidationResult} from '../shared/validate';
 import {checkNarration} from '../shared/narration';
 import {fitCutsToNarration, type FitOptions, type FitResult} from '../shared/fit';
+import {ensureLooks} from './look';
 
 export type FitProjectOptions = Pick<FitOptions, 'minCutSec' | 'maxCutSec' | 'leadSec' | 'tailSec'> & {
   /** false なら書き込まずに結果だけ返す（--dry） */
@@ -41,6 +42,7 @@ export const fitProject = async (projectDir: string, opt: FitProjectOptions = {}
   const cuts = readCuts(projectDir);
   const narration = readNarration(projectDir);
   if (!narration) throw new Error('narration.json が無いので合わせられません（先に「AI にナレーションを書いてもらう」→「音声を生成」）');
+  await ensureLooks(projectDir, {onLine: log}).catch(() => 0); // 似た構図の判定に使う（測れなければタグで代わりに判定）
   const catalog = loadCatalog(projectDir);
   const brief = readBrief(projectDir);
   const persona = brief ? getPersona(brief.persona) : undefined;
@@ -69,6 +71,8 @@ export const fitProject = async (projectDir: string, opt: FitProjectOptions = {}
     leadSec: opt.leadSec,
     tailSec: opt.tailSec,
     clipDurationOf: (src) => resolveClip(catalog ?? undefined, src, aliases)?.probe.durationSec ?? probed.get(src),
+    clipOf: (src) => resolveClip(catalog ?? undefined, src, aliases),
+    clips: (catalog?.clips ?? []).filter((c) => !c.user.ng && !(brief?.ngClipIds ?? []).includes(c.id)),
     estimate: opt.estimate ? estimate : undefined,
   });
   if (!r.ok) throw new Error(r.blockers.join('\n'));

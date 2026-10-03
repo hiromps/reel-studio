@@ -30,7 +30,7 @@
 //   reel sfx role <file> <hook,telop,transition,reveal,eat,outro|-> [--trim s] [--fade s] [--gain dB] [--label 名]
 //   reel sfx auto --project P [--max n] [--gap s] [--exclude role,role] [--dry]   （cuts.json から自動配置）
 //   reel tts --project P [--force] [--id 01_a,02_b]                            （narration.json → narration/*.wav）
-//   reel fit --project P [--min 0.75] [--max 0.8] [--lead s] [--tail s] [--estimate] [--dry] [--json]   （ナレーション音声に映像の尺を合わせる。0.75〜0.8 秒のカットに刻み直す）
+//   reel fit --project P [--min 0.7] [--max 0.8] [--lead s] [--tail s] [--estimate] [--dry] [--json]   （ナレーション音声に映像の尺を合わせる。0.70〜0.80 秒のカットに刻み直し、似た構図をまとめ、同じ素材は続けない）
 //   reel plan --project P [--write] [--no-reuse] [--no-copy] [--json]
 //   reel validate --project P [--json] [--strict-proxy]
 //   reel table --project P

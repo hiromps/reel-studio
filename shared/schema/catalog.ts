@@ -47,6 +47,14 @@ export const UsableRangeSchema = z.object({
 });
 export type UsableRange = z.infer<typeof UsableRangeSchema>;
 
+/** 見た目の指紋（中央のコマを 8×14 の RGB に縮めた 336 バイトの base64）と鮮明さ（ラプラシアンの分散。同じ構図の中で比べる） */
+export const ClipLookSchema = z.object({
+  v: z.literal(1),
+  sig: z.string(),
+  sharp: z.number(),
+});
+export type ClipLook = z.infer<typeof ClipLookSchema>;
+
 export const SpeechRangeSchema = z.object({
   startSec: z.number(),
   endSec: z.number(),
@@ -95,6 +103,11 @@ export const ClipSchema = z.object({
   crop: CropSchema.optional(),
   /** 顔モザイクの結果（core/mosaic.ts）。無い＝まだ調べていない */
   mosaic: MosaicInfoSchema.optional(),
+  /**
+   * 見た目の指紋と鮮明さ（core/look.ts がストリップ画像から測る）。似た構図をまとめ、その中で最も鮮明なものを選ぶのに使う。
+   * 無い＝まだ測っていない（タグの被写体・画角・種別で代わりに判定する）
+   */
+  look: ClipLookSchema.optional(),
 });
 export type Clip = z.infer<typeof ClipSchema>;
 

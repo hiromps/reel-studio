@@ -38,6 +38,8 @@ import {
 import {getPersona} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {stableHash} from '../shared/hash';
+import {VARIETY_RULES, isSimilarShot, shotGroupNote, shotGroups} from '../shared/shot-variety';
+import {ensureLooks} from './look';
 
 export const scriptPath = (dir: string) => path.join(dir, 'script.md');
 export const readScript = (dir: string): string | null => (fs.existsSync(scriptPath(dir)) ? fs.readFileSync(scriptPath(dir), 'utf8') : null);
@@ -116,11 +118,17 @@ const loadScriptEnv = (projectDir: string) => {
   const persona = getPersona(brief.persona);
   const spec = FORMAT_SPECS[brief.format ?? persona.defaultFormat];
   const sections = parseSections(script);
+  const clipById = new Map(catalog.clips.map((c) => [c.id, c]));
   const check = {
     sections,
     clipDurations: new Map(catalog.clips.map((c) => [c.id, c.probe.durationSec])),
     ngClipIds: new Set(catalog.clips.filter((c) => c.user.ng).map((c) => c.id)),
     maxTelopChars: spec.telop.maxChars,
+    similar: (x: string, y: string) => {
+      const cx = clipById.get(x);
+      const cy = clipById.get(y);
+      return !!cx && !!cy && isSimilarShot(cx, cy);
+    },
   };
   const toCuts = (plan: ScriptPlan): ReelData =>
     scriptPlanToCuts(plan, {catalog, theme: brief.theme ?? persona.theme, font: loadSettings().telop.font, specId: spec.id, briefHash: stableHash(brief), catalogHash: stableHash(catalog)});
@@ -248,6 +256,7 @@ export async function aiScript(
   opt: {model?: string; write?: boolean; force?: boolean; onLine?: (l: string) => void; onProgress?: (d: number, t: number, p: string) => void; signal?: AbortSignal} = {},
 ): Promise<AiScriptResult> {
   const log = opt.onLine ?? (() => {});
+  await ensureLooks(projectDir, {onLine: log}).catch(() => 0); // 似た構図のまとまりを素材一覧に添えるため
   const env = loadScriptEnv(projectDir);
   const {script, catalog, brief, persona, spec, sections} = env;
 
@@ -259,7 +268,8 @@ export async function aiScript(
   const wantTotal = scriptTotalSec(sections);
   log(`台本から組み立て: 区間 ${sections.length} 個${wantTotal ? ` / 想定 ${wantTotal} 秒` : ''} / 素材 ${usable.length} 本（model=${opt.model ?? studioConfig.agent.model}）`);
 
-  // 素材一覧。**AI が映像を言語化した description が選定の主材料**
+  // 素材一覧。**AI が映像を言語化した description が選定の主材料**。似た構図のまとまりと、その中で最も鮮明な素材を添える
+  const groups = shotGroups(usable);
   const clipLines = usable.map((c) => {
     const t = c.tags;
     const ranges = (c.usableRanges ?? []).filter((r) => r.outSec > r.inSec).map((r) => `${r.inSec.toFixed(1)}〜${r.outSec.toFixed(1)}`);
@@ -269,6 +279,7 @@ export async function aiScript(
       t?.subject ? `被写体:${t.subject}` : '',
       ranges.length ? `使える区間 ${ranges.join(' , ')}` : '',
       t?.description ? `／ ${t.description}` : '',
+      shotGroupNote(groups, c.id),
     ]
       .filter(Boolean)
       .join(' / ');
@@ -295,7 +306,8 @@ export async function aiScript(
     '## 守ること',
     `- テロップは ${spec.telop.maxChars} 文字まで。文末に句点（。）を付けない。長い指示は意味を保って縮める。三点リーダーは全角 3 文字の「・・・」で書く（「…」は使わない）`,
     `- **エリア名（${brief.shop.area || '—'}）は縦書き本文ではなく badge に出す。** 本文はエリア名が無くても通る言い回しに`,
-    '- 同じ素材を連続で使わない（切り替わって見えない）。引き（wide/mid）と寄り（close）を交互に',
+    ...VARIETY_RULES.map((r) => `- ${r}`),
+    '- 台本の「カット割り」の秒数は目安。1 カット 0.7〜0.8 秒に収め、区間の長さに足りない分は上の規則で別の素材を足す',
     '- 台本に無いテロップを足さない。台本に無い情報をナレーションに足さない',
     '- **合う素材が無い区間は、無理に別の素材を当てずに `unmatched` に書く**（撮り足しの指示になる）',
     `- ナレーションの \`at\` は、その文が指す映像が出ている間に置く。実測話速は ${persona.narration.charsPerSecMeasured} 文字/秒`,

@@ -89,6 +89,8 @@ export type ScriptCheckContext = {
   maxTelopChars?: number;
   /** 区間の尺が台本とどれだけずれてよいか（秒） */
   toleranceSec?: number;
+  /** 似た構図か（素材 id 2 つ）。あると近くに続く似た構図を W にする（shared/shot-variety.ts の isSimilarShot） */
+  similar?: (a: string, b: string) => boolean;
 };
 
 /** 区間ごとに、割り当てられたカットの合計尺を出す */
@@ -129,10 +131,33 @@ export const checkScriptPlan = (plan: ScriptPlan, ctx: ScriptCheckContext): Scri
     if (/[。]$/.test(t)) out.push({severity: 'W', code: 'SCRIPT_TELOP_PERIOD', message: `${label}: テロップの文末に句点は付けない`});
   });
 
-  // 同じ素材が連続している（同じ画が続いて見える）
+  // 同じ素材が続いている（規則: 同じ素材は 2 カット以上続けて使わない。repairScriptPlan がまとめられなかったもの）
   for (let i = 1; i < plan.cuts.length; i++)
-    if (plan.cuts[i].clipId === plan.cuts[i - 1].clipId && plan.cuts[i].inSec < plan.cuts[i - 1].outSec + 0.01)
-      out.push({severity: 'W', code: 'SCRIPT_SAME_CLIP_RUN', message: `カット${i}と${i + 1}が同じ素材の連続区間です（切り替わって見えません）`});
+    if (plan.cuts[i].clipId === plan.cuts[i - 1].clipId)
+      out.push({severity: 'W', code: 'SCRIPT_SAME_CLIP_RUN', message: `カット${i}と${i + 1}が同じ素材（${plan.cuts[i].clipId}）の連続です。前後に撮った別の素材でつないでください`});
+
+  // 近くに似た構図が続いている（3 カット以内）
+  if (ctx.similar) {
+    for (let i = 1; i < plan.cuts.length; i++) {
+      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+        const a = plan.cuts[j].clipId;
+        const b = plan.cuts[i].clipId;
+        if (a !== b && ctx.similar(a, b)) {
+          out.push({severity: 'W', code: 'SCRIPT_SIMILAR_SHOT', message: `カット${j + 1}（${a}）と${i + 1}（${b}）が似た構図です。鮮明な方だけにして別の構図でつないでください`});
+          break;
+        }
+      }
+    }
+  }
+
+  // 撮影順（id は 01 から時系列）から大きく外れている（先頭のフックは除く）
+  {
+    const seq = plan.cuts.slice(1).map((c) => Number(c.clipId)).filter((n) => Number.isFinite(n));
+    let back = 0;
+    for (let i = 1; i < seq.length; i++) if (seq[i] < seq[i - 1]) back++;
+    if (seq.length >= 4 && back / (seq.length - 1) > 0.35)
+      out.push({severity: 'W', code: 'SCRIPT_NOT_CHRONOLOGICAL', message: `撮影順（id の順）を逆に戻る所が多い（${back} か所）。フック以外は撮影順を参考に並べると一貫性が出ます`});
+  }
 
   // 区間ごとの尺が台本どおりか
   const durs = sectionDurations(plan, ctx.sections);
@@ -230,6 +255,25 @@ export const repairScriptPlan = (plan: ScriptPlan, ctx: ScriptCheckContext): Scr
     }
     return cut;
   });
+
+  // 1b. 同じ素材が続いていたら 1 カットにまとめる（規則: 同じ素材は 2 カット以上続けて使わない）。
+  //     尺は変えない（ナレーションの位置がずれないように）。テロップが違うものはまとめない（W で残る）
+  for (let i = cuts.length - 1; i > 0; i--) {
+    const a = cuts[i - 1];
+    const b = cuts[i];
+    if (a.clipId !== b.clipId || a.section !== b.section) continue; // 区間をまたぐとその区間の尺が変わるのでまとめない
+    const ta = a.telop.trim();
+    const tb = b.telop.trim();
+    if (ta && tb && ta !== tb) continue;
+    const dur = ctx.clipDurations.get(a.clipId);
+    if (dur === undefined) continue;
+    const len = Math.max(0, a.outSec - a.inSec) + Math.max(0, b.outSec - b.inSec);
+    if (len > dur + 0.05) continue; // 素材より長くなるならまとめられない
+    const inSec = r3(Math.max(0, Math.min(a.inSec, dur - len)));
+    fixes.push(`カット${i}と${i + 1}（${a.clipId}）が同じ素材の連続だったので、1 カット（${inSec.toFixed(2)}〜${(inSec + len).toFixed(2)}）にまとめました`);
+    cuts[i - 1] = {...a, inSec, outSec: r3(inSec + len), telop: ta || tb, badge: a.badge || b.badge};
+    cuts.splice(i, 1);
+  }
 
   // 2. ナレーションの本文と id
   const ids = new Set<string>();

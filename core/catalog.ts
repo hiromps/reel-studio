@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {CatalogSchema, type Catalog, type Clip} from '../shared/schema/catalog';
 import {ffprobe, nominalFps} from './ffprobe';
+import {ensureLooks} from './look';
 import {makeProxy, needsProxy} from './proxy';
 import {makeThumbnails} from './thumbnails';
 import {detectScenes} from './scene';
@@ -199,6 +200,8 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
       scenes,
       user: prev?.user ?? {hook: false, ng: false, orderHint: null, lock: false},
       mosaic: prev?.mosaic,
+      // サムネイルを作り直していなければ、測った見た目（似た構図の判定・鮮明さ）もそのまま使える
+      look: thumbs === prev?.thumbs ? prev?.look : undefined,
     });
   }
   opt.onProgress?.(files.length, files.length, 'done');
@@ -218,6 +221,13 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
     clips,
   });
   saveCatalog(opt.projectDir, catalog);
+  if (opt.thumbs !== false) {
+    const measured = await ensureLooks(opt.projectDir, {onLine: log}).catch((e) => {
+      warnings.push(`見た目の測定に失敗（似た構図はタグで判定します）: ${errText(e)}`);
+      return 0;
+    });
+    if (measured) return {catalog: loadCatalog(opt.projectDir) ?? catalog, changed, warnings};
+  }
   return {catalog, changed, warnings};
 }
 

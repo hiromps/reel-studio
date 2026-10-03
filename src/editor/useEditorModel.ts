@@ -299,13 +299,19 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     return r.notes;
   }, [narration, estimateSec, total, commitNarr]);
   /**
-   * ナレーション音声（実測 durSec）に映像の尺を合わせ、0.75〜0.8 秒のカットに刻み直す（shared/fit.ts）。
+   * ナレーション音声（実測 durSec）に映像の尺を合わせ、0.70〜0.80 秒のカットに刻み直す（shared/fit.ts）。
+   * catalog を渡すので、近くに続く似た構図はまとめ（最も鮮明なものを残す）、足りないカットは撮影順で前後の未使用素材で補う。
    * cuts と narration を 1 手で書き換える（取り消しは 1 回で両方戻る）。押せないときの理由は fitBlockedBy
    */
   const fitBlockedBy = useMemo(() => fitBlockedByOf(cuts, narration), [cuts, narration]);
   const fitToNarration = useCallback((): string[] => {
     if (!cuts || !narration) return [];
-    const r = fitCutsToNarration(cuts, narration, {clipDurationOf: (src) => clipOf(src)?.probe.durationSec});
+    const ng = new Set(brief?.ngClipIds ?? []);
+    const r = fitCutsToNarration(cuts, narration, {
+      clipDurationOf: (src) => clipOf(src)?.probe.durationSec,
+      clipOf,
+      clips: (catalog?.clips ?? []).filter((c) => !c.user.ng && !ng.has(c.id)),
+    });
     if (!r.ok) return r.blockers.map((b) => `! ${b}`);
     pushHistory();
     setCuts(r.cuts);
@@ -313,7 +319,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     setSelection(null);
     setFrame(0);
     return r.notes;
-  }, [cuts, narration, clipOf, pushHistory, setCuts, setNarr]);
+  }, [cuts, narration, clipOf, catalog, brief, pushHistory, setCuts, setNarr]);
   const invalidateAll = useCallback(
     (patch: Partial<Narration>) => {
       if (!narration) return;

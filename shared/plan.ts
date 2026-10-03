@@ -490,6 +490,7 @@ const greedyFill = (ctx: Ctx, slots: SlotDef[], assigned: Map<string, Assignment
       if (pc.clip.tags && rules.avoidKinds.includes(pc.clip.tags.kind)) return false;
       if (pc.isSpeech && slot.role !== 'conversation' && brief.speech.use) return false; // 会話クリップは保護
       if (unitSet && !unitSet.has(pc.clip.id)) return false;
+      if (prev?.clip.id === pc.clip.id) return false; // 同じ素材は 2 カット以上続けて使わない（2026-10-03）
       // 同一被写体 3 連続禁止
       const subj = pc.clip.tags?.subject;
       if (subj && prev?.clip.tags?.subject === subj && prev2?.clip.tags?.subject === subj) return false;

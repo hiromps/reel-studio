@@ -8,6 +8,7 @@ import {planCuts, type PlanResult} from '../shared/plan';
 import {
   OrderProposalSchema,
   checkOrder,
+  collapseSameRuns,
   formatOrderCheck,
   longestUsableSec,
   orderFromCuts,
@@ -18,6 +19,7 @@ import {
   type OrderProposal,
 } from '../shared/order';
 import {isPlaceholder} from '../shared/telop-text';
+import {shotGroups} from '../shared/shot-variety';
 import type {Brief} from '../shared/schema/brief';
 import type {Catalog} from '../shared/schema/catalog';
 import type {FormatSpec} from '../shared/schema/format-spec';
@@ -67,13 +69,14 @@ export const buildOrderExport = (env: OrderEnv) => {
   const targetSec = orderTargetSec(brief, spec);
   const [lo, hi] = recommendedCutCount(spec, targetSec);
   const ngIds = new Set(brief.ngClipIds);
+  const groups = shotGroups(catalog.clips.filter((c) => !c.user.ng && !ngIds.has(c.id)));
   return {
     project: dir,
     slug: env.slug,
     instructions:
       `clips[].sheet（1 クリップ 1 枚のコンタクトシート）を 1 枚ずつ view して中身を確かめ、principles に沿って order を組み立てる。` +
       `複数ファイルを合成して一度に見ない（対応がズレる）。order は clipId の配列で、そのまま cuts の並び順になる` +
-      `（同じ id を隣り合わせで 2 回書けば、そのクリップから 2 カット取る。離れた位置での再使用は避ける）。` +
+      `（同じ id を続けて書かない。1 つの素材は 1 カット。離れた位置での再使用も避ける）。similarTo は似た構図の素材で、近い位置には 1 本だけ（sharpestInGroup が true のもの）を置く。` +
       `尺・IN/OUT・役割・テロップは書かない——reel plan が型どおりに決める。見せ場の区間を指定したいときは reel tag の usableRanges（label: best）に書く。` +
       `書けたら reel order --project ${env.slug} --import <file> --write。E が出たら order を直してやり直す。`,
     format: {
@@ -111,6 +114,8 @@ export const buildOrderExport = (env: OrderEnv) => {
     },
     clips: catalog.clips.map((c) => ({
       id: c.id,
+      similarTo: groups.find((g) => g.ids.includes(c.id))?.ids.filter((x) => x !== c.id) ?? [],
+      sharpestInGroup: groups.some((g) => g.sharpest === c.id),
       slug: c.slug,
       description: c.tags?.description ?? '',
       subject: c.tags?.subject ?? '',
@@ -187,7 +192,8 @@ export const importOrder = (env: OrderEnv, raw: unknown, opt: {write?: boolean; 
     const first = parsed.error.issues[0];
     throw new Error(`並び替え案の形式が不正: ${first?.path.join('.') || '(root)'} ${first?.message}`);
   }
-  const proposal = parsed.data;
+  // 同じ素材が続いていたら 1 つにまとめる（規則: 同じ素材は続けて使わない）
+  const proposal = {...parsed.data, order: collapseSameRuns(parsed.data.order).order};
   const nextBrief = briefWithOrder(env.brief, proposal);
   const check = checkOrder(proposal.order, {...env, brief: nextBrief});
   const reasons = proposal.reasons ?? [];

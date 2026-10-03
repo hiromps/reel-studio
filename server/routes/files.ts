@@ -8,6 +8,7 @@ import {fileEtag, readJsonLoose, writeJsonAtomic} from '../../core/json-io';
 import {backupsDir, resolveProjectDirStrict, CONTRACT_FILES, type ContractName} from '../../core/project';
 import {validateProject} from '../../core/render';
 import {ensureProjectFont} from '../../core/fonts';
+import {ensureLooks} from '../../core/look';
 
 export const filesRouter = Router({mergeParams: true});
 
@@ -21,11 +22,20 @@ const filePath = (slug: string, name: string): string | null => {
   return path.join(resolveProjectDirStrict(slug), `${name}.json`);
 };
 
-filesRouter.get('/:name', (req, res) => {
+filesRouter.get('/:name', async (req, res) => {
   const p = filePath(slugOf(req), req.params.name);
   if (!p) return res.status(400).json({error: 'name は catalog|brief|cuts|narration'});
   // 無いファイルは 404 ではなく data:null（narration.json 等は無いのが普通。ブラウザのコンソールを汚さない）
   if (!fs.existsSync(p)) return res.json({etag: null, data: null});
+  // 見た目（似た構図の判定・鮮明さ）をまだ測っていない古い catalog は、初めて開いたときに一度だけ測って足す。
+  // 画面の「ナレーションに尺を合わせる」が似た構図をまとめるのに要る（測れなくてもタグで代わりに判定するので止めない）
+  if (req.params.name === 'catalog') {
+    try {
+      await ensureLooks(resolveProjectDirStrict(slugOf(req)));
+    } catch {
+      /* 測れなくても catalog はそのまま返す */
+    }
+  }
   const etag = fileEtag(p)!;
   res.setHeader('ETag', etag);
   res.setHeader('Cache-Control', 'no-cache');

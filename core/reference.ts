@@ -14,6 +14,8 @@ import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {studioConfig} from '../studio.config';
 import {settingsDir} from './settings';
+import {ensureLooks} from './look';
+import {VARIETY_RULES, shotGroupNote, shotGroups} from '../shared/shot-variety';
 import {execOk} from './exec';
 import {effectiveSize, ffprobe} from './ffprobe';
 import {detectScenes} from './scene';
@@ -863,10 +865,12 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
   const untagged = usable.filter((c) => !c.tags).length;
   if (untagged) log(`! タグの無い素材が ${untagged} 本あります。先に「AI にタグ付けしてもらう」と当たりが良くなります`);
 
+  await ensureLooks(dir, {onLine: log}).catch(() => 0);
+  const groups = shotGroups(usable);
   const clipLines = usable.map((c) => {
     const t = c.tags;
     const ranges = (c.usableRanges ?? []).filter((r) => r.outSec > r.inSec).map((r) => `${r.inSec.toFixed(1)}〜${r.outSec.toFixed(1)}`);
-    return [`- id ${c.id} / ${c.probe.durationSec.toFixed(2)}秒`, t ? `${t.kind}・${t.angle}・シズル${t.sizzleScore}` : 'タグなし', t?.subject ? `被写体:${t.subject}` : '', ranges.length ? `使える区間 ${ranges.join(' , ')}` : '', t?.description ? `／ ${t.description}` : '']
+    return [`- id ${c.id} / ${c.probe.durationSec.toFixed(2)}秒`, t ? `${t.kind}・${t.angle}・シズル${t.sizzleScore}` : 'タグなし', t?.subject ? `被写体:${t.subject}` : '', ranges.length ? `使える区間 ${ranges.join(' , ')}` : '', t?.description ? `／ ${t.description}` : '', shotGroupNote(groups, c.id)]
       .filter(Boolean)
       .join(' / ');
   });
@@ -904,6 +908,9 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
     '',
     '## 使える素材（AI が映像を見て書いた説明つき）',
     ...clipLines,
+    '',
+    '## 素材の選び方（必ず守る）',
+    ...VARIETY_RULES.map((r) => `- ${r}`),
     '',
     '## 書くもの（区間ごとに 1 件。参考の区間と同じ数・順・秒数）',
     '- label: 区間名（参考のものをそのまま使ってよい）',

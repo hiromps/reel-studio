@@ -8,6 +8,7 @@ import type {Brief} from './schema/brief';
 import type {FormatSpec} from './schema/format-spec';
 import type {ReelData} from './schema/cuts';
 import type {Persona} from './personas';
+import {SIMILAR_WINDOW, VARIETY_RULES, clipSeq, isSimilarShot} from './shot-variety';
 
 export type OrderFinding = {code: string; severity: 'E' | 'W'; index?: number; clipId?: string; message: string};
 
@@ -31,7 +32,7 @@ export type OrderContext = {catalog: Catalog; brief: Brief; spec: FormatSpec; pe
 
 /** Claude が返す並び替え案 */
 export const OrderProposalSchema = z.object({
-  order: z.array(z.string()).min(1), // clipId の並び（＝カットの並び。同じ id を隣接で 2 回書けば 2 カットになる）
+  order: z.array(z.string()).min(1), // clipId の並び（＝カットの並び）。同じ id は続けて書かない（取り込み時に 1 つにまとめる）
   hook: z.object({clipId: z.string(), inSec: z.number().optional(), outSec: z.number().optional(), text: z.string().optional()}).optional(),
   ngClipIds: z.array(z.string()).optional(),
   targetSec: z.number().positive().optional(),
@@ -41,6 +42,37 @@ export const OrderProposalSchema = z.object({
 export type OrderProposal = z.infer<typeof OrderProposalSchema>;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/**
+ * 同じ素材が続いているところを 1 つにまとめる（規則: 同じ素材は 2 カット以上続けて使わない。2026-10-03）。
+ * AI の返答・手で書いた案を取り込む前に通す
+ */
+export const collapseSameRuns = (ids: readonly string[]): {order: string[]; removed: number} => {
+  const order: string[] = [];
+  for (const id of ids) if (order[order.length - 1] !== id) order.push(id);
+  return {order, removed: ids.length - order.length};
+};
+
+/**
+ * 撮影順（id は 01 から時系列）から外れている度合い。先頭（フック）を除いた隣どうしのうち、
+ * 撮影順を逆に戻っている組の割合（0〜1）。数字でない id は数えない
+ */
+export const chronologyBreak = (ids: readonly string[], byId: Map<string, Clip>): number => {
+  const seq = ids.slice(1).map((id) => {
+    const c = byId.get(id);
+    return c ? clipSeq(c) : null;
+  });
+  let pairs = 0;
+  let back = 0;
+  for (let i = 1; i < seq.length; i++) {
+    const a = seq[i - 1];
+    const b = seq[i];
+    if (a === null || b === null) continue;
+    pairs++;
+    if (b < a) back++;
+  }
+  return pairs ? back / pairs : 0;
+};
 
 /** 冒頭に置くと「店紹介から入る」ことになる種別（format-patterns.md 全フォーマット共通の規則） */
 const NON_FOOD_OPENING = new Set(['exterior', 'signage', 'interior', 'person', 'menu', 'other']);
@@ -149,6 +181,18 @@ export const checkOrder = (ids: string[], ctx: OrderContext): OrderCheck => {
         if (subjectRun >= 3) W('ORDER_SAME_SUBJECT_RUN', `同一被写体「${cur.subject}」が ${subjectRun} カット連続`, {index: i, clipId: ids[i]});
       } else subjectRun = 1;
     }
+    if (i > 0 && ids[i - 1] === ids[i])
+      E('ORDER_SAME_CLIP_RUN', `${ids[i]} を続けて使っている（${i}・${i + 1} 番目）。同じ素材は 1 カットだけにし、前後に撮った別の素材でつなぐ`, {index: i, clipId: ids[i]});
+    const cc = byId.get(ids[i]);
+    if (cc && ids[i - 1] !== ids[i]) {
+      for (let j = i - 1; j >= Math.max(0, i - SIMILAR_WINDOW); j--) {
+        const pc = byId.get(ids[j]);
+        if (pc && pc.id !== cc.id && isSimilarShot(pc, cc)) {
+          W('ORDER_SIMILAR_SHOT', `${ids[j]} と ${ids[i]} が似た構図で近い（${j + 1}・${i + 1} 番目）。どちらか鮮明な方だけにして、別の構図でつなぐ`, {index: i, clipId: ids[i]});
+          break;
+        }
+      }
+    }
     const p = lastAt.get(ids[i]);
     if (p !== undefined && p !== i - 1)
       W('ORDER_SAME_CLIP_NONCONSECUTIVE', `${ids[i]} を離れた位置で再使用（${p + 1} 番目 → ${i + 1} 番目）。別名コピーが要る（Windows のレンダーが不安定になる）`, {index: i, clipId: ids[i]});
@@ -164,6 +208,13 @@ export const checkOrder = (ids: string[], ctx: OrderContext): OrderCheck => {
     .map((c) => c.id);
   if (summary.unusedGood.length)
     W('ORDER_UNUSED_GOOD', `見せ場のある素材が未使用: ${summary.unusedGood.map((id) => `${id}(${byId.get(id)?.tags?.subject ?? byId.get(id)?.slug})`).join(' ')}`);
+  // 選んだ素材はなるべく全部使う。使っている素材と似た構図のもの（まとめた結果）は数えない
+  const usedClips = [...used].map((id) => byId.get(id)).filter((c): c is Clip => !!c);
+  const unused = catalog.clips.filter((c) => !used.has(c.id) && !isNg(c) && c.tags && !c.tags.signage && !summary.unusedGood.includes(c.id) && !usedClips.some((u) => isSimilarShot(u, c)));
+  if (unused.length) W('ORDER_UNUSED_CLIPS', `使っていない素材がある（似た構図の重なりでなければ、撮影順の近い所に入れる）: ${unused.map((c) => c.id).join(' ')}`);
+  const brk = chronologyBreak(ids, byId);
+  if (ids.length >= 4 && brk > 0.35)
+    W('ORDER_NOT_CHRONOLOGICAL', `撮影順（id の順）を逆に戻る所が多い（隣どうしの ${Math.round(brk * 100)}%）。フック以外は撮影順を参考にして一貫性を出す`);
 
   return {ok: !findings.some((f) => f.severity === 'E'), findings, summary};
 };
@@ -179,6 +230,7 @@ export const orderPrinciples = (spec: FormatSpec, brief: Brief, persona?: Person
     '同一被写体・同一画角を 3 カット連続させない。引き（wide）→寄り（close）を交互に',
     '同じクリップを離れた位置で 2 回使わない（別名コピーが必要になりレンダーが不安定になる）',
     '見せ場（sizzleScore 4 以上・usableRanges の best）は使い切る',
+    ...VARIETY_RULES,
   ];
   if (brief.materialMode === 'raw' && brief.hook?.clipId) lines.unshift(`先頭は必ず ${brief.hook.clipId}（ユーザーが選んだフック素材。変えない）`);
   if (spec.reveal === 'late') lines.push(`店名・看板が映るクリップ（signage）は最後の 2 カットまで温存する。それより前に 1 つでも出したら型が壊れる`);

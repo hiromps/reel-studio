@@ -9,7 +9,8 @@ import type {Catalog, Clip} from '../shared/schema/catalog';
 import {ReelDataSchema, type Cut, type ReelData} from '../shared/schema/cuts';
 import {NarrationSchema, type Narration} from '../shared/schema/narration';
 import type {ValidationResult} from '../shared/validate';
-import {checkOrder, formatOrderCheck, orderPrinciples} from '../shared/order';
+import {checkOrder, collapseSameRuns, formatOrderCheck, orderPrinciples} from '../shared/order';
+import {ensureLooks} from './look';
 import {checkCaption, formatCaptionIssues, type CaptionIssue} from '../shared/caption';
 import {cutDurationSec, round3, snapSec, telopGroupsOf, totalSec} from '../shared/timeline';
 import {countChars, isPlaceholder, minDisplaySec, normalizeEllipsis} from '../shared/telop-text';
@@ -234,6 +235,7 @@ export async function aiOrder(
   opt: {write?: boolean; copy?: boolean; force?: boolean; model?: string; onLine?: (l: string) => void; onProgress?: AiProgress; signal?: AbortSignal} = {},
 ): Promise<AiOrderResult> {
   const log = opt.onLine ?? (() => {});
+  await ensureLooks(projectDir, {onLine: log}).catch(() => 0); // 似た構図のまとまりを export に入れるため
   const env: OrderEnv = loadOrderEnv(projectDir);
   const {file} = exportOrder(env);
   const payload = buildOrderExport(env);
@@ -254,7 +256,8 @@ export async function aiOrder(
     '- 迷ったら clips[].sheet を Read で 1 枚ずつ見て中身を確かめる。1 枚ずつ見ること',
     '',
     '決めるのは並び順だけ。尺・IN/OUT・役割・テロップは書かない（別の工程が型どおりに決める）。',
-    'order は clipId の配列で、そのままカットの並びになる。同じ id を隣り合わせで 2 回書けばそのクリップから 2 カット取れるが、離れた位置での再使用は避けること。',
+    'order は clipId の配列で、そのままカットの並びになる。同じ id を続けて書かない（1 つの素材は 1 カット）。離れた位置での再使用も避けること。',
+    'clips[].similarTo は似た構図の素材、clips[].sharpestInGroup はその中で最も鮮明かどうか。',
   ].join('\n');
 
   log(`AI 並べ替え: ${usable.length} 本から ${payload.format.recommendedCuts[0]}〜${payload.format.recommendedCuts[1]} カットを選ぶ（model=${opt.model ?? studioConfig.agent.model}）`);
@@ -271,6 +274,10 @@ export async function aiOrder(
   log(`AI の案: ${run.data.order.join(' → ')}（$${run.costUsd.toFixed(3)} / ${(run.durationMs / 1000).toFixed(0)}秒）`);
   if (run.data.notes) log(`理由: ${run.data.notes}`);
 
+  // 同じ素材が続いていたら 1 つにまとめる（規則: 同じ素材は続けて使わない）。直してから検査する
+  const collapsed = collapseSameRuns(run.data.order);
+  if (collapsed.removed) log(`同じ素材が続いていた ${collapsed.removed} か所を 1 つにまとめました`);
+  run.data.order = collapsed.order;
   // 取り込む前に並びだけ検査して、E があれば書かずに返す（importOrder も同じ検査をする）
   const pre = checkOrder(run.data.order, env);
   if (!pre.ok && !opt.force) log(formatOrderCheck(pre));
