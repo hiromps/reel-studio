@@ -1,6 +1,6 @@
 // 取り消し・やり直しのスタックと、連続操作のまとめ（src/hooks/undoStack.ts）。
 import {describe, expect, it} from 'vitest';
-import {COALESCE_MS, pushSnapshot, redoSnapshot, shouldCoalesce, undoSnapshot, type UndoStack} from '../src/hooks/undoStack';
+import {COALESCE_MS, jobChangeToRecord, pushSnapshot, redoSnapshot, shouldCoalesce, undoSnapshot, type UndoStack} from '../src/hooks/undoStack';
 
 const empty = <T,>(): UndoStack<T> => ({past: [], future: []});
 
@@ -56,5 +56,25 @@ describe('shouldCoalesce', () => {
 
   it('直前に積んでいなければ（取り消し直後など）積む', () => {
     expect(shouldCoalesce(null, 'trim:c01', now)).toBe(false);
+  });
+});
+
+describe('jobChangeToRecord（AI のジョブが書き換えた分を履歴に積むか）', () => {
+  const a = {n: 1};
+  const b = {n: 2};
+  it('ジョブの印が付いた変更は、そのジョブの id を返す', () => {
+    expect(jobChangeToRecord({cuts: a, narration: a}, {cuts: b, narration: a}, {cuts: 'j1'}, new Set())).toBe('j1');
+  });
+  it('印が無い変更（手の編集）は積まない', () => {
+    expect(jobChangeToRecord({cuts: a, narration: a}, {cuts: b, narration: a}, {}, new Set())).toBeNull();
+  });
+  it('値が変わっていなければ、印が残っていても積まない', () => {
+    expect(jobChangeToRecord({cuts: a, narration: a}, {cuts: a, narration: a}, {cuts: 'j1', narration: 'j1'}, new Set())).toBeNull();
+  });
+  it('同じジョブで 2 つ目のファイルが遅れて届いても、積み済みなら 1 手のまま', () => {
+    expect(jobChangeToRecord({cuts: b, narration: a}, {cuts: b, narration: b}, {cuts: 'j1', narration: 'j1'}, new Set(['j1']))).toBeNull();
+  });
+  it('積み済みのジョブの印が残る側があっても、別のジョブの変更は拾う', () => {
+    expect(jobChangeToRecord({cuts: a, narration: a}, {cuts: b, narration: b}, {cuts: 'j1', narration: 'j2'}, new Set(['j1']))).toBe('j2');
   });
 });

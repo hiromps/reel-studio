@@ -33,3 +33,17 @@ export const redoSnapshot = <T,>(s: UndoStack<T>, current: T): {stack: UndoStack
   const future = s.future.slice(0, -1);
   return {stack: {past: [...s.past, current], future}, snapshot: s.future[s.future.length - 1]};
 };
+
+/**
+ * 外から差し替わった変更（AI のジョブが書いたファイルの読み直し）を履歴に積むべきか。
+ * 積むならそのジョブの id を返す。同じジョブで複数のファイルが別々に届いても 1 手にするため、
+ * 一度積んだジョブ（taken）は返さない。手で編集した変更は byJob が付いていないか、付いていても
+ * 積み済みのジョブなので null（手の編集は commit 側で積んでいる）。
+ */
+export const jobChangeToRecord = <T extends Record<string, unknown>>(prev: T, cur: T, byJob: {[K in keyof T]?: string}, taken: ReadonlySet<string>): string | null => {
+  for (const k of Object.keys(cur) as (keyof T)[]) {
+    const job = byJob[k];
+    if (job && cur[k] !== prev[k] && !taken.has(job)) return job;
+  }
+  return null;
+};

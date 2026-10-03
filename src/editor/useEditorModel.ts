@@ -12,6 +12,7 @@ import {checkNarration, fixNarrationOverlaps} from '@shared/narration';
 import {fitBlockedBy as fitBlockedByOf, fitCutsToNarration} from '@shared/fit';
 import {SFX_DEFAULTS, checkSfx, type SfxLibrary} from '@shared/sfx';
 import {useUndo} from '../hooks/useUndo';
+import {jobChangeToRecord} from '../hooks/undoStack';
 import {useDebounced} from '../components/useDebounced';
 import {defaultRangeFor, insertCutAt, makeCut, newCutId, removeCutAt, splitCutAt, sourceSecAt, usageBySrc, createReel} from '../components/track';
 import {reorderBlock, destIndexOf} from '../components/reorder';
@@ -115,6 +116,23 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     },
     [s],
   );
+  // AI のジョブ（テロップ・自由指示・並べ替え・ナレーション原稿）はサーバーがファイルを書き、store が読み直す。
+  // その差し替えは commit を通らないので、ここで「差し替わる直前の状態」を履歴に積んで Ctrl+Z で戻せるようにする。
+  // ai-edit は cuts と narration を別々に読み直すので、同じジョブは 1 手にまとめる（最初に届いた時点の直前を積めば、
+  // まだ届いていない側も変更前のまま入っている）
+  const lastSeen = useRef<Snapshot>({cuts: null, narration: null});
+  const takenJobs = useRef(new Set<string>());
+  const cutsByJob = s.files.cuts.byJob;
+  const narrByJob = s.files.narration.byJob;
+  const pushSnap = history.push;
+  useEffect(() => {
+    const prev = lastSeen.current;
+    lastSeen.current = {cuts, narration};
+    const job = jobChangeToRecord(prev, lastSeen.current, {cuts: cutsByJob, narration: narrByJob}, takenJobs.current);
+    if (!job) return;
+    takenJobs.current.add(job);
+    if (prev.cuts || prev.narration) pushSnap(prev);
+  }, [cuts, narration, cutsByJob, narrByJob, pushSnap]);
   const undo = useCallback(() => restore(history.undo(snapRef.current())), [history, restore]);
   const redo = useCallback(() => restore(history.redo(snapRef.current())), [history, restore]);
 

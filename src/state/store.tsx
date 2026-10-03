@@ -9,7 +9,10 @@ import {listPersonas, setPersonas, type Persona} from '@shared/personas';
 export type ContractName = 'catalog' | 'brief' | 'cuts' | 'narration';
 type ContractMap = {catalog: Catalog; brief: Brief; cuts: ReelData; narration: Narration};
 
-export type FileState<T> = {data: T | null; etag: string | null; dirty: boolean; loading: boolean; error?: string; external?: string | null};
+export type FileState<T> = {data: T | null; etag: string | null; dirty: boolean; loading: boolean; error?: string; external?: string | null;
+  /** AI のジョブが書き換えたのを読み直したとき、そのジョブの id。編集画面がこれを見て、AI の変更も取り消せるよう直前の状態を履歴に積む */
+  byJob?: string;
+};
 
 type Files = {[K in ContractName]: FileState<ContractMap[K]>};
 
@@ -82,7 +85,7 @@ type Store = {
   setLight: (v: boolean) => void;
   /** このタブの案件の素材 URL の先頭（`/p/<slug>/<mode>`）。案件が無ければ null */
   mediaBase: string | null;
-  loadFile: <K extends ContractName>(name: K) => Promise<void>;
+  loadFile: <K extends ContractName>(name: K, opt?: {byJob?: string}) => Promise<void>;
   /** 編集中の値を入れる。dirty は既定 true（取り消しで保存時の状態に戻したときだけ false を渡す） */
   setFile: <K extends ContractName>(name: K, data: ContractMap[K], opt?: {dirty?: boolean}) => void;
   saveFile: <K extends ContractName>(name: K, force?: boolean) => Promise<boolean>;
@@ -182,13 +185,13 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
     setConfig(c.data);
   }, []);
 
-  const loadFile = useCallback(async <K extends ContractName>(name: K) => {
+  const loadFile = useCallback(async <K extends ContractName>(name: K, opt: {byJob?: string} = {}) => {
     const slug = activeRef.current;
     if (!slug) return;
     setFiles((f) => ({...f, [name]: {...f[name], loading: true, error: undefined}}));
     try {
       const r = await api.get<{etag: string | null; data: ContractMap[K] | null}>(`/api/projects/${slug}/files/${name}`);
-      setFiles((f) => ({...f, [name]: {data: r.data.data, etag: r.data.etag, dirty: false, loading: false, external: null}}));
+      setFiles((f) => ({...f, [name]: {data: r.data.data, etag: r.data.etag, dirty: false, loading: false, external: null, byJob: opt.byJob}}));
     } catch (e) {
       const err = e as ApiError;
       setFiles((f) => ({...f, [name]: {data: null, etag: null, dirty: false, loading: false, error: err.status === 404 ? undefined : err.message}}));
@@ -426,7 +429,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       if (j.status === 'done' && ['catalog', 'thumbs', 'proxy', 'aliases', 'sync-engine', 'ai-tag', 'ai-order', 'ai-telop', 'ai-edit', 'ai-narration', 'mosaic', 'mosaic-revert'].includes(j.type)) {
         // 未保存の編集があるときは黙って上書きしない（file:changed と同じ扱いにする）
         const reload = (name: ContractName) => {
-          if (!filesRef.current[name].dirty) return void loadFile(name);
+          if (!filesRef.current[name].dirty) return void loadFile(name, j.type.startsWith('ai-') ? {byJob: j.id} : {});
           setFiles((f) => ({...f, [name]: {...f[name], external: 'changed'}}));
           toast(`${name}.json をジョブが書き換えました（未保存の編集あり。「読み直す」か「上書き」を選んでください）`, 'error');
         };
