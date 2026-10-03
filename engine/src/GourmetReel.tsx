@@ -105,7 +105,16 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
     const cutFrom = from;
     from += dur;
     return (
-      <Sequence key={i} from={cutFrom} durationInFrames={dur} name={`cut${String(i + 1).padStart(2, '0')}`}>
+      // プレビュー（Player）では次のカットの映像を 1 秒前から裏で読み込んでおく（premount）。
+      // これが無いとカットの境目で動画要素が作り直され、読み込み待ちの間だけ黒い画面が出る。
+      // 書き出し（レンダー）には影響しない
+      <Sequence
+        key={i}
+        from={cutFrom}
+        durationInFrames={dur}
+        premountFor={data.fps}
+        name={`cut${String(i + 1).padStart(2, '0')}`}
+      >
         {/* 寄った映像が画面の外へはみ出さないよう、映像だけを切り抜き枠に入れる（テロップは外） */}
         <AbsoluteFill style={{overflow: 'hidden'}}>
           <OffthreadVideo
