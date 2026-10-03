@@ -18,6 +18,7 @@ import {findPersona} from '@shared/personas';
 import {checkNarration} from '@shared/narration';
 import {localTime} from '@shared/time';
 import {api} from '../api';
+import {RenderTerms, RenderTermsToggle, termHint} from '../components/RenderTerms';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 
@@ -29,6 +30,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
   const [crf, setCrf] = useState('');
   const [cacheMb, setCacheMb] = useState('');
   const [retries, setRetries] = useState('3');
+  const [termsOpen, setTermsOpen] = useState(false);
   const narration = s.files.narration.data;
   const needsTts = (narration?.segments ?? []).filter((seg) => (seg as {needsTts?: boolean}).needsTts || !seg.durSec).length;
   const aiBusy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type.startsWith('ai-') && j.slug === s.active);
@@ -256,7 +258,10 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
       {liveJob && <AiJobStatus job={liveJob} onCancel={(id) => void s.cancelJob(id)} lines={4} />}
 
       <section className="card" data-tour="render-run">
-        <h2>レンダー（手動）</h2>
+        <h2>
+          レンダー（手動） <RenderTermsToggle open={termsOpen} onToggle={() => setTermsOpen((v) => !v)} />
+        </h2>
+        {termsOpen && <RenderTerms onClose={() => setTermsOpen(false)} />}
         <p className="hint">
           まず<b>ドラフト</b>（0.25 倍・粗い・速い）で全体を通して確認し、問題なければ<b>本番レンダー</b>。書き出したファイルは案件フォルダの out/ に入り、下に再生できる形で出ます。上の「仕上げ」を使えばここは押さなくてよい。
         </p>
@@ -277,18 +282,18 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           <button className="primary" onClick={() => s.addJob('render', opts())} disabled={!canRender}>
             本番レンダー（h264 crf20）
           </button>
-          <label>
+          <label title={termHint('カット')}>
             カット
             <input type="number" min={1} value={cut} onChange={(e) => setCut(e.target.value)} style={{width: 64}} />
           </label>
-          <label>
+          <label title={termHint('オフセット秒')}>
             オフセット秒
             <input type="number" step={0.1} value={offset} onChange={(e) => setOffset(e.target.value)} style={{width: 64}} />
           </label>
-          <button onClick={() => s.addJob('still', {cut: Number(cut), offsetSec: Number(offset), gl})} disabled={!canRender}>
+          <button onClick={() => s.addJob('still', {cut: Number(cut), offsetSec: Number(offset), gl})} disabled={!canRender} title={termHint('スチル')}>
             スチル
           </button>
-          <label>
+          <label title={termHint('QC 対象')}>
             QC 対象
             <select value={qcVideo} onChange={(e) => setQcVideo(e.target.value)}>
               <option value="out/final.mp4">out/final.mp4</option>
@@ -296,7 +301,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
               <option value="out/final_narration.mp4">out/final_narration.mp4</option>
             </select>
           </label>
-          <button onClick={() => s.addJob('qc-tile', {video: qcVideo})}>QC タイル</button>
+          <button onClick={() => s.addJob('qc-tile', {video: qcVideo})} title={termHint('QC タイル')}>QC タイル</button>
         </div>
         {preflightErrors.length > 0 && (
           <div className="issues" style={{marginTop: 6}}>
@@ -322,9 +327,9 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           </div>
         )}
         <details style={{marginTop: 8}}>
-          <summary className="hint">オプション（gl / concurrency / crf / cache / retries / force / no-sync / strict-proxy）・保守</summary>
+          <summary className="hint">オプション（gl / concurrency / crf / cache / retries / force / no-sync / strict-proxy）・保守<span>（各項目の意味は上の「？ 用語の説明」で見られます）</span></summary>
           <div className="row" style={{marginTop: 6}}>
-            <label>
+            <label title={termHint('gl')}>
               gl
               <select value={gl} onChange={(e) => setGl(e.target.value)}>
                 {['swiftshader', 'angle', 'swangle', 'vulkan', 'egl'].map((g) => (
@@ -334,40 +339,40 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
                 ))}
               </select>
             </label>
-            <label>
+            <label title={termHint('concurrency')}>
               concurrency
               <input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} placeholder="auto" style={{width: 64}} />
             </label>
-            <label>
+            <label title={termHint('crf')}>
               crf
               <input value={crf} onChange={(e) => setCrf(e.target.value)} placeholder="20" style={{width: 64}} />
             </label>
-            <label>
+            <label title={termHint('cache MB')}>
               cache MB
               <input value={cacheMb} onChange={(e) => setCacheMb(e.target.value)} placeholder="256" style={{width: 64}} />
             </label>
-            <label>
+            <label title={termHint('retries')}>
               retries
               <input value={retries} onChange={(e) => setRetries(e.target.value)} style={{width: 64}} />
             </label>
-            <label>
+            <label title={termHint('force（W を無視）')}>
               <span>force（W を無視）</span>
               <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
             </label>
-            <label>
+            <label title={termHint('no-sync')}>
               <span>no-sync</span>
               <input type="checkbox" checked={noSync} onChange={(e) => setNoSync(e.target.checked)} />
             </label>
-            <label>
+            <label title={termHint('strict-proxy')}>
               <span>strict-proxy</span>
               <input type="checkbox" checked={strictProxy} onChange={(e) => setStrictProxy(e.target.checked)} />
             </label>
           </div>
           <div className="row" style={{marginTop: 6}}>
-            <button onClick={() => s.addJob('aliases')}>alias 適用</button>
-            <button onClick={() => s.addJob('proxy')}>HEVC/4K プロキシ</button>
-            <button onClick={() => s.addJob('sync-engine')}>エンジン同期</button>
-            <button onClick={() => s.addJob('npm-install')}>npm install</button>
+            <button onClick={() => s.addJob('aliases')} title={termHint('alias 適用')}>alias 適用</button>
+            <button onClick={() => s.addJob('proxy')} title={termHint('HEVC/4K プロキシ')}>HEVC/4K プロキシ</button>
+            <button onClick={() => s.addJob('sync-engine')} title={termHint('エンジン同期')}>エンジン同期</button>
+            <button onClick={() => s.addJob('npm-install')} title={termHint('npm install')}>npm install</button>
           </div>
         </details>
       </section>

@@ -4,6 +4,11 @@ import {useStudio} from '../state/store';
 import {useStringPref} from '../hooks/usePref';
 import {archivedCount as countArchived, visibleProjects} from '../components/projectList';
 import {localDateTime} from '@shared/time';
+import {termHint} from '../components/RenderTerms';
+
+// engine 列の「STALE → 同期」にマウスを乗せたときの説明（core/project.ts の engineDiff / syncEngine の動き）
+const ENGINE_HINT =
+  'STALE は「古くなった」の意味。案件フォルダの中にある描画プログラム（エンジン）が、Reel Studio 本体の最新版と違っています。押すと本体の最新版で上書きします（違っていたファイルは .studio/backups/ に控えを取ります。素材・並び・ナレーションには触れません）。レンダーの前にも自動で同じことが行われるので、押さなくても困りません';
 
 export const ProjectsPage: React.FC = () => {
   const s = useStudio();
@@ -172,7 +177,10 @@ export const ProjectsPage: React.FC = () => {
                 </td>
                 <td className="p-chip" data-label="engine">
                   {p.engine.stale ? (
-                    <button className="small warn" onClick={() => s.addJob('sync-engine', {}, p.slug)} title={p.engine.files.filter((f) => f.status !== 'ok').map((f) => `${f.file}: ${f.status}`).join('\n')}>
+                    <button className="small warn" onClick={() => s.addJob('sync-engine', {}, p.slug)} title={`${ENGINE_HINT}\n\n本体と違うファイル:\n${p.engine.files
+                      .filter((f) => f.status !== 'ok')
+                      .map((f) => `${f.file}: ${f.status === 'missing' ? '無い' : '中身が違う'}`)
+                      .join('\n')}`}>
                       STALE → 同期
                     </button>
                   ) : (
@@ -180,7 +188,7 @@ export const ProjectsPage: React.FC = () => {
                   )}
                 </td>
                 <td className="p-chip" data-label="node_modules">
-                  {p.nodeModules ? '✓' : <button className="small" onClick={() => s.addJob('npm-install', {}, p.slug)}>npm install</button>}
+                  {p.nodeModules ? '✓' : <button className="small" onClick={() => s.addJob('npm-install', {}, p.slug)} title={termHint('npm install')}>npm install</button>}
                 </td>
                 <td className="p-chip" data-label="更新">
                   {localDateTime(p.updatedAt)}
