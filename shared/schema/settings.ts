@@ -85,6 +85,16 @@ const InstagramSchema = z.object({
   account: z.string().min(1).optional(),
 });
 
+/**
+ * 更新の知らせ方。popup＝新しい版があれば画面にポップアップを出す（既定）／manual＝出さない（Settings の「版と更新」から手動で）。
+ * どちらでも「更新する」を押せば、取得・依存の導入・ビルド・再起動まで自動で進む
+ */
+export const UPDATE_NOTIFY = ['popup', 'manual'] as const;
+export type UpdateNotify = (typeof UPDATE_NOTIFY)[number];
+const UpdateSettingsSchema = z.object({
+  notify: z.enum(UPDATE_NOTIFY).default('popup'),
+});
+
 export const SettingsSchema = z.object({
   version: z.literal(1),
   /** 案件・素材・納品・効果音の親フォルダ。省略＝<アプリ>/data */
@@ -101,6 +111,8 @@ export const SettingsSchema = z.object({
   cloud: CloudSchema.default({}),
   /** Instagram の情報取得（Smartgram MCP）。既定は未設定＝Web 検索だけで裏取り */
   instagram: InstagramSchema.default({}),
+  /** 更新の知らせ方 */
+  update: UpdateSettingsSchema.default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -132,6 +144,7 @@ export const SettingsPatchSchema = z
     mosaic: z.object({python: nullable()}).strict().optional(),
     cloud: z.object({url: nullable(), token: nullable(), enabled: z.boolean().optional()}).strict().optional(),
     instagram: z.object({mcpUrl: nullable(), mcpKey: nullable(), account: nullable()}).strict().optional(),
+    update: z.object({notify: z.enum(UPDATE_NOTIFY).optional()}).strict().optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;

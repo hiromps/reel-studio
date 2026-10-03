@@ -8,6 +8,7 @@ import {RenderPage} from './pages/Render';
 import {SettingsPage} from './pages/Settings';
 import {Tour, type TourTab} from './components/Tour';
 import {HelpPanel} from './components/HelpPanel';
+import {UpdatePrompt} from './components/UpdatePrompt';
 import {InstallHint} from './components/InstallHint';
 import {nextStepOf} from './components/nextStep';
 import {visibleProjects} from './components/projectList';
@@ -247,6 +248,8 @@ export const App: React.FC = () => {
         onNextBar={(show) => setNextBarPref(show ? '1' : '0')}
       />
       <Tour open={tour} tab={tab} onTab={go} onClose={closeTour} />
+      {/* 新しい版のお知らせ（PC で動かしているときだけ。クラウド版では何も出さない） */}
+      <UpdatePrompt held={tour || help} />
     </div>
   );
 };

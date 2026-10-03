@@ -3979,6 +3979,61 @@ a.btn-like:hover {
   margin-top: 6px;
   max-height: 160px;
 }
+.update-notify {
+  margin: 10px 0 0;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+}
+.update-notify legend {
+  font-size: 12px;
+  color: var(--accent);
+  padding: 0 4px;
+}
+/* 新しい版のお知らせ・更新中（ポップアップ） */
+.update-modal {
+  width: min(560px, 100%);
+  /* 短いお知らせなので、スマホでも画面いっぱいに伸ばさず中身の高さで中央に出す */
+  align-self: center;
+}
+.update-modal .update-log ul {
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.update-actions {
+  margin-top: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.update-wait::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: update-spin 0.9s linear infinite;
+}
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-wait::before {
+    animation: none;
+  }
+}
+/* 更新中は他の操作をさせない（ヘルプなどのモーダルより手前に出す） */
+.modal-root.update-overlay {
+  z-index: 400;
+  align-items: center;
+}
 
 /* ── バズ動画の型を写す（Brief の ReferenceCard） ───────────────────────── */
 .pill.ok {

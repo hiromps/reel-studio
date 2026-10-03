@@ -2,36 +2,33 @@
 //
 // このツールは git clone で配っているので、更新は git pull。ただし**ターミナルを開かない人が
 // 使う前提**なので、更新があることと、押せば進むことを画面の中で完結させる。
-// npm install はここではやらない（動いているサーバーが node_modules を掴んでいるため、
-// 次の起動でランチャーが入れ直す）。
+// 「更新する」のあとの取得・再起動・読み直しは UpdatePrompt.tsx の useUpdater が行う（ポップアップと同じ流れ）。
+// 新しい版をポップアップで知らせるか（update.notify）もここで選ぶ。
 import React, {useCallback, useEffect, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
-
-type Local = {version: string; isGit: boolean; shortCommit: string | null; committedAt: string | null; branch: string | null; dirty: boolean; repo: string};
-type Info = {
-  local: Local;
-  latest: {shortCommit: string; committedAt: string | null; url: string} | null;
-  behind: number | null;
-  commits: {shortCommit: string; subject: string; date: string | null}[];
-  problem: string | null;
-  checkedAt: string;
-};
-type PullResult = {ok: boolean; message: string; log: string[]; needsInstall: boolean; engineChanged: boolean; restart: boolean};
+import type {UpdateNotify} from '../../shared/schema/settings';
+import {UpdateOverlay, useUpdater, type VersionInfo} from './UpdatePrompt';
 
 const day = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '—');
 
-export const UpdateCard: React.FC = () => {
+const NOTIFY_OPTIONS: {value: UpdateNotify; label: string; hint: string}[] = [
+  {value: 'popup', label: 'ポップアップで知らせる', hint: 'おすすめ。新しい版が出たら画面に出し、「今すぐ更新」で更新から起動し直しまで自動で行います'},
+  {value: 'manual', label: 'このカードから手動で', hint: '知らせません。好きなときにここの「更新する」を押します'},
+];
+
+export const UpdateCard: React.FC<{notify?: UpdateNotify; onNotify?: (n: UpdateNotify) => void}> = ({notify, onNotify}) => {
   const s = useStudio();
-  const [info, setInfo] = useState<Info | null>(null);
+  const [info, setInfo] = useState<VersionInfo | null>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<PullResult | null>(null);
   const [unsupported, setUnsupported] = useState(false);
+  const up = useUpdater();
+  const result = up.phase === 'idle' ? up.result : null;
 
   const load = useCallback(async (refresh = false) => {
     setBusy(true);
     try {
-      const r = await api.get<Info>(`/api/version${refresh ? '?refresh=1' : ''}`);
+      const r = await api.get<VersionInfo>(`/api/version${refresh ? '?refresh=1' : ''}`);
       setInfo(r.data);
     } catch (e) {
       // クラウド版・古いサーバーにはこの経路が無い
@@ -58,19 +55,8 @@ export const UpdateCard: React.FC = () => {
   if (unsupported) return null;
 
   const update = async () => {
-    setBusy(true);
-    setResult(null);
-    try {
-      const r = await api.post<PullResult>('/api/version/update', {});
-      setResult(r.data);
-      if (r.data.ok) s.toast(r.data.message, 'ok');
-      else s.toast(r.data.message, 'error');
-      await load(true);
-    } catch (e) {
-      s.toast(`更新に失敗: ${(e as Error).message}`, 'error');
-    } finally {
-      setBusy(false);
-    }
+    await up.run();
+    await load(true);
   };
 
   const l = info?.local;
@@ -96,7 +82,7 @@ export const UpdateCard: React.FC = () => {
           {busy ? '確認中…' : '確認'}
         </button>
         {hasUpdate && (
-          <button className="primary" onClick={() => void update()} disabled={busy || !l?.isGit || l?.dirty}>
+          <button className="primary" onClick={() => void update()} disabled={busy || up.phase !== 'idle' || !l?.isGit || l?.dirty}>
             更新する
           </button>
         )}
@@ -132,21 +118,31 @@ export const UpdateCard: React.FC = () => {
       {result && (
         <div className={result.ok ? 'update-result' : 'update-result err'}>
           <b>{result.message}</b>
-          {result.restart && (
-            <p>
-              <b>Reel Studio を再起動してください。</b>
-              {result.needsInstall && '（依存パッケージが変わったので、次の起動で自動的に入れ直します。少し時間がかかります）'}
-              {result.engineChanged && ' テロップの描画（エンジン）が変わったので、各案件は次のレンダーで自動的に揃います。'}
-            </p>
-          )}
           {result.log.length > 0 && <pre className="log">{result.log.join('\n')}</pre>}
         </div>
       )}
+      {info?.restart.blocker && hasUpdate && <p className="hint">{info.restart.blocker}</p>}
+
+      {notify && onNotify && (
+        <fieldset className="update-notify">
+          <legend>新しい版の知らせ方</legend>
+          {NOTIFY_OPTIONS.map((o) => (
+            <label key={o.value} className="font-pick">
+              <input type="radio" name="update-notify" checked={notify === o.value} onChange={() => onNotify(o.value)} />
+              <span>
+                <b>{o.label}</b>
+                <span className="hint"> — {o.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       <p className="hint">
-        更新はコマンドからもできます: <span className="mono">npm run update</span>（git pull と依存の導入をまとめて行います）。
-        案件データ・設定・人格はリポジトリの外にあるので、更新で失われません。
+        「更新する」を押すと、取得・依存の導入・ビルド・起動し直しまで自動で行い、終わったら画面を読み直します。
+        コマンドからもできます: <span className="mono">npm run update</span>。案件データ・設定・人格はリポジトリの外にあるので、更新で失われません。
       </p>
+      <UpdateOverlay phase={up.phase} result={up.result} manualReason={up.manualReason} onClose={up.reset} />
     </section>
   );
 };

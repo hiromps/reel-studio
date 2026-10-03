@@ -28,6 +28,12 @@ const ok = (m) => console.log(`${C.green}✔${C.reset} ${m}`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * サーバーがこの終了コードで終わったら「画面から更新したので起動し直す」合図（shared/update.ts の RESTART_EXIT_CODE と同じ値）。
+ * 起動し直すのは**新しいランチャー**に任せる（更新でこのファイル自体が変わっていることがあるため）
+ */
+const RESTART_EXIT_CODE = 75;
+
 /** ディレクトリ配下の最終更新時刻（node_modules と dist は除く） */
 const newestMtime = (dir, skip = new Set(['node_modules', 'dist', '.studio'])) => {
   let newest = 0;
@@ -137,13 +143,32 @@ const killAll = () => {
   }
 };
 
-const startChild = (label, argv) => {
-  const child = spawn(process.execPath, argv, {cwd: root, stdio: 'inherit', windowsHide: true, detached: !isWin});
+const startChild = (label, argv, onExit) => {
+  // REEL_STUDIO_LAUNCHER＝ランチャーから起動した目印。サーバーはこれがあるときだけ画面からの再起動を受け付ける
+  const child = spawn(process.execPath, argv, {cwd: root, stdio: 'inherit', windowsHide: true, detached: !isWin, env: {...process.env, REEL_STUDIO_LAUNCHER: '1'}});
   child.on('exit', (code) => {
+    if (onExit?.(code)) return;
     if (code !== 0 && code !== null) fail(`${label} が終了しました（コード ${code}）`);
   });
   children.push(child);
   return child;
+};
+
+/**
+ * 画面から更新されたあと、新しいランチャーで起動し直す（依存の導入・ビルド・起動はそちらが行う）。
+ * この窓（黒い画面）はそのまま使い、新しいランチャーが終わったらこちらも同じ終了コードで終わる
+ */
+let restarting = false;
+const restartAfterUpdate = () => {
+  if (restarting) return;
+  restarting = true;
+  console.log('');
+  log('更新を取り込んで起動し直します（依存の導入やビルドで数分かかることがあります）');
+  killAll(); // ワーカー・Vite も止める（新しいランチャーが起動し直す）
+  children.length = 0;
+  const passthrough = process.argv.slice(2).filter((a) => a !== '--no-open' && a !== '--rebuild');
+  const next = spawn(process.execPath, [path.join(here, 'launch.mjs'), ...passthrough, '--no-open'], {cwd: root, stdio: 'inherit', windowsHide: true});
+  next.on('exit', (code) => process.exit(code ?? 0));
 };
 
 /** 更新があれば 1 行知らせる（勝手に更新はしない）。失敗しても起動は止めない */
@@ -183,7 +208,11 @@ async function main() {
 
   const tsx = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
   log(`サーバーを起動しています（ポート ${PORT}）`);
-  startChild('サーバー', [tsx, path.join(root, 'server', 'index.ts')]);
+  startChild('サーバー', [tsx, path.join(root, 'server', 'index.ts')], (code) => {
+    if (code !== RESTART_EXIT_CODE) return false;
+    restartAfterUpdate();
+    return true;
+  });
   if (!(await waitFor(`http://127.0.0.1:${PORT}/api/health`, 60000, 'サーバー'))) {
     killAll();
     process.exitCode = 1;

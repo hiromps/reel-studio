@@ -80,6 +80,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     mosaic: {...cur.mosaic},
     cloud: {...cur.cloud},
     instagram: {...cur.instagram},
+    update: {...cur.update},
   };
   const setOrClear = (obj: Record<string, unknown>, key: string, v: unknown) => {
     if (v === undefined) return;
@@ -114,6 +115,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(ig, 'mcpKey', patch.instagram.mcpKey);
     setOrClear(ig, 'account', patch.instagram.account);
   }
+  if (patch.update?.notify) (next.update as Record<string, unknown>).notify = patch.update.notify;
   return SettingsSchema.parse(next);
 };
 

@@ -101,7 +101,7 @@ export const SettingsPage: React.FC = () => {
       <CloudCard view={view} save={save} />
       <NotificationsCard />
       <PersonasCard />
-      <UpdateCard />
+      <UpdateCard notify={view.settings.update.notify} onNotify={(notify) => void save({update: {notify}}, notify === 'popup' ? '新しい版をポップアップで知らせます' : '新しい版は知らせません（このカードから手動で更新）')} />
       <p className="hint">
         設定ファイル: <span className="mono">{view.file}</span>
         {view.exists ? '' : '（まだ無い。何か保存すると作られます）'}／人格: <span className="mono">{view.dir.replace(/\\/g, '/')}/personas.json</span>

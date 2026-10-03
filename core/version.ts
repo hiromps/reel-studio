@@ -110,8 +110,10 @@ type GhCommit = {sha?: string; html_url?: string; commit?: {message?: string; co
  * 比較できないので、最新版だけを返す。
  */
 export const checkUpdate = async (opt: {refresh?: boolean} = {}): Promise<UpdateInfo> => {
-  if (!opt.refresh && cache && Date.now() - cache.at < CHECK_TTL_MS) return cache.info;
+  // 手元の状態（未コミットの変更など）は毎回読み直す。覚えておくのは GitHub への問い合わせ結果だけ。
+  // 手元のコミットが変わっていたら（手で pull した等）、遅れの数も変わるので問い合わせ直す
   const local = await localVersion();
+  if (!opt.refresh && cache && Date.now() - cache.at < CHECK_TTL_MS && cache.info.local.commit === local.commit) return {...cache.info, local};
   const base: UpdateInfo = {local, latest: null, behind: null, commits: [], problem: null, checkedAt: new Date().toISOString()};
 
   try {
