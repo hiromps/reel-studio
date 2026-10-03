@@ -1,0 +1,48 @@
+name: 不具合の報告
+description: 動かない・おかしな結果になる
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。**API キー・素材動画・店舗の非公開情報は貼らないでください**（Issue は誰でも読めます）。
+        セキュリティ上の問題は Issue ではなく [SECURITY.md](../blob/main/SECURITY.md) の方法で知らせてください。
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: どの画面（Projects / Materials / Brief / Timeline / Render / Settings）または CLI コマンドで、何をしたら、どうなったか
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: どうなってほしかったか
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: エラー表示・ジョブのログ
+      description: 画面のエラー、ジョブのログ、起動した黒い画面の出力など（鍵やパスに個人名が入っていれば伏せてください）
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Reel Studio の版
+      description: Settings の「版と更新」に出ている版（例 0.2.0 / コミット ID）
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows 11, Windows 10, macOS, Linux, その他]
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 環境
+      description: "`node -v` / `ffmpeg -version` の 1 行目 / `claude --version`、クラウドモードを使っているか"
+      render: text

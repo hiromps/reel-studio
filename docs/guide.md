@@ -1413,5 +1413,5 @@ CVE-2026-30120（RCE）/ CVE-2026-30121（任意ファイル書き込み）が�
 - Phase 1（済）：shared / core / CLI、hiro・--persona <人格id> スキル文書の Studio 連携モード
 - Phase 2（済）：server（express :4310、SSE、静的配信）＋ GUI（Projects / Materials / Brief / Timeline+Player / Render）
 - Phase 3（済）：ナレーション原稿（`ai-narration`）・編集・音声生成（`tts`）・mix・音量調整・キャプション（`ai-caption`）・効果音（`sfx-auto`）
-- Phase 4（一部済）：複数案件の並行作業（タブごとの案件・ジョブの同時実行）。残り＝Tailscale 公開、インサイト記録、--persona <人格id> / bonjiri のスキル文書に Studio 連携モードを追記
+- Phase 4（一部済）：複数案件の並行作業（タブごとの案件・ジョブの同時実行）。残り＝インサイト記録
 - Phase 5（済・2026-09-14）：編集画面の統合（素材ビン｜プレビュー｜インスペクタ＋ V/T/N/S の 4 段タイムライン。cuts と narration を 1 画面で）、仕上げパイプライン（`build`：残っている工程だけを順に実行）、共通フックへの整理（設定・モデル選択・取り消し・ショートカット）

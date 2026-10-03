@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使い方の詳細（docs/guide.md）
+    url: https://github.com/hiromps/reel-studio/blob/main/docs/guide.md
+    about: 画面と CLI の詳しい使い方はこちら
+  - name: セキュリティ上の問題
+    url: https://github.com/hiromps/reel-studio/security/advisories/new
+    about: 脆弱性は公開の Issue ではなく非公開で報告してください

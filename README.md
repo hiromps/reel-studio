@@ -24,6 +24,7 @@ live in `~/.reel-studio/`, outside the repository.
 
   Then open the **Settings** tab (Ctrl+6): pick a data folder, paste your Fish Audio key,
   check that `claude` is detected, and give a persona a voice. The UI is in Japanese.
+- **Issues / contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 - **License**: MIT. Remotion (the renderer) has its own license: free for individuals and
   companies of up to three people, otherwise a company license is required — see
   [remotion.dev/license](https://www.remotion.dev/license).
@@ -226,6 +227,8 @@ npm run worker
 - [docs/cloud.md](docs/cloud.md) — クラウドモード（Vercel + PWA + 自宅 PC ワーカー）の構成と運用
 - [docs/supabase-migration.md](docs/supabase-migration.md) — クラウドモードの DB を Neon から Supabase に移す手順
 - [engine/README.md](engine/README.md) — Remotion エンジン（案件に複製されるテンプレート）
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 不具合の報告・要望・プルリクエストの出し方
+- [SECURITY.md](SECURITY.md) — 脆弱性の報告先と、作りの前提（ローカル専用・鍵の保存）
 
 ## 開発
 
