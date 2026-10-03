@@ -163,6 +163,7 @@ export const Storyboard: React.FC<Props> = ({
           {cuts.cuts.length} カット / {total.toFixed(2)}s
         </span>
         <span className="hint sb-howto">サムネをドラッグして並べ替え（クリックでその位置へシーク・Alt+←→ でも移動・Esc で取り消し）</span>
+        <span className="hint sb-touch-hint">横へドラッグで並べ替え・タップでその位置へ</span>
         <span style={{flex: 1}} />
         <label className="sb-inline" title="同じテロップ文言が続くカットは 1 つのまとまりとして動かす（ばらけてテロップが分断されるのを防ぐ）">
           <input type="checkbox" checked={groupMove} onChange={(e) => onGroupMove(e.target.checked)} />

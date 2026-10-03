@@ -766,6 +766,10 @@ input.telop.placeholder {
   border-left: 1px solid var(--line);
   padding-left: 12px;
 }
+/* 指で操作する画面でだけ出す（狭い画面の @media で表示） */
+.sb-touch-hint {
+  display: none;
+}
 .sb-inline {
   flex-direction: row;
   align-items: center;
@@ -2190,8 +2194,16 @@ a.btn-like:hover {
 .ed-storyboard .storyboard {
   margin: 0;
 }
+/* 編集画面の絵コンテは横 1 列に流す。折り返すと高さを取り、プレビュー列が潰れる。
+   高さで切るとカードの下（テロップ）が見えなくなるので、カードの高さはそのまま出す */
 .ed-storyboard .sb-body {
-  max-height: 180px;
+  flex-wrap: nowrap;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.ed-storyboard .sb-card {
+  flex: 0 0 auto;
 }
 .ed-timeline {
   flex: 0 0 auto;
@@ -3502,8 +3514,30 @@ a.btn-like:hover {
   .bin-grid {
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   }
+  /* 狭い画面の絵コンテは折り返して画面幅に詰める（横 1 列だと指でスクロールできない）。
+     カードの上で縦に指を動かすと枠がスクロールし、横に動かすと並べ替えになる */
   .ed-storyboard .sb-body {
-    max-height: 140px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--sb-w), 1fr));
+    max-height: 62vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .ed-storyboard .sb-card {
+    width: auto;
+    min-width: 0;
+    touch-action: pan-y;
+  }
+  .ed-storyboard .sb-thumb {
+    height: auto;
+    aspect-ratio: 10 / 13;
+  }
+  .ed-storyboard .sb-howto {
+    display: none;
+  }
+  .ed-storyboard .sb-touch-hint {
+    display: inline;
   }
 
   /* ── Materials（素材）── */
@@ -3779,6 +3813,17 @@ a.btn-like:hover {
   .detail-bar,
   .detail-actions {
     display: none;
+  }
+  /* 編集画面は画面の高さに収める作りなので、絵コンテを開くと中央のプレビュー列が
+     縮んで 0 になっていた。中央列には最低限の高さを残し、収まらないぶんはページを伸ばす。
+     - contain: size … グリッドの中身（素材一覧・詳細）の高さで列を押し広げない
+     - min-height: min-content … 他の段＋中央列の最低限 がこの画面の最低の高さになる */
+  .editor {
+    min-height: min-content;
+  }
+  .ed-main {
+    contain: size;
+    min-height: 300px;
   }
   /* 右カラム（プレビューとタグ編集）を画面に追従させる。
      一覧は素材の本数ぶん縦に長いので、追従しないと下の方のクリップを選ぶたびに
