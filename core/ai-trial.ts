@@ -10,6 +10,7 @@ import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {runAgent} from './agent';
 import {agentAddDirs, captionGuideLabel, materializePersonaDocs, promptPath} from './persona-docs';
+import {hookRuleLines} from '../shared/personas';
 import {agentProgress, captionExamples, type AiProgress} from './ai';
 import {loadOrderEnv} from './order';
 import {ensureCutFrame} from './cut-frames';
@@ -210,6 +211,7 @@ export async function aiHooks(
     persona.hookStyle === 'areaDigit'
       ? `- エリア名は縦書きの本文に入れず、バッジ（badge）に出す。今のままなら badge は空文字。本文はエリア名が無くても意味が通る言い回しにする（◯「地元の9割が知らない」 ✕「${brief.shop.area || 'エリア名'}、9割が知らない」）`
       : '',
+    ...hookRuleLines(persona),
     `- 「・・・」による焦らしは 1 パターン 1 回まで`,
     '- 各パターンで切り口を変える。言い換えただけの同じ角度を 2 つ作らない',
     '',
@@ -217,6 +219,7 @@ export async function aiHooks(
     `- 差し替え範囲ぶんを **1 文**で書く。実測話速 ${cps} 文字/秒で、**${budgetChars} 文字以内**（${budgetSec.toFixed(2)} 秒に収める）`,
     '- そのパターンのテロップの内容に沿う（一字一句同じにはせず、言い回しを変える・主語や理由を補う）',
     ...persona.narrationRules.map((r) => `- ${r}`),
+    ...hookRuleLines(persona, 'フックのナレーション'),
     '- 固有名詞・数字＋単位・読みが割れる漢字はひらがな・カタカナに開く（TTS の誤読対策。「十三」→「じゅうそう」、「350g」→「350グラム」）',
     '- 金額を読み上げない',
     '',

@@ -13,6 +13,7 @@ import {ThemeSchema} from '@shared/schema/cuts';
 import {AI_MODELS, AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {DEFAULT_STUDY_VIDEOS, MAX_STUDY_VIDEOS, normalizeInstagramUser} from '@shared/persona-study';
 import {AiJobStatus} from '../components/AiJobStatus';
+import {REFINABLE_LABEL, type PersonaRefineResult} from '@shared/persona-refine';
 import {useMosaicStatus} from '../components/MosaicPanel';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
@@ -1142,6 +1143,118 @@ const PersonaGenerate: React.FC<{onCreated: (id: string) => void}> = ({onCreated
   );
 };
 
+// ───────────────────────── 人格を AI で磨く ─────────────────────────
+
+/**
+ * 選んでいる人格を、指示どおりに AI で書き直す（例「フックはターゲットを広く」）。
+ * 結果は保存せず、下の編集欄に流し込む。利用者は見比べて「人格を保存」か「元に戻す」を選ぶ
+ */
+const PersonaRefine: React.FC<{persona: Persona; onProposal: (r: PersonaRefineResult) => void}> = ({persona, onProposal}) => {
+  const s = useStudio();
+  const [aiModel, setAiModel] = useAiModel();
+  const [instruction, setInstruction] = useState('');
+  const job = s.jobs.find((j) => j.type === 'ai-persona-refine' && (j.status === 'running' || j.status === 'queued'));
+  const last = s.jobs.find((j) => j.type === 'ai-persona-refine' && (j.status === 'done' || j.status === 'failed'));
+  const claude = s.config?.claude !== false;
+  const stale = !s.supportsJob('ai-persona-refine');
+  const problem = !instruction.trim()
+    ? null
+    : !claude
+      ? 'claude が見つかりません（Settings の「AI」）'
+      : stale
+        ? s.isCloud
+          ? 'PC の Reel Studio を起動し直してください（この機能を知らない古いプロセスです）'
+          : 'Reel Studio を再起動してください（サーバーが古いプロセスです）'
+        : null;
+
+  // この画面で頼んだジョブの結果だけを編集欄に流し込む（開き直したときに古い案で上書きしない）
+  const watched = useRef(new Set<string>());
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (job) watched.current.add(job.id);
+  }, [job?.id]);
+  useEffect(() => {
+    if (!last || last.status !== 'done' || handled.current === last.id || !watched.current.has(last.id)) return;
+    handled.current = last.id;
+    const r = last.result as PersonaRefineResult | undefined;
+    if (!r?.persona) return;
+    onProposal(r);
+    s.toast(r.changed.length ? `書き直した案を編集欄に入れました（${r.changed.map((k) => REFINABLE_LABEL[k]).join('・')}）。見比べて「人格を保存」で確定してください` : '変えるところは無いという返答でした', r.changed.length ? 'ok' : 'info');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [last?.id, last?.status]);
+
+  const run = async () => {
+    if (problem || job || !instruction.trim()) return;
+    const j = await s.addJob('ai-persona-refine', {id: persona.id, instruction: instruction.trim(), model: aiModel}, '_studio');
+    if (j) {
+      watched.current.add(j.id);
+      s.toast(s.isCloud ? 'PC が人格を書き直します（PC オフラインなら起動後に始まります）' : '人格を書き直しています（1 分ほど）', 'ok');
+    }
+  };
+
+  return (
+    <details className="persona-generate" data-tour="settings-persona-refine">
+      <summary>
+        <b>AI で磨く</b>（「{persona.label}」を指示どおりに書き直す）
+      </summary>
+      <p className="hint">
+        文体・フックの方針・ナレーションの禁則・締め・キャプションの型のうち、指示に関係するところだけを AI が書き直します。結果はすぐには保存せず、下の編集欄に入れます。
+        見比べて良ければ「人格を保存」、やめるなら「元に戻す」。保存した人格は、このあと作る台本・テロップ・ナレーション・フック案に効きます。ボイス・話速・id は変わりません。
+      </p>
+      <div className="form">
+        <label className="full" title="何をどう変えたいか。例を挙げるとより狙いどおりになります">
+          どう磨くか
+          <textarea
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder={'例: フックはターゲットを広くとって、グルメ好き以外にも刺さる誰にでも分かる言葉にしたい。地元の人向けの言い回しは控えめに'}
+            disabled={!!job}
+            style={{minHeight: 70}}
+          />
+        </label>
+        <AiModelSelect value={aiModel} onChange={setAiModel} />
+      </div>
+      <div className="row">
+        {problem && <span className="pill warn">{problem}</span>}
+        <span style={{flex: 1}} />
+        <button className="primary" onClick={() => void run()} disabled={!!problem || !!job || !instruction.trim()} title={problem ?? '書き直した案を編集欄に入れます（保存はしません）'}>
+          {job ? '書き直し中…' : 'AI で書き直す'}
+        </button>
+      </div>
+      {job && <AiJobStatus job={job} onCancel={(id) => void s.cancelJob(id)} compact lines={4} />}
+      {last?.status === 'failed' && watched.current.has(last.id) && <p className="warn-text">失敗: {last.error}</p>}
+    </details>
+  );
+};
+
+/** 書き直しの案を編集欄に入れたあと、何が変わったかとフックの例を出す */
+const RefineSummary: React.FC<{info: PersonaRefineResult; onClose: () => void}> = ({info, onClose}) => (
+  <div className="hint persona-generate-result">
+    <div className="row">
+      <b>AI の書き直し案（未保存）</b>
+      <span>{info.changed.length ? `変わった項目: ${info.changed.map((k) => REFINABLE_LABEL[k]).join('・')}` : '変わった項目なし'}</span>
+      {info.costUsd > 0 && <span>/ ${info.costUsd.toFixed(2)}</span>}
+      <span style={{flex: 1}} />
+      <button className="small" onClick={onClose}>
+        閉じる
+      </button>
+    </div>
+    {info.changes.length > 0 && (
+      <ul className="tour-list">
+        {info.changes.map((c, i) => (
+          <li key={i}>{c}</li>
+        ))}
+      </ul>
+    )}
+    {info.samples.length > 0 && (
+      <p>
+        この方針で書いたフックの例: {info.samples.map((x) => `「${x}」`).join(' ')}
+      </p>
+    )}
+    <p>下の編集欄に入っています。見比べて「人格を保存」で確定、やめるなら「元に戻す」。</p>
+  </div>
+);
+
 // ───────────────────────── 人格 ─────────────────────────
 
 const PersonasCard: React.FC = () => {
@@ -1153,6 +1266,19 @@ const PersonasCard: React.FC = () => {
   }, [s.personas, sel]);
   const [draft, setDraft] = useState<Persona | null>(null);
   useEffect(() => setDraft(cur ? clone(cur) : null), [cur]);
+  // AI で磨いた案。対象の人格が選ばれた状態になってから編集欄に入れる（上の effect が先に元の値へ戻すので、その後で重ねる）
+  const [pending, setPending] = useState<PersonaRefineResult | null>(null);
+  const [refined, setRefined] = useState<PersonaRefineResult | null>(null);
+  useEffect(() => {
+    if (!pending || cur?.id !== pending.id) return;
+    setDraft(clone(pending.persona));
+    setRefined(pending);
+    setPending(null);
+  }, [pending, cur]);
+  const onProposal = (r: PersonaRefineResult) => {
+    setSel(r.id);
+    setPending(r);
+  };
   const [voices, setVoices] = useState<Voice[]>([]);
   useEffect(() => {
     void api
@@ -1251,6 +1377,8 @@ const PersonasCard: React.FC = () => {
       </div>
 
       <PersonaGenerate onCreated={setSel} />
+      {cur && <PersonaRefine persona={cur} onProposal={onProposal} />}
+      {refined && refined.id === cur?.id && <RefineSummary info={refined} onClose={() => setRefined(null)} />}
 
       {draft && (
         <>
@@ -1305,6 +1433,10 @@ const PersonasCard: React.FC = () => {
             <label title="締めテロップとして認める語。これを含まないと検証で W が出る">
               締めとして認める語（／区切り）
               <input value={draft.ctaPatterns.join('／')} onChange={(e) => set({ctaPatterns: parts(e.target.value)})} placeholder="例: 行ってみて／詳細はキャプションへ" />
+            </label>
+            <label className="full" title="冒頭のテロップとナレーションの書き方の方針。1 行 1 条で、台本・テロップ・ナレーション・フック案のプロンプトに入る">
+              フックの方針（1 行 1 条）
+              <textarea value={draft.hookRules.join('\n')} onChange={(e) => set({hookRules: lines(e.target.value)})} placeholder="例: ターゲットを狭めない。グルメ好き以外にも分かる言葉で書く" />
             </label>
             <label className="full" title="ナレーション原稿の禁則。1 行 1 条でプロンプトの箇条書きになる">
               ナレーションの禁則（1 行 1 条）

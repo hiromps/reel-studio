@@ -164,6 +164,7 @@ export const PersonaDraftSchema = z.object({
   cta: z.array(z.string()).default([]),
   ctaPatterns: z.array(z.string()).default([]),
   hookStyle: HookStyleSchema.default('free'),
+  hookRules: z.array(z.string()).default([]),
   narrationRules: z.array(z.string()).default([]),
   defaultFormat: FormatIdSchema.default('F0'),
   theme: ThemeSchema.default('pop'),
@@ -185,13 +186,14 @@ const enumOf = (v: readonly string[]) => ({type: 'string', enum: [...v]});
 export const PERSONA_DRAFT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['label', 'tone', 'cta', 'ctaPatterns', 'hookStyle', 'narrationRules', 'defaultFormat', 'theme', 'allowEmptyReveal', 'captionGuide', 'hashtagBank', 'hashtags', 'maxChars', 'summary', 'evidence'],
+  required: ['label', 'tone', 'cta', 'ctaPatterns', 'hookStyle', 'hookRules', 'narrationRules', 'defaultFormat', 'theme', 'allowEmptyReveal', 'captionGuide', 'hashtagBank', 'hashtags', 'maxChars', 'summary', 'evidence'],
   properties: {
     label: {type: 'string', description: '人格の表示名（20 文字まで。例「おっしー風（関西・発見型）」）'},
     tone: {type: 'string', description: '文体を 1 行で。プロンプトに「文体: …」としてそのまま入る（方言・語尾・一人称・テンション・言い切り方・絵文字の有無）'},
     cta: {type: 'array', items: {type: 'string'}, description: '締めテロップの既定文。動画の締めで実際に使われていた言い回しを一般化したもの（店名・地名を含めない）。1〜3 個、先頭が既定'},
     ctaPatterns: {type: 'array', items: {type: 'string'}, description: '締めテロップとして認める語（部分一致）。cta の核になる語を含める。2〜6 個'},
     hookStyle: {...enumOf(HookStyleSchema.options), description: 'areaDigit＝冒頭フックが「エリア名＋一桁数字」型（地元の9割が知らない 等）、free＝縛らない'},
+    hookRules: {type: 'array', items: {type: 'string'}, description: 'フック（冒頭のテロップとナレーション）の書き方の方針。1 要素 1 行。誰に向けて・どんな言葉で・何を最初に見せるか。根拠のあるものだけ（0〜5 個）'},
     narrationRules: {type: 'array', items: {type: 'string'}, description: 'ナレーション原稿の禁則。1 要素 1 行。根拠のあるものだけ（0〜5 個）'},
     defaultFormat: {...enumOf(FormatIdSchema.options), description: '一番多かった構成の型'},
     theme: {...enumOf(ThemeSchema.options), description: 'テロップの配色の傾向'},
@@ -247,6 +249,7 @@ export const buildPersonaPrompt = (input: PersonaPromptInput): string => {
       ? '- captionGuide は、投稿のキャプションの構成（行数・順番・絵文字の付け方・区切り線・「頂いたもの」などの見出し・実用情報の並び・ハッシュタグの位置と本数）を**番号付きの手順**として書く。固有名詞は書かず、「店名」「料理名」のような置き場で書く。既存の型と同じく「書かないこと」も箇条書きで添える'
       : '- captionGuide は、動画の締め方・保存させている情報から推測できる範囲で書き、推測した部分には「（要確認）」と添える',
     captions ? '- hashtagBank は実際のタグの選び方（エリア → ジャンル → 店名や決め手、本数、使っていない種類のタグ）をまとめる。hashtags はキャプションのタグ本数の中央値' : '- hashtagBank は無難な既定（エリア 1・ジャンル 1・決め手 1）でよい',
+    '- hookRules は、冒頭フックの分析から言える書き方の方針（誰に向けた言葉か・数字や問いかけの使い方・最初の 1 秒で何を見せるか）。言い回しそのものではなく方針として書く。無ければ空',
     '- narrationRules は、声の使い方の分析から確かに言えることだけ（例「語尾に「〜わ」を使わない」）。無ければ空',
     '- evidence には「動画 2 の締め「〜」」「動画 1〜4 のキャプションが全部〜で始まる」のように、どの動画のどこを根拠にしたかを書く',
     '- 三点リーダーを書くときは全角の中黒 3 つ「・・・」にする（「…」は使わない）',
@@ -258,6 +261,7 @@ export const buildPersonaPrompt = (input: PersonaPromptInput): string => {
           `- 文体: ${input.base.tone || '-'}`,
           `- 締め: ${input.base.cta.join('／')}（認める語: ${input.base.ctaPatterns.join('／')}）`,
           `- フックの型: ${input.base.hookStyle} / 既定の型: ${input.base.defaultFormat} / テーマ: ${input.base.theme}`,
+          ...input.base.hookRules.map((r) => `- フックの方針: ${r}`),
           ...input.base.narrationRules.map((r) => `- ナレーションの禁則: ${r}`),
           `- ハッシュタグ ${input.base.caption.hashtags} 本 / 長さの目安 ${input.base.caption.maxChars || '上限なし'}`,
           '',
@@ -300,6 +304,7 @@ export const personaFromDraft = (id: string, draft: PersonaDraft, opt: {base?: P
     narration: c.narration,
     tone: draft.tone.trim(),
     hookStyle: draft.hookStyle,
+    hookRules: trimList(draft.hookRules),
     narrationRules: trimList(draft.narrationRules),
     captionGuide: draft.captionGuide.trim() || (opt.base?.captionGuide ?? ''),
     hashtagBank: draft.hashtagBank.trim() || (opt.base?.hashtagBank ?? ''),
@@ -320,6 +325,7 @@ export const describePersonaDraft = (p: Persona, draft?: PersonaDraft): string[]
     `フックの型: ${p.hookStyle === 'areaDigit' ? 'エリア名＋一桁数字' : '縛らない'} / 既定の型: ${p.defaultFormat} ${FORMAT_SPECS[p.defaultFormat].name} / テーマ: ${p.theme}`,
     `ハッシュタグ ${p.caption.hashtags} 本 / 長さの目安 ${p.caption.maxChars || '上限なし'}${p.allowEmptyReveal ? ' / F7 で店名テロップを空にしてよい' : ''}`,
   ];
+  for (const r of p.hookRules) lines.push(`フックの方針: ${r}`);
   for (const r of p.narrationRules) lines.push(`ナレーションの禁則: ${r}`);
   if (draft?.summary) lines.push(`要約: ${draft.summary}`);
   if (draft?.evidence.length) {

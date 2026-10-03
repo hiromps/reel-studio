@@ -28,7 +28,7 @@ import {instagramMcpEnv} from './instagram-mcp';
 import {fetchInstagramVideoInfo, parseInstagramPostUrl} from '../shared/instagram-mcp';
 import {agentProgress} from './ai';
 import {aiScript, readScript, scriptPath, writeScript, type AiScriptResult} from './script';
-import {getPersona} from '../shared/personas';
+import {getPersona, hookRuleLines} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {DOC_FILES} from '../shared/project';
 import {AngleSchema, ClipKindSchema} from '../shared/schema/catalog';
@@ -904,6 +904,7 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
     `人格: ${persona.label}／文体: ${persona.tone || '-'}／締めの語族: ${persona.cta.join('／')}／実測話速 ${persona.narration.charsPerSecMeasured} 文字/秒`,
     ...persona.narrationRules.map((r) => `ナレーションの禁則: ${r}`),
     persona.hookStyle === 'areaDigit' ? `フックの型: 「エリア＋一桁数字」。**エリア名（${brief.shop.area || 'エリア名'}）は本文に入れず badge に出す**。本文はエリア名が無くても通る言い回しに` : '',
+    ...hookRuleLines(persona, 'フック（冒頭）', ''),
     facts.length ? `裏取り済みの事実（ここに無いことは書かない。料理名・数字を推測で作らない）:\n${facts.map((f) => `- ${f}`).join('\n')}` : '裏取り済みの事実は登録されていない。映像から確実に言えることだけ書く（料理名・数字を推測で作らない）',
     '',
     '## 使える素材（AI が映像を見て書いた説明つき）',

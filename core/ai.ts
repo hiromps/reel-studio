@@ -21,6 +21,7 @@ import {readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaptio
 import {validateProject} from './render';
 import {runAgent, type AgentEvent, type AgentRun} from './agent';
 import {agentAddDirs, captionGuideLabel, materializePersonaDocs, promptPath} from './persona-docs';
+import {hookRuleLines} from '../shared/personas';
 import {instagramMcpEnv, instagramMcpForAgent, instagramToolLabel, isInstagramMcpTool} from './instagram-mcp';
 import {activitySummary, createAgentTracker, fmtElapsed, progressView, type ProgressLabels} from '../shared/agent-progress';
 
@@ -450,6 +451,7 @@ export async function aiTelop(
           '- 店名は hook に出さない',
         ].join('\n')
       : '',
+    ...hookRuleLines(persona),
     `- 役割 reveal は店名「${brief.shop.name}」を出すカット`,
     `- 役割 cta（締め）は ${persona.cta.join('／')} 系で言い切る`,
     '- 役割が access / hours / budget / menu / crowd / scene / howto / caution のものは、その実用情報を書く（保存される理由になる部分）',
@@ -617,6 +619,7 @@ export async function aiNarration(
     '- **無音を作らない。** テロップがあるのにナレーションが 2 秒以上途切れる箇所を作らない。短いつなぎカットは前後のブロックに含めてよい',
     `- 文体: ${persona.tone}`,
     ...persona.narrationRules.map((r) => `- ${r}`),
+    ...hookRuleLines(persona, '冒頭（フック）のブロック'),
     '- 同じ語尾を続けない（「〜た」「〜た」「〜た」のような単調な連続を避ける）',
     '- **固有名詞・数字＋単位・読みが割れる漢字はひらがな・カタカナに開く**（TTS の誤読対策。「牛すじ」→「ぎゅうすじ」、「350g」→「350グラム」、「大盛り」→「おおもり」、読みが割れる店名は かな書き。テロップは漢字のままでよい）',
     '- 文中の句点（。）は 0.7 秒前後の間を生む。詰めたいときは読点（、）にする',
@@ -1475,6 +1478,7 @@ export async function aiEdit(
     `- テロップの文体: ${persona.tone}`,
     `- ナレーション: **そのブロックの区間に出ているテロップの内容に沿って書く**（一字一句同じにはせず、言い換え・主語や理由の補足・キャプションや裏取り済みの事実で肉付けする）。上の「目安 N 文字」を超えると次のブロックに食い込む。語尾を連続させない。固有名詞や数字の単位は TTS が誤読しないようひらがなに開く（「牛すじ」→「ぎゅうすじ」、「350g」→「350グラム」。テロップは漢字のままでよい）`,
     ...persona.narrationRules.map((r) => `- ナレーション: ${r}`),
+    ...hookRuleLines(persona, 'テロップ・ナレーションの冒頭（フック）'),
     `- カットの尺は ${maxCutSec} 秒を超えない（会話字幕のカットは例外）`,
     '- 同じテロップ文言が続くカットは 1 グループ。group で指すと全部まとめて変わる',
     '',

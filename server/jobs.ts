@@ -26,6 +26,7 @@ import {aiScriptDraft} from '../core/script-draft';
 import {aiMimic, analyzeReference, copyReferenceFrom, deleteLibraryEntry, fetchReferenceToInbox, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
+import {refinePersona} from '../core/persona-refine';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
 import {applyMosaic, revertMosaic, setupMosaic} from '../core/mosaic';
@@ -389,6 +390,18 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           signal,
         });
         return {persona: r.persona, summary: r.draft.summary, evidence: r.draft.evidence, sources: r.sources, analyzed: r.analyzed, costUsd: r.costUsd, replaced: r.replaced, lines: r.lines};
+      }
+      // 既存の人格を指示どおりに磨く。案を返すだけ（保存は画面の「人格を保存」）
+      case 'ai-persona-refine': {
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        return await refinePersona({
+          id: typeof p.id === 'string' ? p.id : '',
+          instruction: typeof p.instruction === 'string' ? p.instruction : '',
+          model: typeof p.model === 'string' ? p.model : undefined,
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
       }
       case 'ai-caption': {
         if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);

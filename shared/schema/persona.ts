@@ -30,6 +30,11 @@ export const PersonaSchema = z.object({
   tone: z.string().default(''),
   /** フックの型。areaDigit＝「エリア名＋一桁数字」（エリア名はバッジへ出す）。free＝縛らない */
   hookStyle: HookStyleSchema.default('free'),
+  /**
+   * フック（冒頭のテロップとナレーション）の書き方の方針。1 要素 1 行でプロンプトの箇条書きになる。
+   * 例「ターゲットを狭めない。グルメ好き以外にも刺さる、誰にでも分かる言葉で書く」
+   */
+  hookRules: z.array(z.string().min(1)).default([]),
   /** ナレーション原稿の禁則。1 要素 1 行でプロンプトの箇条書きになる */
   narrationRules: z.array(z.string().min(1)).default([]),
   /** キャプションの型（markdown）。skillDir が無いとき <案件>/.studio/persona/caption-guide.md に書き出して読ませる */

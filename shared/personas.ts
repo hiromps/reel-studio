@@ -8,6 +8,13 @@ import {PersonaSchema, type Persona} from './schema/persona';
 export {PersonaSchema, PersonasFileSchema, HookStyleSchema} from './schema/persona';
 export type {Persona, HookStyle, PersonasFile} from './schema/persona';
 
+/**
+ * フックの方針をプロンプトの箇条書きにする。テロップ・ナレーション・台本・フック案の各プロンプトで同じ文面を使う。
+ * 方針が無ければ空配列（行を足さない）
+ */
+export const hookRuleLines = (persona: Pick<Persona, 'hookRules'>, target = 'フック（冒頭）', bullet = '- '): string[] =>
+  (persona.hookRules ?? []).length ? [`${bullet}${target}の書き方の方針（人格の設定・優先して守る）:`, ...persona.hookRules.map((r) => `  - ${r}`)] : [];
+
 /** キャプションの型（汎用）。人格ごとに Settings で書き換えられる */
 export const GENERIC_CAPTION_GUIDE = `# キャプションの型
 
@@ -45,7 +52,7 @@ export const GENERIC_HASHTAG_BANK = `# ハッシュタグの選び方
 - 設定の本数を超えて付けない
 `;
 
-const builtin = (p: Omit<Persona, 'captionGuide' | 'hashtagBank'> & Partial<Pick<Persona, 'captionGuide' | 'hashtagBank'>>): Persona =>
+const builtin = (p: Omit<Persona, 'captionGuide' | 'hashtagBank' | 'hookRules'> & Partial<Pick<Persona, 'captionGuide' | 'hashtagBank' | 'hookRules'>>): Persona =>
   PersonaSchema.parse({captionGuide: GENERIC_CAPTION_GUIDE, hashtagBank: GENERIC_HASHTAG_BANK, ...p});
 
 /**

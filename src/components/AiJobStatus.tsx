@@ -18,6 +18,7 @@ export const AI_JOB_LABEL: Record<string, string> = {
   'ai-reference': '参考動画の型を分析中',
   'ai-mimic': '参考動画の型で台本を作成中（→ 組み立て）',
   'ai-persona': 'AI が人格を作成中（動画の分析 → 言語化）',
+  'ai-persona-refine': 'AI が人格を磨いています',
   'reference-library': '参考動画のライブラリを更新中',
   winner: '二次活用版を作成中（レンダー→音声→mix→倍速）',
   build: '仕上げを実行中',
