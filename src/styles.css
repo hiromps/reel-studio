@@ -2143,6 +2143,30 @@ a.btn-like:hover {
   overflow: auto;
   padding: 10px 14px;
 }
+/* 選択中にパネル上端へ貼り付く「← 動画全体」。狭い画面ではシートの「閉じる」が同じ役目なので出さない */
+.insp-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: -10px; /* .ed-inspector の上余白ぶん上げて、スクロールしても隙間を作らない */
+  z-index: 2;
+  margin: -10px -14px 8px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.insp-back .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .insp-back {
+    display: none;
+  }
+}
 /* プレビューは方眼の点を打ったキャンバスの真ん中に浮かせる */
 .ed-center {
   position: relative;

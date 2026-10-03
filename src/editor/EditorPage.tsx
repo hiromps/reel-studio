@@ -415,6 +415,15 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
               </button>
             </div>
           )}
+          {/* 広い画面用。選択を外す手段が Esc しか無く、「動画全体」へ戻れないと思われていた */}
+          {sel && (
+            <div className="insp-back">
+              <button className="small" onClick={() => setSelection(null)} title="選択を外して動画全体の設定に戻る（Esc）">
+                ← 動画全体
+              </button>
+              <span className="hint">{selectionLabel(sel)} を編集中</span>
+            </div>
+          )}
           {sel?.kind === 'cut' && <CutInspector m={m} index={sel.index} onSeekCut={seekCut} focusTelop={focusTelop} />}
           {sel?.kind === 'telop' && <TelopInspector m={m} group={sel.group} onSeekCut={seekCut} />}
           {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} ttsBlockedBy={ttsBlockedBy} />}
