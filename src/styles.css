@@ -978,8 +978,14 @@ body.dnd-active * {
   grid-template-columns: 320px 1fr;
   gap: 12px;
 }
+/* 列は中身の長さで広げない。進捗の段階名やエラーには空白の無い長いファイル名・パスが入るので、
+   そのままだとカードごと画面より広がり、ゲージも横に伸びる（スマホで目立つ） */
+.jobs > * {
+  min-width: 0;
+}
 .job {
   padding: 6px;
+  overflow-wrap: anywhere;
   border: 1px solid var(--line);
   border-radius: 8px;
   margin-bottom: 4px;
@@ -1023,6 +1029,7 @@ body.dnd-active * {
   max-height: 420px;
   overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .result video {
   width: 270px;
@@ -4273,4 +4280,18 @@ a.btn-like:hover {
   .flow-step > button {
     margin-left: 34px;
   }
+}
+
+/* Render の「？ 用語の説明」：見出しの右のボタンと、開いたときの説明パネル */
+.card h2 > .help-toggle {
+  float: right;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.render-terms {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 12px 12px;
+  margin-bottom: 12px;
 }
