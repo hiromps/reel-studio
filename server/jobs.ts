@@ -22,6 +22,7 @@ import {runTrial} from '../core/trial';
 import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
 import {aiScript} from '../core/script';
+import {aiScriptDraft} from '../core/script-draft';
 import {aiMimic, analyzeReference, copyReferenceFrom, deleteLibraryEntry, fetchReferenceToInbox, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
@@ -256,6 +257,33 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
             `検算で E が出たので書いていません:\n${r.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}\n  結果は Brief の「割り当ての結果」で確認できます`,
           );
         return {written: r.written, cuts: r.plan.cuts.length, narration: r.plan.narration.length, totalSec: r.totalSec, issues: r.issues, fixes: r.fixes, unmatched: r.plan.unmatched, costUsd: r.costUsd, notes: r.plan.notes};
+      }
+      // 依頼文 → 台本（script.md）。assemble なら続けて「台本から組み立てる」
+      case 'ai-script-draft': {
+        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        const write = p.write !== false;
+        const r = await aiScriptDraft(dir, {
+          request: typeof p.request === 'string' ? p.request : '',
+          model: typeof p.model === 'string' ? p.model : undefined,
+          assemble: !!p.assemble,
+          write,
+          force: !!p.force,
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
+        if (r.assembled && write && !r.assembled.written)
+          throw new Error(
+            `台本は書きましたが、組み立ての検算で E が出たので cuts.json は書いていません:\n${r.assembled.issues.filter((i) => i.severity === 'E').map((i) => `  ${i.message}`).join('\n')}\n  結果は Brief の「割り当ての結果」で確認できます`,
+          );
+        return {
+          sections: r.plan.sections.length,
+          issues: r.issues,
+          fixes: r.fixes,
+          unmatched: r.plan.unmatched,
+          costUsd: r.costUsd,
+          assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec, fixes: r.assembled.fixes} : null,
+        };
       }
       // 参考動画（他の人のバズったリール）の型を分析する。url があれば先に取り込む（スマホから上げた Blob）、igUrl なら Instagram から落として取り込む、
       // copyFrom があれば別案件の分析を複製するだけ（AI は走らせない）

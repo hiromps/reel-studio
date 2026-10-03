@@ -589,8 +589,17 @@ export const renderMimicScript = (plan: MimicPlan, ref: Reference, opt: {shopNam
     p.tempoStyle ? `# テンポ: ${p.tempoStyle}` : '',
     plan.notes ? `# 意図: ${plan.notes.replace(/\s*\n\s*/g, ' ')}` : '',
   ].filter(Boolean);
+  const tail = plan.unmatched.length ? ['', '# 参考にはあるが手元の素材に無いもの（撮り足しの候補）', ...plan.unmatched.map((u) => `# - ${u}`)] : [];
+  return [...head, '', renderScriptSections(plan.sections), ...tail].join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+};
+
+/**
+ * 区間の並びを script.md の本文にする（「台本から組み立てる」が読める【0〜2.5秒】の見出しの形）。
+ * 型を写した台本と、依頼文から書いた台本（core/script-draft.ts）で共通
+ */
+export const renderScriptSections = (input: readonly MimicSection[]): string => {
   const body: string[] = [];
-  const sections = [...plan.sections].sort((a, b) => a.fromSec - b.fromSec);
+  const sections = [...input].sort((a, b) => a.fromSec - b.fromSec);
   sections.forEach((s, i) => {
     if (s.toSec - s.fromSec < 0.1) return;
     const t = (v: string | undefined) => (v ?? '').trim();
@@ -604,6 +613,5 @@ export const renderMimicScript = (plan: MimicPlan, ref: Reference, opt: {shopNam
     if (t(s.why)) lines.push(`狙い： ${t(s.why)}`);
     body.push(lines.join('\n'));
   });
-  const tail = plan.unmatched.length ? ['', '# 参考にはあるが手元の素材に無いもの（撮り足しの候補）', ...plan.unmatched.map((u) => `# - ${u}`)] : [];
-  return [...head, '', body.join('\n\n'), ...tail].join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  return body.join('\n\n');
 };

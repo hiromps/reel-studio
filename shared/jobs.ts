@@ -25,6 +25,8 @@ export const JOB_TYPES = [
   'ai-caption',
   'ai-facts',
   'ai-script',
+  /** 依頼文（どんな動画にしたいか）から台本（script.md）を書く。assemble なら続けて「台本から組み立てる」まで */
+  'ai-script-draft',
   'tts',
   'sfx-scan',
   'sfx-auto',

@@ -66,7 +66,7 @@ export const sendToAll = async (payload: PushPayload): Promise<{sent: number; dr
 };
 
 /** 通知を出す価値があるジョブ（一瞬で終わるものまで鳴らさない） */
-const NOTIFY_TYPES = new Set(['render', 'draft', 'build', 'mix', 'deliver', 'trial', 'winner', 'catalog', 'mosaic', 'ingest', 'ai-script', 'ai-order', 'ai-telop', 'ai-narration', 'ai-caption', 'ai-tag', 'tts']);
+const NOTIFY_TYPES = new Set(['render', 'draft', 'build', 'mix', 'deliver', 'trial', 'winner', 'catalog', 'mosaic', 'ingest', 'ai-script', 'ai-script-draft', 'ai-order', 'ai-telop', 'ai-narration', 'ai-caption', 'ai-tag', 'tts']);
 
 const LABEL: Record<string, string> = {
   render: 'レンダー',
@@ -81,6 +81,7 @@ const LABEL: Record<string, string> = {
   ingest: '素材の取り込み',
   tts: '音声生成',
   'ai-script': '台本からの組み立て',
+  'ai-script-draft': '依頼文からの台本',
   'ai-order': '並べ替え',
   'ai-telop': 'テロップ',
   'ai-narration': 'ナレーション原稿',

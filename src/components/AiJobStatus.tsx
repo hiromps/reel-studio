@@ -13,6 +13,7 @@ export const AI_JOB_LABEL: Record<string, string> = {
   'ai-caption': 'AI がキャプションを作成中',
   'ai-facts': 'AI が店舗情報を裏取り中',
   'ai-script': 'AI が台本から組み立て中',
+  'ai-script-draft': 'AI が依頼文から台本を作成中',
   'ai-hooks': 'AI がトライアル用のフック案とキャプションを作成中',
   'ai-reference': '参考動画の型を分析中',
   'ai-mimic': '参考動画の型で台本を作成中（→ 組み立て）',

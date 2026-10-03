@@ -42,6 +42,9 @@ const approvalText = (p: Proposal): string => {
   return ['この割り当てで書き込みますか？（AI はもう走らせません）', '', ...items, '', '旧版は .studio/backups/ に残ります。音声は作り直しになります。'].join('\n');
 };
 
+const REQUEST_PLACEHOLDER = `例）カニ蔵の食べ放題を 20 秒で。冒頭はカニを持ち上げるシズルから入って、本ずわい蟹3Lが食べ放題なのを推す。
+お寿司や一品料理もあることを畳みかけて、最後は「ぜひ行ってみて」で締める。テンポは速め、関西弁まじりで`;
+
 const PLACEHOLDER = `【0〜3秒】フック
 映像： 盛り合わせの全体を一気に見せる。肉のアップ
 テロップ： 価格論争が起きた焼肉盛り
@@ -72,13 +75,32 @@ export const ScriptCard: React.FC<{
   const [info, setInfo] = useState<ScriptRes | null>(null);
   const [open, setOpen] = useState(false);
   const dirty = text !== saved;
+  const requestKey = `reel-studio:script-request:${slug ?? ''}`;
+  const [request, setRequestState] = useState('');
+  useEffect(() => {
+    try {
+      setRequestState(localStorage.getItem(requestKey) ?? '');
+    } catch {
+      setRequestState('');
+    }
+  }, [requestKey]);
+  const setRequest = (v: string) => {
+    setRequestState(v);
+    try {
+      localStorage.setItem(requestKey, v);
+    } catch {
+      /* 覚えられなくても送れる */
+    }
+  };
   const sectionCount = info?.sections?.length ?? 0;
   useEffect(() => {
     onState?.({hasText: !!saved.trim(), sections: sectionCount});
   }, [saved, sectionCount, onState]);
   // 「バズ動画の型を写す」（ai-mimic）も script.md を書いて組み立てるので、同じく待つ
-  const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'ai-script' || j.type === 'ai-mimic'));
+  const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'ai-script' || j.type === 'ai-mimic' || j.type === 'ai-script-draft'));
+  const drafting = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'ai-script-draft' && j.slug === slug);
   const unsupported = !s.supportsJob('ai-script');
+  const draftUnsupported = !s.supportsJob('ai-script-draft');
   const catalog = s.files.catalog.data;
   const untagged = (catalog?.clips ?? []).filter((c) => !c.tags && !c.user.ng).length;
 
@@ -118,11 +140,11 @@ export const ScriptCard: React.FC<{
   // 台本は編集中なら読み直さない（走っている間に書いた変更を消さないように）
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
-  const finished = s.jobs.find((j) => (j.type === 'ai-script' || j.type === 'ai-mimic') && j.slug === slug && (j.status === 'done' || j.status === 'failed'));
+  const finished = s.jobs.find((j) => (j.type === 'ai-script' || j.type === 'ai-mimic' || j.type === 'ai-script-draft') && j.slug === slug && (j.status === 'done' || j.status === 'failed'));
   useEffect(() => {
     if (!finished) return;
     // 型を写す工程は script.md を書き換えるので、編集中でも読み直す（AI が書いた新しい台本の方が正）
-    if (!dirtyRef.current || finished.type === 'ai-mimic') void load();
+    if (!dirtyRef.current || finished.type === 'ai-mimic' || finished.type === 'ai-script-draft') void load();
     void loadProposal();
   }, [finished?.id, finished?.status, finished?.type, load, loadProposal]);
 
@@ -279,6 +301,40 @@ export const ScriptCard: React.FC<{
           </div>
         </div>
       )}
+
+      <div className="script-request" style={{marginTop: 8}}>
+        <div className="summary">
+          <span>
+            <b>依頼文から台本を作る</b>
+          </span>
+          <span className="hint">どんな動画にしたいかを書くと、AI が手元の素材とこの案件の事実から、下の欄に区間つきの台本を書きます</span>
+        </div>
+        <textarea
+          className="caption-box"
+          style={{minHeight: 110}}
+          value={request}
+          onChange={(e) => setRequest(e.target.value)}
+          placeholder={REQUEST_PLACEHOLDER}
+        />
+        <div className="row" style={{marginTop: 6}}>
+          <button
+            className="primary"
+            onClick={() => s.addJob('ai-script-draft', {model: aiModel, request})}
+            disabled={busy || draftUnsupported || !request.trim() || !catalog || dirty}
+            title={dirty ? 'script.md に未保存の変更があります（書いた台本で上書きされます）' : !catalog ? '先に素材のカタログ化が要ります' : '依頼文から台本を書いて下の欄に入れます（前の台本は .studio/backups/ に残ります）'}
+          >
+            {drafting ? '台本を書いています…' : '台本を書いてもらう'}
+          </button>
+          <button
+            onClick={() => s.addJob('ai-script-draft', {model: aiModel, request, assemble: true})}
+            disabled={busy || draftUnsupported || !request.trim() || !catalog || dirty}
+            title="台本を書いたあと、そのまま「台本から組み立てる」まで行います（cuts.json と narration.json を書きます）"
+          >
+            書いてそのまま組み立てる
+          </button>
+          {draftUnsupported && <span className="pill warn">PC の Reel Studio が古いままです。起動し直してください</span>}
+        </div>
+      </div>
 
       <textarea
         className="caption-box"
