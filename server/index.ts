@@ -11,7 +11,8 @@ import {pickFolder} from '../core/pick-folder';
 import {ttsAvailable} from '../core/tts';
 import {instagramMcpAvailable} from '../core/instagram-mcp';
 import {claudeAvailable} from '../core/agent';
-import {loadSettings, settingsDir, settingsProblem} from '../core/settings';
+import {agentProvider, deepseekApiKey, loadSettings, settingsDir, settingsProblem} from '../core/settings';
+import {agentStatusOf} from '../shared/schema/settings';
 import {listFonts} from '../core/fonts';
 import {JOB_TYPES} from './jobs';
 import {projectsRouter} from './routes/projects';
@@ -119,6 +120,8 @@ app.get('/api/config', (_req, res) => {
     instagramMcp: instagramMcpAvailable(),
     // 裏で走らせる claude が見つかっているか
     claude: claudeAvailable(),
+    // いま AI がどこに繋がっているか（Claude / DeepSeek とモデル）。画面上部に常に出す。鍵そのものは返さない
+    agent: agentStatusOf(agentProvider(), studioConfig.agent.model, {claude: claudeAvailable(), deepseekKey: !!deepseekApiKey()}),
     // 取り込み済みの自前フォントと、新しく作る動画で使う既定（Timeline のフォント選択が使う）
     fonts: listFonts(),
     telopFont: loadSettings().telop.font ?? null,

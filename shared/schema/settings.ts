@@ -41,6 +41,19 @@ export const DEEPSEEK_MODELS = [
 ] as const;
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-pro';
 export const DEEPSEEK_FAST_MODEL = 'deepseek-v4-flash';
+export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {claude: 'Claude', deepseek: 'DeepSeek'};
+
+/**
+ * いま AI がどこに繋がっているか（GET /api/config の agent）。画面上部に常に出す。
+ * ready＝claude が見つかっていて、DeepSeek なら鍵もある（押せば動く状態）
+ */
+export type AgentStatus = {provider: AgentProvider; model: string; ready: boolean; problem: string | null; issue: 'no-claude' | 'no-key' | null};
+
+export const agentStatusOf = (provider: AgentProvider, model: string, o: {claude: boolean; deepseekKey: boolean}): AgentStatus => {
+  const issue = !o.claude ? 'no-claude' : provider === 'deepseek' && !o.deepseekKey ? 'no-key' : null;
+  const problem = issue === 'no-claude' ? 'claude 実行ファイルが見つかりません' : issue === 'no-key' ? 'DeepSeek の API キーが未設定です' : null;
+  return {provider, model, ready: !issue, problem, issue};
+};
 
 const AgentSchema = z.object({
   /** 接続先。既定は Claude（ログイン中のアカウント） */

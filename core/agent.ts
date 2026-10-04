@@ -246,6 +246,8 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
   const startedAt = Date.now();
   const heartbeat = opt.onEvent ? setInterval(() => opt.onEvent?.({kind: 'heartbeat', elapsedSec: (Date.now() - startedAt) / 1000}), opt.heartbeatMs ?? 5000) : undefined;
 
+  // どこに繋いで走らせたかを作業ログに残す（Claude のつもりで DeepSeek に課金していた、を後から追えるように）
+  if (Object.keys(backendEnv).length) opt.onLine?.(`（AI の接続先: DeepSeek ／ モデル ${opt.model ?? backendEnv.ANTHROPIC_MODEL}）`);
   const transport = promptTransport(opt.prompt);
   if (transport.stdin !== undefined) opt.onLine?.(`（プロンプトが ${opt.prompt.length.toLocaleString()} 文字と長いので標準入力で渡します）`);
   const execOpt: ExecOptions = {

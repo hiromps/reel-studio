@@ -341,6 +341,43 @@ label > textarea {
   background: var(--err);
   font-weight: 700;
 }
+/* AI の接続先（上部バー）。Claude と DeepSeek で色を分け、ひと目で区別できるようにする。押すと Settings へ */
+.pill.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1.4;
+  align-self: center;
+}
+.pill.agent-claude {
+  background: var(--tint-purple);
+  color: var(--tint-purple-fg);
+  border-color: color-mix(in srgb, var(--tint-purple-fg) 35%, transparent);
+}
+.pill.agent-deepseek {
+  background: var(--tint-yellow);
+  color: var(--tint-yellow-fg);
+  border-color: color-mix(in srgb, var(--tint-yellow-fg) 35%, transparent);
+}
+.agent-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.agent-badge-model {
+  font-weight: 500;
+  opacity: 0.85;
+}
+/* PC の中くらいの幅ではモデル名を隠す（長いとタブの文字が折り返す）。モデルは押した先の Settings と吹き出しで見られる */
+@media (min-width: 861px) and (max-width: 1440px) {
+  .topbar .agent-badge-model {
+    display: none;
+  }
+}
 .main {
   flex: 1;
   padding: 4px 14px 14px;

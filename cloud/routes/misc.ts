@@ -7,7 +7,7 @@ import {Router} from 'express';
 import {generateClientTokenFromReadWriteToken} from '@vercel/blob/client';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
-import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type SettingsView} from '../../shared/schema/settings';
+import {agentStatusOf, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentStatus, type SettingsView} from '../../shared/schema/settings';
 import {probeInstagramMcp} from '../../shared/instagram-mcp';
 import {probeDeepseekKey} from '../../shared/deepseek';
 import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
@@ -24,6 +24,13 @@ import {WORKER_ONLINE_MS, type WorkerStatus} from '../worker-status';
 export const miscRouter = Router();
 
 // ───────────────────────── config ─────────────────────────
+
+const agentStatusOfView = (s: SettingsView | null, claude: boolean): AgentStatus => {
+  const a = s?.settings.agent;
+  const provider = a?.provider ?? 'claude';
+  const model = provider === 'deepseek' ? (a?.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL) : (a?.model ?? 'opus');
+  return agentStatusOf(provider, model, {claude, deepseekKey: !!a?.deepseekApiKey?.present});
+};
 
 miscRouter.get('/config', async (_req, res) => {
   const [w, s] = [await kvGet<WorkerStatus>('worker'), await kvGet<SettingsView>('settings-view')];
@@ -46,6 +53,8 @@ miscRouter.get('/config', async (_req, res) => {
     stale: false,
     tts: !!fishEnv(),
     claude: w?.claude ?? false,
+    // AI の接続先は PC の設定（ワーカーが送ってきた見え方）が正。古いワーカーの見え方には provider が無い＝Claude
+    agent: agentStatusOfView(s, w?.claude ?? false),
     // 裏取りは PC の claude が走らせるので、鍵の有無も PC の設定（ワーカーが送ってきた見え方）で判断する
     instagramMcp: !!s?.settings.instagram?.mcpKey?.present,
     // PC で取り込んだ自前フォント（Timeline のフォント選択が使う）。実体は PC にある

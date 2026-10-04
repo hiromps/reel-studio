@@ -6,6 +6,7 @@ import path from 'node:path';
 import {agentProvider, deepseekApiKey, defaultSettings, loadSettings, mergeSettings, resetSettings, saveSettings, settingsView} from '../core/settings';
 import {AgentError, DEEPSEEK_ANTHROPIC_URL, providerEnv} from '../core/agent';
 import {studioConfig} from '../studio.config';
+import {agentStatusOf} from '../shared/schema/settings';
 
 let home: string;
 const ENV_KEYS = ['REEL_STUDIO_AGENT_PROVIDER', 'REEL_STUDIO_AGENT_MODEL', 'DEEPSEEK_API_KEY'];
@@ -78,5 +79,19 @@ describe('providerEnv（DeepSeek の向き先）', () => {
     expect(JSON.stringify(v)).not.toContain('sk-secret-abcd9999');
     expect(v.settings.agent.deepseekApiKey).toEqual({present: true, masked: '••••9999', source: 'settings'});
     expect(v.settings.agent.provider).toBe('deepseek');
+  });
+});
+
+describe('agentStatusOf（上部バーの接続先表示）', () => {
+  it('Claude で claude が見つかっていれば使える状態', () => {
+    expect(agentStatusOf('claude', 'opus', {claude: true, deepseekKey: false})).toEqual({provider: 'claude', model: 'opus', ready: true, problem: null, issue: null});
+  });
+  it('DeepSeek で鍵が無ければ使えない状態として理由を出す', () => {
+    const st = agentStatusOf('deepseek', 'deepseek-v4-pro', {claude: true, deepseekKey: false});
+    expect(st.ready).toBe(false);
+    expect(st.problem).toContain('API キー');
+  });
+  it('claude が無ければ接続先に関わらず使えない', () => {
+    expect(agentStatusOf('deepseek', 'deepseek-v4-pro', {claude: false, deepseekKey: true}).problem).toContain('claude');
   });
 });

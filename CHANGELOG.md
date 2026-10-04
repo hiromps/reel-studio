@@ -14,6 +14,8 @@ Claude Code の契約が切れても AI の作業を続けられるよう、Sett
 **DeepSeek（API キー・従量課金）** を選べるようにしました。同じ claude を DeepSeek の API に向けて走らせます
 （claude 本体のインストールは引き続き必要。ログインは不要）。
 
+- いまどちらに繋がっているかは、どの画面でも **右上の「AI: Claude」（紫）／「AI: DeepSeek」（黄）** で分かります。
+  押すと Settings の「AI」が開きます。DeepSeek なのに鍵が無いときなど、使えない状態は赤で出ます
 - DeepSeek の API キーを入れて **「接続テスト」** を押すと、鍵が通るかと残高を確かめられます（課金はありません）
 - 既定のモデルは `deepseek-v4-pro`。各画面のモデル選択は opus＝このモデル、sonnet / haiku＝`deepseek-v4-flash` として動きます
 - 鍵が間違っているときは、数分待たずにすぐ「DeepSeek の認証に失敗」と出て止まります

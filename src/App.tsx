@@ -15,6 +15,7 @@ import {visibleProjects} from './components/projectList';
 import {useStringPref} from './hooks/usePref';
 import {AI_JOB_LABEL} from './components/AiJobStatus';
 import {readTheme, saveTheme, type Theme} from './theme';
+import {AGENT_PROVIDER_LABEL, type AgentStatus} from '@shared/schema/settings';
 
 const TABS: {id: TourTab; label: string; sub: string}[] = [
   {id: 'projects', label: 'Projects', sub: '案件'},
@@ -29,6 +30,26 @@ const TABS: {id: TourTab; label: string; sub: string}[] = [
 const TAB_ICON: Record<TourTab, string> = {projects: '◰', materials: '▤', brief: '✎', timeline: '⟷', render: '▶', settings: '⚙'};
 type Tab = TourTab;
 const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v);
+
+/**
+ * いま AI がどこに繋がっているか（Claude / DeepSeek とモデル）。どの画面でも上部に出し、押すと Settings へ。
+ * 使えない状態（claude が無い・DeepSeek の鍵が無い）は赤で出す
+ */
+const AgentBadge: React.FC<{agent: AgentStatus; onClick: () => void}> = ({agent, onClick}) => {
+  const name = AGENT_PROVIDER_LABEL[agent.provider] ?? agent.provider;
+  return (
+    <button
+      className={`pill agent-badge ${agent.ready ? `agent-${agent.provider}` : 'err'}`}
+      onClick={onClick}
+      title={`AI の接続先: ${name}（モデル ${agent.model}）${agent.problem ? `\n${agent.problem}` : ''}\n押すと Settings の「AI」で切り替えられます`}
+      aria-label={`AI の接続先 ${name}`}
+    >
+      <span className="agent-badge-dot" aria-hidden="true" />
+      AI: {name}
+      {agent.ready ? <span className="agent-badge-model">{agent.model}</span> : <span>{agent.issue === 'no-key' ? '・鍵が未設定' : '・claude なし'}</span>}
+    </button>
+  );
+};
 
 export const App: React.FC = () => {
   const s = useStudio();
@@ -165,6 +186,7 @@ export const App: React.FC = () => {
           >
             {s.pulling ? '取り込み中…' : '⟳ 最新に'}
           </button>
+          {s.config?.agent && <AgentBadge agent={s.config.agent} onClick={() => go('settings')} />}
           {s.config?.stale && (
             <span className="pill err" title="起動したあとにツールのコードが更新されています。画面だけ新しく、サーバーは古い規則のまま動いています">
               ⚠ サーバーが古い：Reel Studio を再起動してください

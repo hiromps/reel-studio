@@ -6,7 +6,7 @@ import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
 import {UpdateCard} from '../components/UpdateCard';
-import {DEEPSEEK_MODELS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {AGENT_PROVIDER_LABEL, DEEPSEEK_MODELS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
@@ -455,6 +455,16 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         タグ付け・並べ替え・テロップ・ナレーション原稿・キャプションは、ローカルにインストールされた Claude Code（claude コマンド）を裏で走らせて作ります。接続先が Claude なら API キーは要りません。ターミナルで一度 claude を起動してログインしておいてください。実行のたびに利用枠（または API 課金）を使います。
         Claude Code の契約が切れたときは、接続先を DeepSeek にすると同じ claude を DeepSeek の API（API キー課金）に向けて走らせます（claude 本体のインストールは引き続き必要です）。
       </p>
+      <div className="row">
+        <span>いまの接続先:</span>
+        <span className={`pill agent-badge agent-${provider}`} style={{cursor: 'default'}}>
+          <span className="agent-badge-dot" aria-hidden="true" />
+          {AGENT_PROVIDER_LABEL[provider]}
+          <span className="agent-badge-model">{provider === 'deepseek' ? dsModel : a.model}</span>
+        </span>
+        {provider === 'deepseek' && !dsKey.present && <span className="pill err">API キーが未設定です</span>}
+        {form.provider !== provider && <span className="pill warn">「AI の設定を保存」を押すと {AGENT_PROVIDER_LABEL[form.provider]} に切り替わります</span>}
+      </div>
       <div className="row">
         <span>
           検出: <span className="mono">{c.bin}</span>

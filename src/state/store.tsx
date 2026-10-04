@@ -4,6 +4,7 @@ import {api, type ApiError, type Job, type ProjectInfo} from '../api';
 import type {Brief, Catalog, Narration, ReelData} from '@shared/schema';
 import type {CaptionIssue} from '@shared/caption';
 import type {FontEntry} from '@shared/schema/fonts';
+import type {AgentStatus} from '@shared/schema/settings';
 import {listPersonas, setPersonas, type Persona} from '@shared/personas';
 
 export type ContractName = 'catalog' | 'brief' | 'cuts' | 'narration';
@@ -44,6 +45,8 @@ type Store = {
     tts?: boolean;
     /** 裏で走らせる claude が見つかっているか */
     claude?: boolean;
+    /** いま AI がどこに繋がっているか（Claude / DeepSeek とモデル）。古いサーバーは返さない */
+    agent?: AgentStatus;
     /** 店舗情報の裏取りで Instagram を Smartgram MCP 経由で読めるか（Settings に鍵があるか） */
     instagramMcp?: boolean;
     settingsProblem?: string | null;
