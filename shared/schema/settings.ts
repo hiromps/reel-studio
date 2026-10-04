@@ -28,7 +28,27 @@ const TtsSchema = z.object({
   voices: z.array(VoiceEntrySchema).default([]),
 });
 
+/**
+ * 裏で走らせる claude の接続先。claude＝ログイン中の Claude（サブスク／Anthropic）、
+ * deepseek＝DeepSeek の Anthropic 互換 API（API キー課金）。Claude Code の契約が切れたとき用
+ */
+export const AGENT_PROVIDERS = ['claude', 'deepseek'] as const;
+export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
+/** DeepSeek のモデル（2026-10 時点の公式ドキュメント）。pro＝精度重視／flash＝速い・安い */
+export const DEEPSEEK_MODELS = [
+  ['deepseek-v4-pro', 'deepseek-v4-pro（精度重視）'],
+  ['deepseek-v4-flash', 'deepseek-v4-flash（速い・安い）'],
+] as const;
+export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-pro';
+export const DEEPSEEK_FAST_MODEL = 'deepseek-v4-flash';
+
 const AgentSchema = z.object({
+  /** 接続先。既定は Claude（ログイン中のアカウント） */
+  provider: z.enum(AGENT_PROVIDERS).default('claude'),
+  /** DeepSeek の API キー（sk-…）。平文で保存する（画面やログには出さない） */
+  deepseekApiKey: z.string().min(8).optional(),
+  /** DeepSeek のとき既定で使うモデル（opus 指定もこれに置き換わる。sonnet / haiku は flash） */
+  deepseekModel: z.string().min(1).default(DEFAULT_DEEPSEEK_MODEL),
   /** claude 実行ファイルの場所。省略＝PATH から探す */
   claudeBin: z.string().min(1).optional(),
   /** --model に渡す値。エイリアス（opus / sonnet / haiku）でも完全な id でもよい */
@@ -133,6 +153,9 @@ export const SettingsPatchSchema = z
     agent: z
       .object({
         claudeBin: nullable(),
+        provider: z.enum(AGENT_PROVIDERS).optional(),
+        deepseekApiKey: nullable(),
+        deepseekModel: nullable(),
         model: nullable(),
         tagBatchSize: z.number().int().min(1).max(50).optional(),
         tagConcurrency: z.number().int().min(1).max(8).optional(),
@@ -166,7 +189,8 @@ export type SettingsView = {
   exists: boolean;
   /** 設定ファイルが壊れている等の問題（無ければ null）。壊れていても既定値で動く */
   problem: string | null;
-  settings: Omit<Settings, 'tts' | 'cloud' | 'instagram'> & {
+  settings: Omit<Settings, 'tts' | 'cloud' | 'instagram' | 'agent'> & {
+    agent: Omit<Settings['agent'], 'deepseekApiKey'> & {deepseekApiKey: SecretView};
     tts: Omit<Settings['tts'], 'apiKey'> & {apiKey: SecretView};
     cloud: Omit<Settings['cloud'], 'token'> & {token: SecretView};
     instagram: Omit<Settings['instagram'], 'mcpKey'> & {mcpKey: SecretView};
@@ -180,6 +204,8 @@ export type SettingsView = {
     fishModelId: boolean;
     claudeBin: boolean;
     agentModel: boolean;
+    agentProvider: boolean;
+    deepseekApiKey: boolean;
     mosaicPython: boolean;
     cloudUrl: boolean;
     cloudToken: boolean;

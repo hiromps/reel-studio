@@ -3,11 +3,12 @@ import {Router} from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema} from '../../shared/schema/settings';
-import {fishKeyView, instagramKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
+import {deepseekApiKey, deepseekKeyView, fishKeyView, instagramKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
 import {listFonts} from '../../core/fonts';
 import {claudeAvailable, claudeBin, claudeBinInfo, claudeVersion, resetClaudeBin} from '../../core/agent';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
 import {instagramMcpEnv, probeInstagramMcp, resetInstagramMcpEnv} from '../../core/instagram-mcp';
+import {probeDeepseekKey} from '../../shared/deepseek';
 import {mosaicStatus, resetMosaicStatus} from '../../core/mosaic';
 import {resolveProjectDir} from '../../core/project';
 import {studioConfig} from '../../studio.config';
@@ -94,6 +95,15 @@ settingsRouter.post('/test/claude', async (req, res) => {
     version,
     message: version ? `動きました（${version}）` : 'claude --version が動きませんでした。Claude Code のインストールと、ターミナルで claude を一度起動してログイン済みかを確認してください',
   });
+});
+
+/** DeepSeek の鍵が通るか（残高 API。課金なし）。本文の apiKey があればそれを、無ければ保存済み／環境変数の鍵を試す。鍵は返さない */
+settingsRouter.post('/test/deepseek', async (req, res) => {
+  const typed = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+  const key = typed || deepseekApiKey() || '';
+  if (!key) return res.json({ok: false, message: 'DeepSeek の API キーが未設定です'});
+  const r = await probeDeepseekKey(key, {signal: AbortSignal.timeout(15_000)});
+  res.json({...r, source: typed ? 'input' : deepseekKeyView().source});
 });
 
 /** 顔モザイク（deface）が使えるか。python を起動して確かめるので結果は覚えておく（?refresh=1 で確かめ直す） */

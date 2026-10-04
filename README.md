@@ -196,6 +196,8 @@ CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）�
 | `FISH_API_KEY` / `FISH_MODEL_ID` | Fish Audio の鍵とモデル（既定 `s2.1-pro-free`） |
 | `REEL_STUDIO_CLAUDE_BIN` | `claude` 実行ファイルの場所 |
 | `REEL_STUDIO_AGENT_MODEL` | AI の既定モデル |
+| `REEL_STUDIO_AGENT_PROVIDER` | AI の接続先（`claude` / `deepseek`。Claude Code の契約が切れたとき用） |
+| `DEEPSEEK_API_KEY` | 接続先が DeepSeek のときの API キー |
 | `REEL_STUDIO_MOSAIC_PYTHON` | 顔モザイク（deface）に使う python |
 | `REEL_STUDIO_PORT` / `REEL_STUDIO_HOST` | サーバーのポート（既定 4310）とホスト（既定 127.0.0.1） |
 | `REEL_STUDIO_JOB_CONCURRENCY` | 同時に走らせるジョブ数（既定 2。ffmpeg / Remotion 系は常に 1） |

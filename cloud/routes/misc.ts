@@ -9,6 +9,7 @@ import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
 import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type SettingsView} from '../../shared/schema/settings';
 import {probeInstagramMcp} from '../../shared/instagram-mcp';
+import {probeDeepseekKey} from '../../shared/deepseek';
 import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
 import {SfxSoundSchema, type SfxLibrary} from '../../shared/sfx';
 import type {LibraryIndexEntry} from '../../shared/reference';
@@ -132,13 +133,13 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
         version: 1,
         paths: {},
         tts: {provider: 'fish-audio', modelId: 's2.1-pro-free', voices: [], apiKey: {present: false, masked: '', source: null}},
-        agent: {model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20},
+        agent: {provider: 'claude', deepseekModel: 'deepseek-v4-pro', deepseekApiKey: {present: false, masked: '', source: null}, model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20},
         mosaic: {},
         instagram: {mcpKey: {present: false, masked: '', source: null}},
       } as unknown as SettingsView['settings'],
       paths: {} as SettingsView['paths'],
       fonts: [],
-      env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, mosaicPython: false, cloudUrl: false, cloudToken: false, instagramMcpUrl: false, instagramMcpKey: false, instagramAccount: false},
+      env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, agentProvider: false, deepseekApiKey: false, mosaicPython: false, cloudUrl: false, cloudToken: false, instagramMcpUrl: false, instagramMcpKey: false, instagramAccount: false},
       claude: {bin: '', available: false, source: 'none', version: null},
     } as SettingsView);
   const env = fishEnv();
@@ -188,6 +189,17 @@ miscRouter.post('/settings/test/instagram', async (req, res) => {
   }
   if (!/^https?:\/\//.test(url)) return res.json({ok: false, message: `MCP サーバーの URL が不正です: ${url}`});
   res.json({...(await probeInstagramMcp({url, apiKey: typedKey}, {signal: AbortSignal.timeout(25_000)})), url, source: 'input'});
+});
+
+/** DeepSeek の残高 API はクラウドからも叩ける。保存済みの鍵は PC にしか無いので、入力中の鍵があるときだけ試す */
+miscRouter.post('/settings/test/deepseek', async (req, res) => {
+  const typed = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+  if (!typed) {
+    const s = await kvGet<SettingsView>('settings-view');
+    const present = !!s?.settings.agent?.deepseekApiKey?.present;
+    return res.json({ok: present, source: present ? 'settings' : null, message: present ? 'PC に鍵が保存されています（鍵そのものでの確認は PC 側の Settings で行ってください）' : 'DeepSeek の API キーが未設定です'});
+  }
+  res.json({...(await probeDeepseekKey(typed, {signal: AbortSignal.timeout(15_000)})), source: 'input'});
 });
 
 miscRouter.post('/settings/test/claude', async (_req, res) => {

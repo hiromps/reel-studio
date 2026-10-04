@@ -6,7 +6,7 @@ import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
 import {UpdateCard} from '../components/UpdateCard';
-import {DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {DEEPSEEK_MODELS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
@@ -372,11 +372,36 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
 
 const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
   const a = view.settings.agent;
-  const [form, setForm] = useState({claudeBin: a.claudeBin ?? '', model: a.model, tagBatchSize: a.tagBatchSize, tagConcurrency: a.tagConcurrency, timeoutMin: a.timeoutMin});
-  useEffect(() => setForm({claudeBin: a.claudeBin ?? '', model: a.model, tagBatchSize: a.tagBatchSize, tagConcurrency: a.tagConcurrency, timeoutMin: a.timeoutMin}), [a]);
+  // 古いワーカーが送ってきた見え方には DeepSeek の欄が無いので、無くても開けるようにしておく
+  const provider: AgentProvider = a.provider ?? 'claude';
+  const dsKey = a.deepseekApiKey ?? {present: false, masked: '', source: null};
+  const dsModel = a.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL;
+  const fromView = useCallback(
+    () => ({claudeBin: a.claudeBin ?? '', model: a.model, provider, deepseekModel: dsModel, tagBatchSize: a.tagBatchSize, tagConcurrency: a.tagConcurrency, timeoutMin: a.timeoutMin}),
+    [a, provider, dsModel],
+  );
+  const [form, setForm] = useState(fromView);
+  const [typedKey, setTypedKey] = useState('');
+  useEffect(() => {
+    setForm(fromView());
+    setTypedKey('');
+  }, [fromView]);
   const [test, setTest] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
-  const dirty = form.claudeBin !== (a.claudeBin ?? '') || form.model !== a.model || form.tagBatchSize !== a.tagBatchSize || form.tagConcurrency !== a.tagConcurrency || form.timeoutMin !== a.timeoutMin;
+  const [dsTest, setDsTest] = useState<TestResult | null>(null);
+  const [dsTesting, setDsTesting] = useState(false);
+  const dirty =
+    typedKey.trim() !== '' ||
+    form.provider !== provider ||
+    form.deepseekModel !== dsModel ||
+    form.claudeBin !== (a.claudeBin ?? '') ||
+    form.model !== a.model ||
+    form.tagBatchSize !== a.tagBatchSize ||
+    form.tagConcurrency !== a.tagConcurrency ||
+    form.timeoutMin !== a.timeoutMin;
+  const deepseek = form.provider === 'deepseek';
+  // DeepSeek を選んだのに鍵が無いまま保存すると、AI の作業がすべて失敗する
+  const missingKey = deepseek && !dsKey.present && !typedKey.trim();
 
   const runTest = async () => {
     setTesting(true);
@@ -390,15 +415,45 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
       setTesting(false);
     }
   };
-  const submit = () =>
-    void save({agent: {claudeBin: form.claudeBin.trim(), model: form.model.trim(), tagBatchSize: form.tagBatchSize, tagConcurrency: form.tagConcurrency, timeoutMin: form.timeoutMin}}, 'AI の設定を保存しました');
+  const runDsTest = async () => {
+    setDsTesting(true);
+    setDsTest(null);
+    try {
+      const r = await api.post<TestResult>('/api/settings/test/deepseek', {apiKey: typedKey.trim() || undefined});
+      setDsTest(r.data);
+    } catch (e) {
+      setDsTest({ok: false, message: msg(e)});
+    } finally {
+      setDsTesting(false);
+    }
+  };
+  const submit = async () => {
+    const ok = await save(
+      {
+        agent: {
+          ...(view.env.agentProvider ? {} : {provider: form.provider}),
+          ...(typedKey.trim() ? {deepseekApiKey: typedKey.trim()} : {}),
+          deepseekModel: form.deepseekModel.trim(),
+          claudeBin: form.claudeBin.trim(),
+          model: form.model.trim(),
+          tagBatchSize: form.tagBatchSize,
+          tagConcurrency: form.tagConcurrency,
+          timeoutMin: form.timeoutMin,
+        },
+      },
+      'AI の設定を保存しました',
+    );
+    if (ok) setTypedKey('');
+  };
+  const clearDsKey = () => void save({agent: {deepseekApiKey: ''}}, 'DeepSeek の鍵を消しました');
 
   const c = view.claude;
   return (
     <section className="card" data-tour="settings-agent">
       <h2>AI（Claude Code CLI）</h2>
       <p className="hint">
-        タグ付け・並べ替え・テロップ・ナレーション原稿・キャプションは、ローカルにインストールされた Claude Code（claude コマンド）を裏で走らせて作ります。API キーは要りません。ターミナルで一度 claude を起動してログインしておいてください。実行のたびに利用枠（または API 課金）を使います。
+        タグ付け・並べ替え・テロップ・ナレーション原稿・キャプションは、ローカルにインストールされた Claude Code（claude コマンド）を裏で走らせて作ります。接続先が Claude なら API キーは要りません。ターミナルで一度 claude を起動してログインしておいてください。実行のたびに利用枠（または API 課金）を使います。
+        Claude Code の契約が切れたときは、接続先を DeepSeek にすると同じ claude を DeepSeek の API（API キー課金）に向けて走らせます（claude 本体のインストールは引き続き必要です）。
       </p>
       <div className="row">
         <span>
@@ -408,6 +463,55 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         {c.version && <span className="pill">{c.version}</span>}
       </div>
       <div className="form">
+        <label className="full" title="裏で走らせる claude をどこに繋ぐか。環境変数 REEL_STUDIO_AGENT_PROVIDER があればそちらが優先されます">
+          接続先
+          <select value={form.provider} onChange={(e) => setForm({...form, provider: e.target.value as AgentProvider})} disabled={view.env.agentProvider}>
+            <option value="claude">Claude（ログイン中のアカウント／サブスク）</option>
+            <option value="deepseek">DeepSeek（API キー・従量課金）</option>
+          </select>
+        </label>
+        {deepseek && (
+          <>
+            <label className="full">
+              DeepSeek の API キー
+              <span className="btns">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={typedKey}
+                  onChange={(e) => setTypedKey(e.target.value)}
+                  placeholder={dsKey.present ? `設定済み ${dsKey.masked}（${dsKey.source === 'env' ? '環境変数 DEEPSEEK_API_KEY' : '設定ファイル'}）` : '未設定（sk-… で始まる鍵）'}
+                  disabled={view.env.deepseekApiKey}
+                  style={{flex: 1, minWidth: 320}}
+                />
+                <button className="small" onClick={() => void runDsTest()} disabled={dsTesting || (!typedKey.trim() && !dsKey.present)}>
+                  {dsTesting ? '確認中…' : '接続テスト'}
+                </button>
+                {dsKey.present && dsKey.source === 'settings' && (
+                  <button className="small danger" onClick={clearDsKey}>
+                    鍵を消す
+                  </button>
+                )}
+              </span>
+            </label>
+            {dsTest && (
+              <span>
+                <span className={`pill${dsTest.ok ? '' : ' err'}`}>{dsTest.message}</span>
+              </span>
+            )}
+            <label title="DeepSeek に繋ぐときの既定のモデル。各画面の「モデル」は opus＝このモデル、sonnet / haiku＝deepseek-v4-flash に読み替えます">
+              DeepSeek のモデル
+              <input list="deepseek-models" value={form.deepseekModel} onChange={(e) => setForm({...form, deepseekModel: e.target.value})} />
+              <datalist id="deepseek-models">
+                {DEEPSEEK_MODELS.map(([id, text]) => (
+                  <option key={id} value={id}>
+                    {text}
+                  </option>
+                ))}
+              </datalist>
+            </label>
+          </>
+        )}
         <label className="full">
           claude の実行ファイル（任意。空なら PATH から探す）
           <span className="btns">
@@ -422,8 +526,8 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
             <span className={`pill${test.ok ? '' : ' err'}`}>{test.message}</span>
           </span>
         )}
-        <label title="既定のモデル。各画面の「モデル」でその場だけ変えることもできます">
-          既定のモデル
+        <label title={deepseek ? 'Claude に戻したときの既定のモデル（DeepSeek の間は上の「DeepSeek のモデル」が使われます）' : '既定のモデル。各画面の「モデル」でその場だけ変えることもできます'}>
+          {deepseek ? 'Claude の既定のモデル' : '既定のモデル'}
           <input list="ai-models" value={form.model} onChange={(e) => setForm({...form, model: e.target.value})} disabled={view.env.agentModel} />
           <datalist id="ai-models">
             {AI_MODELS.map(([id, text]) => (
@@ -447,8 +551,9 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         </label>
       </div>
       <div className="row">
+        {missingKey && <span className="pill err">DeepSeek の API キーを入れてから保存してください</span>}
         <span style={{flex: 1}} />
-        <button className="primary" onClick={submit} disabled={!dirty}>
+        <button className="primary" onClick={() => void submit()} disabled={!dirty || missingKey}>
           AI の設定を保存
         </button>
       </div>

@@ -11,10 +11,13 @@
 //   --mcp-config で渡す。鍵は JSON に書かず、子プロセスの環境変数で渡して ${VAR} で展開させる。
 // - 認証はユーザーの既存ログインをそのまま使う（API キーの設定は不要）。--bare は OAuth を
 //   読まない仕様なので使わない。
+// - Settings「AI」の接続先を DeepSeek にすると、同じ claude を DeepSeek の Anthropic 互換 API に向けて走らせる
+//   （Claude Code の契約が切れたとき用。providerEnv）。
 import fs from 'node:fs';
 import path from 'node:path';
 import {exec, isWindows, type ExecOptions} from './exec';
-import {loadSettings} from './settings';
+import {agentProvider, deepseekApiKey, loadSettings} from './settings';
+import {DEEPSEEK_FAST_MODEL, type AgentProvider} from '../shared/schema/settings';
 import type {AgentEvent} from '../shared/agent-progress';
 
 export class AgentError extends Error {
@@ -159,6 +162,34 @@ export const agentArgs = (opt: AgentOptions): string[] => {
   return args;
 };
 
+/** DeepSeek の Anthropic 互換エンドポイント（公式ドキュメントの Claude Code 連携の手順どおり） */
+export const DEEPSEEK_ANTHROPIC_URL = 'https://api.deepseek.com/anthropic';
+
+/**
+ * 接続先に応じて claude の子プロセスに足す環境変数。Claude（既定）なら何も足さず、ログイン中のアカウントを使う。
+ * DeepSeek なら ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN で向き先を差し替える（OAuth のログインより優先される）。
+ * 画面の「モデル」（opus / sonnet / haiku）はエイリアスの割り当てで DeepSeek のモデルに読み替える：
+ * opus＝設定の DeepSeek モデル、sonnet / haiku＝flash。鍵は env でだけ渡す（argv にもログにも出さない）
+ */
+export const providerEnv = (provider: AgentProvider = agentProvider(), apiKey: string | null = deepseekApiKey(), model = loadSettings().agent.deepseekModel): Record<string, string> => {
+  if (provider !== 'deepseek') return {};
+  if (!apiKey) throw new AgentError('DeepSeek の API キーが未設定です', 'Settings の「AI」で DeepSeek の API キーを保存するか、環境変数 DEEPSEEK_API_KEY を設定してください');
+  return {
+    ANTHROPIC_BASE_URL: DEEPSEEK_ANTHROPIC_URL,
+    ANTHROPIC_AUTH_TOKEN: apiKey,
+    // 別の鍵が環境に残っていると取り違えるので空にする
+    ANTHROPIC_API_KEY: '',
+    ANTHROPIC_MODEL: model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: DEEPSEEK_FAST_MODEL,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: DEEPSEEK_FAST_MODEL,
+    CLAUDE_CODE_SUBAGENT_MODEL: DEEPSEEK_FAST_MODEL,
+    API_TIMEOUT_MS: '600000',
+    // Anthropic 側への計測・更新確認を送らない（DeepSeek の鍵では通らない）
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+  };
+};
+
 /**
  * claude -p を 1 回走らせて構造化出力を受け取る。
  * stdout だけを JSON として読む（stderr が混ざると壊れるため exec の結果を分けて扱う）。
@@ -166,11 +197,19 @@ export const agentArgs = (opt: AgentOptions): string[] => {
 export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun<T>> {
   const bin = claudeBin();
   const args = agentArgs(opt);
+  // 鍵が無いなどで DeepSeek に繋げないなら、claude を起動する前に止める
+  const backendEnv = providerEnv();
 
   // stdout は 1 行 1 JSON。type=result が最終結果で、それ以外は途中経過
   //   system/init … モデルが動き出した ／ assistant … 思考・本文・ツール呼び出し ／ user … ツールの結果
   let parsed: CliResult | null = null;
-  type StreamLine = {type?: string; subtype?: string; model?: string; message?: {content?: {type?: string; name?: string; input?: Record<string, unknown>; text?: string}[]}};
+  // 鍵が通らない（401/403）と claude は 10 回まで間隔を空けて再試行し、失敗が分かるまで数分かかる。最初の 1 回で止める
+  const ac = new AbortController();
+  const onOuterAbort = () => ac.abort();
+  if (opt.signal?.aborted) ac.abort();
+  else opt.signal?.addEventListener('abort', onOuterAbort, {once: true});
+  let authFailed: number | null = null;
+  type StreamLine = {type?: string; subtype?: string; model?: string; error_status?: number; message?: {content?: {type?: string; name?: string; input?: Record<string, unknown>; text?: string}[]}};
   const takeLine = (line: string) => {
     let d: StreamLine & CliResult;
     try {
@@ -180,6 +219,11 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
     }
     if (d.type === 'result') {
       parsed = d;
+      return;
+    }
+    if (d.type === 'system' && d.subtype === 'api_retry' && (d.error_status === 401 || d.error_status === 403)) {
+      authFailed = d.error_status;
+      ac.abort();
       return;
     }
     if (!opt.onEvent) return;
@@ -206,12 +250,12 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
   if (transport.stdin !== undefined) opt.onLine?.(`（プロンプトが ${opt.prompt.length.toLocaleString()} 文字と長いので標準入力で渡します）`);
   const execOpt: ExecOptions = {
     cwd: opt.cwd,
-    // MCP の鍵はここでだけ子プロセスに渡る（argv にもログにも出ない）
-    env: opt.mcp?.env,
+    // MCP・DeepSeek の鍵はここでだけ子プロセスに渡る（argv にもログにも出ない）
+    env: {...backendEnv, ...opt.mcp?.env},
     // 長いプロンプトの本文（argv には案内だけ）
     input: transport.stdin,
     timeoutMs: opt.timeoutMs ?? 20 * 60_000,
-    signal: opt.signal,
+    signal: ac.signal,
     onLine: (line, stream) => (stream === 'stdout' ? takeLine(line) : opt.onLine?.(line)),
   };
   let r: Awaited<ReturnType<typeof exec>>;
@@ -219,6 +263,14 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
     r = await exec(bin, args, execOpt);
   } finally {
     if (heartbeat) clearInterval(heartbeat);
+    opt.signal?.removeEventListener('abort', onOuterAbort);
+  }
+  if (authFailed !== null) {
+    const ds = Object.keys(backendEnv).length > 0;
+    throw new AgentError(
+      `${ds ? 'DeepSeek' : 'Claude'} の認証に失敗（${authFailed}）`,
+      ds ? 'Settings の「AI」で DeepSeek の API キーを確かめてください（「接続テスト」で残高まで確認できます）' : 'ターミナルで claude を起動してログインし直してください（契約が切れている場合は Settings の「AI」で接続先を DeepSeek にできます）',
+    );
   }
   if (r.signal || (r.code !== 0 && !r.stdout.trim())) {
     throw new AgentError(`claude の起動に失敗（終了コード ${r.code}${r.signal ? ` / ${r.signal}` : ''}）`, r.stderr.trim().split(/\r?\n/).slice(-5).join('\n'));

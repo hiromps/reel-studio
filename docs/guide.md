@@ -382,6 +382,17 @@ haiku は description の質が目に見えて落ちる（実測で料理名の�
 `claude` が PATH に無い環境では `REEL_STUDIO_CLAUDE_BIN` に実行ファイルの場所を入れる。
 見つからないときはボタンを押した時点でジョブが失敗し、その旨がログに出る。
 
+### 接続先を DeepSeek にする（Claude Code の契約が切れたとき）
+
+Settings の「AI」→「接続先」を **DeepSeek** にして API キー（https://platform.deepseek.com/api_keys ）を保存すると、
+同じ `claude` を DeepSeek の Anthropic 互換 API（`https://api.deepseek.com/anthropic`）に向けて走らせる（`core/agent.ts` の `providerEnv`）。
+`claude` 本体のインストールは引き続き必要（ログインは不要）。「接続テスト」は残高 API を叩くだけなので課金されない。
+
+- 既定のモデルは「DeepSeek のモデル」（`deepseek-v4-pro`）。各画面のモデル選択は opus＝このモデル、sonnet / haiku＝`deepseek-v4-flash` に読み替える
+- 鍵が通らない（401/403）ときは claude の再試行（最大 10 回・数分）を待たずに、最初の 1 回でジョブを止める
+- 環境変数で固定するなら `REEL_STUDIO_AGENT_PROVIDER=deepseek` と `DEEPSEEK_API_KEY`
+- ログ・作業記録の金額（`costUsd`）は claude が Claude の単価で計算した値なので、DeepSeek の実際の請求とは合わない。残高は「接続テスト」で見る
+
 ## Brief の「作り方の流れ」（3 つの作り方と順序）
 
 Brief 画面の一番上のカード。**6 工程の済み／いま／これから**を出し、「いま」にはその画面へ飛ぶボタンを付ける。

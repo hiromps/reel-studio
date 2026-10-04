@@ -3,7 +3,7 @@
 // 保存後は resetSettings() だけで全 call site に効く。優先順位は 環境変数 > settings.json > 既定。
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {loadSettings, resolvedPaths} from './core/settings';
+import {agentProvider, loadSettings, resolvedPaths} from './core/settings';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +61,10 @@ export const studioConfig = {
   agent: {
     /** --model に渡す値。エイリアス（opus / sonnet / haiku）でも完全な id でもよい */
     get model(): string {
-      return process.env.REEL_STUDIO_AGENT_MODEL ?? loadSettings().agent.model;
+      // DeepSeek に繋ぐときは DeepSeek のモデルが既定（opus などの Claude 名は送らない）
+      if (process.env.REEL_STUDIO_AGENT_MODEL) return process.env.REEL_STUDIO_AGENT_MODEL;
+      const a = loadSettings().agent;
+      return agentProvider() === 'deepseek' ? a.deepseekModel : a.model;
     },
     /** タグ付け 1 回で見せるクリップ数。多いと 1 回が長くなり、失敗時に巻き戻る範囲も広がる */
     get tagBatchSize(): number {

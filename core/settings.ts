@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {PATH_KEYS, SettingsSchema, type PathKey, type SecretView, type Settings, type SettingsPatch, type SettingsView, type ValueSource} from '../shared/schema/settings';
+import {AGENT_PROVIDERS, PATH_KEYS, SettingsSchema, type AgentProvider, type PathKey, type SecretView, type Settings, type SettingsPatch, type SettingsView, type ValueSource} from '../shared/schema/settings';
 import {writeJsonAtomic} from './json-io';
 
 /** アプリ（このリポジトリ）のルート */
@@ -99,6 +99,9 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     const agent = next.agent as Record<string, unknown>;
     setOrClear(agent, 'claudeBin', patch.agent.claudeBin);
     setOrClear(agent, 'model', patch.agent.model);
+    if (patch.agent.provider) agent.provider = patch.agent.provider;
+    setOrClear(agent, 'deepseekApiKey', patch.agent.deepseekApiKey);
+    setOrClear(agent, 'deepseekModel', patch.agent.deepseekModel);
     for (const k of ['tagBatchSize', 'tagConcurrency', 'timeoutMin'] as const) if (patch.agent[k] !== undefined) agent[k] = patch.agent[k];
   }
   if (patch.telop) setOrClear(next.telop as Record<string, unknown>, 'font', patch.telop.font);
@@ -204,6 +207,32 @@ export const instagramKeyView = (): SecretView => {
   return {present: false, masked: '', source: null};
 };
 
+// ───────────────────────── AI の接続先 ─────────────────────────
+
+const envProvider = (): AgentProvider | null => {
+  const v = process.env.REEL_STUDIO_AGENT_PROVIDER?.trim().toLowerCase();
+  return v && (AGENT_PROVIDERS as readonly string[]).includes(v) ? (v as AgentProvider) : null;
+};
+
+/** 裏で走らせる claude の接続先。REEL_STUDIO_AGENT_PROVIDER > Settings「AI」> 既定（claude） */
+export const agentProvider = (): AgentProvider => envProvider() ?? loadSettings().agent.provider;
+
+/** DeepSeek の API キー。DEEPSEEK_API_KEY > Settings。無ければ null */
+export const deepseekApiKey = (): string | null => {
+  const env = process.env.DEEPSEEK_API_KEY?.trim();
+  if (env && !env.startsWith('${')) return env;
+  return loadSettings().agent.deepseekApiKey?.trim() || null;
+};
+
+/** DeepSeek の鍵の在り処（値は返さない） */
+export const deepseekKeyView = (): SecretView => {
+  const env = process.env.DEEPSEEK_API_KEY?.trim();
+  if (env && !env.startsWith('${')) return {present: true, masked: maskSecret(env), source: 'env'};
+  const conf = loadSettings().agent.deepseekApiKey?.trim();
+  if (conf) return {present: true, masked: maskSecret(conf), source: 'settings'};
+  return {present: false, masked: '', source: null};
+};
+
 /**
  * GET /api/settings の本体。claude の情報は呼び出し側（core/agent.ts を知っている層）が足す。
  * fonts も引数で受ける（core/fonts.ts はこのファイルを使う側なので、ここから呼ぶと循環する）
@@ -217,6 +246,8 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
   void _omitToken;
   const {mcpKey: _omitMcpKey, ...instagramRest} = s.instagram;
   void _omitMcpKey;
+  const {deepseekApiKey: _omitDsKey, ...agentRest} = s.agent;
+  void _omitDsKey;
   const pathsView = {} as SettingsView['paths'];
   for (const k of PATH_KEYS) pathsView[k] = {value: paths[k], source: sources[k], exists: fs.existsSync(paths[k])};
   pathsView.templateDir = templateDir;
@@ -228,6 +259,7 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
     settings: {
       ...s,
       tts: {...ttsRest, apiKey: fishKeyView()},
+      agent: {...agentRest, provider: agentProvider(), deepseekApiKey: deepseekKeyView()},
       cloud: {...cloudRest, token: cloudTokenView()},
       instagram: {...instagramRest, mcpKey: instagramKeyView()},
     },
@@ -238,6 +270,8 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
       fishModelId: !!process.env.FISH_MODEL_ID?.trim(),
       claudeBin: !!process.env.REEL_STUDIO_CLAUDE_BIN?.trim(),
       agentModel: !!process.env.REEL_STUDIO_AGENT_MODEL?.trim(),
+      agentProvider: !!envProvider(),
+      deepseekApiKey: !!process.env.DEEPSEEK_API_KEY?.trim(),
       mosaicPython: !!process.env.REEL_STUDIO_MOSAIC_PYTHON?.trim(),
       cloudUrl: !!process.env.REEL_CLOUD_URL?.trim(),
       cloudToken: !!process.env.REEL_WORKER_TOKEN?.trim(),
