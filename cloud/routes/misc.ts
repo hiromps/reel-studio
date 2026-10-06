@@ -7,7 +7,8 @@ import {Router} from 'express';
 import {generateClientTokenFromReadWriteToken} from '@vercel/blob/client';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
-import {agentStatusOf, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentStatus, type SettingsView} from '../../shared/schema/settings';
+import {agentStatusOf, AGENT_PROVIDERS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider, type AgentStatus, type SettingsView} from '../../shared/schema/settings';
+import {fetchClaudeModels, fetchDeepseekModels} from '../../shared/agent-models';
 import {probeInstagramMcp} from '../../shared/instagram-mcp';
 import {probeDeepseekKey} from '../../shared/deepseek';
 import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
@@ -28,8 +29,8 @@ export const miscRouter = Router();
 const agentStatusOfView = (s: SettingsView | null, claude: boolean): AgentStatus => {
   const a = s?.settings.agent;
   const provider = a?.provider ?? 'claude';
-  const model = provider === 'deepseek' ? (a?.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL) : (a?.model ?? 'opus');
-  return agentStatusOf(provider, model, {claude, deepseekKey: !!a?.deepseekApiKey?.present});
+  const model = provider === 'deepseek' ? (a?.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL) : provider === 'codex' ? (a?.codexModel ?? '') : (a?.model ?? 'opus');
+  return agentStatusOf(provider, model, {claude, codex: !!s?.codex?.available, codexLoggedIn: s?.codex?.loggedIn, deepseekKey: !!a?.deepseekApiKey?.present});
 };
 
 miscRouter.get('/config', async (_req, res) => {
@@ -142,7 +143,7 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
         version: 1,
         paths: {},
         tts: {provider: 'fish-audio', modelId: 's2.1-pro-free', voices: [], apiKey: {present: false, masked: '', source: null}},
-        agent: {provider: 'claude', deepseekModel: 'deepseek-v4-pro', deepseekApiKey: {present: false, masked: '', source: null}, model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20},
+        agent: {provider: 'claude', deepseekModel: 'deepseek-v4-pro', codexModel: '', deepseekApiKey: {present: false, masked: '', source: null}, claudeCatalogApiKey: {present: false, masked: '', source: null}, model: 'opus', tagBatchSize: 8, tagConcurrency: 3, timeoutMin: 20},
         mosaic: {},
         instagram: {mcpKey: {present: false, masked: '', source: null}},
       } as unknown as SettingsView['settings'],
@@ -162,6 +163,23 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
 };
 
 miscRouter.get('/settings', async (_req, res) => res.json(await settingsViewCloud()));
+
+miscRouter.post('/settings/models', async (req, res) => {
+  const provider = req.body?.provider;
+  if (!AGENT_PROVIDERS.includes(provider as AgentProvider)) return res.status(400).json({error: '接続先が不正です'});
+  const key = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+  if ((provider === 'deepseek' || provider === 'claude') && key) {
+    try {
+      const models = provider === 'deepseek' ? await fetchDeepseekModels(key) : await fetchClaudeModels(key);
+      return res.json({provider, models, source: 'provider'});
+    }
+    catch (e) {return res.status(502).json({error: (e as Error).message});}
+  }
+  const view = await kvGet<SettingsView>('settings-view');
+  const catalog = view?.agentModels?.[provider as AgentProvider];
+  if (catalog) return res.json(catalog);
+  res.status(503).json({error: 'PC のワーカーからモデル一覧を取得できていません。同期後に更新してください'});
+});
 
 /** 変更は PC に届ける（実体は PC の ~/.reel-studio/settings.json）。ワーカーが適用して見え方を返してくる */
 miscRouter.put('/settings', async (req, res) => {
@@ -219,6 +237,12 @@ miscRouter.post('/settings/test/claude', async (_req, res) => {
     version: w?.claudeVersion ?? null,
     message: w?.claude ? `PC で動きました（${w.claudeVersion ?? '?'}）` : 'PC の Claude Code が見つかりません（PC 側の Settings で確認してください）',
   });
+});
+
+miscRouter.post('/settings/test/codex', async (_req, res) => {
+  const s = await kvGet<SettingsView>('settings-view');
+  const codex = s?.codex;
+  res.json({ok: !!codex?.available, bin: codex?.bin ?? '', version: codex?.version ?? null, message: codex?.available ? `PC で動きました（${codex.version ?? '?'}）` : 'PC の Codex CLI が見つかりません'});
 });
 
 miscRouter.get('/settings/mosaic', async (_req, res) => {

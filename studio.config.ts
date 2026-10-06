@@ -64,7 +64,8 @@ export const studioConfig = {
       // DeepSeek に繋ぐときは DeepSeek のモデルが既定（opus などの Claude 名は送らない）
       if (process.env.REEL_STUDIO_AGENT_MODEL) return process.env.REEL_STUDIO_AGENT_MODEL;
       const a = loadSettings().agent;
-      return agentProvider() === 'deepseek' ? a.deepseekModel : a.model;
+      const provider = agentProvider();
+      return provider === 'deepseek' ? a.deepseekModel : provider === 'codex' ? a.codexModel : a.model;
     },
     /** タグ付け 1 回で見せるクリップ数。多いと 1 回が長くなり、失敗時に巻き戻る範囲も広がる */
     get tagBatchSize(): number {

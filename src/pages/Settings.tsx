@@ -6,11 +6,11 @@ import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
 import {UpdateCard} from '../components/UpdateCard';
-import {AGENT_PROVIDER_LABEL, DEEPSEEK_MODELS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {AGENT_PROVIDER_LABEL, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentModelsView, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
-import {AI_MODELS, AiModelSelect, useAiModel} from '../hooks/useAiModel';
+import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {DEFAULT_STUDY_VIDEOS, MAX_STUDY_VIDEOS, normalizeInstagramUser} from '@shared/persona-study';
 import {AiJobStatus} from '../components/AiJobStatus';
 import {REFINABLE_LABEL, type PersonaRefineResult} from '@shared/persona-refine';
@@ -375,25 +375,59 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
   // 古いワーカーが送ってきた見え方には DeepSeek の欄が無いので、無くても開けるようにしておく
   const provider: AgentProvider = a.provider ?? 'claude';
   const dsKey = a.deepseekApiKey ?? {present: false, masked: '', source: null};
+  const claudeCatalogKey = a.claudeCatalogApiKey ?? {present: false, masked: '', source: null};
   const dsModel = a.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL;
   const fromView = useCallback(
-    () => ({claudeBin: a.claudeBin ?? '', model: a.model, provider, deepseekModel: dsModel, tagBatchSize: a.tagBatchSize, tagConcurrency: a.tagConcurrency, timeoutMin: a.timeoutMin}),
+    () => ({claudeBin: a.claudeBin ?? '', codexBin: a.codexBin ?? '', model: a.model, provider, deepseekModel: dsModel, codexModel: a.codexModel ?? '', tagBatchSize: a.tagBatchSize, tagConcurrency: a.tagConcurrency, timeoutMin: a.timeoutMin}),
     [a, provider, dsModel],
   );
   const [form, setForm] = useState(fromView);
   const [typedKey, setTypedKey] = useState('');
+  const [typedClaudeKey, setTypedClaudeKey] = useState('');
   useEffect(() => {
     setForm(fromView());
     setTypedKey('');
+    setTypedClaudeKey('');
   }, [fromView]);
   const [test, setTest] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [codexTest, setCodexTest] = useState<TestResult | null>(null);
+  const [codexTesting, setCodexTesting] = useState(false);
   const [dsTest, setDsTest] = useState<TestResult | null>(null);
   const [dsTesting, setDsTesting] = useState(false);
+  const [models, setModels] = useState<AgentModelsView | null>(null);
+  const [modelsError, setModelsError] = useState('');
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const modelRequest = useRef(0);
+  const refreshModels = useCallback(async () => {
+    const request = ++modelRequest.current;
+    setModelsLoading(true);
+    setModels(null);
+    setModelsError('');
+    try {
+      const key = form.provider === 'deepseek' ? typedKey.trim() : form.provider === 'claude' ? typedClaudeKey.trim() : '';
+      const r = await api.post<AgentModelsView>('/api/settings/models', {provider: form.provider, ...(key ? {apiKey: key} : {}), ...(form.provider === 'codex' && form.codexBin.trim() ? {bin: form.codexBin.trim()} : {})});
+      if (request === modelRequest.current) setModels(r.data);
+    } catch (e) {
+      if (request === modelRequest.current) setModelsError(msg(e));
+    } finally {
+      if (request === modelRequest.current) setModelsLoading(false);
+    }
+  }, [form.provider, form.codexBin, typedKey, typedClaudeKey]);
+  useEffect(() => {
+    const timer = setTimeout(() => void refreshModels(), typedKey || typedClaudeKey || form.codexBin ? 450 : 0);
+    return () => clearTimeout(timer);
+  }, [refreshModels, typedKey, typedClaudeKey, form.codexBin]);
+  const currentModel = form.provider === 'deepseek' ? form.deepseekModel : form.provider === 'codex' ? form.codexModel : form.model;
+  const setCurrentModel = (model: string) => setForm((prev) => ({...prev, [prev.provider === 'deepseek' ? 'deepseekModel' : prev.provider === 'codex' ? 'codexModel' : 'model']: model}));
+  const validModel = models?.provider === form.provider && !!models.models.some((m) => m.id === currentModel);
   const dirty =
     typedKey.trim() !== '' ||
+    typedClaudeKey.trim() !== '' ||
     form.provider !== provider ||
     form.deepseekModel !== dsModel ||
+    form.codexModel !== (a.codexModel ?? '') ||
+    form.codexBin !== (a.codexBin ?? '') ||
     form.claudeBin !== (a.claudeBin ?? '') ||
     form.model !== a.model ||
     form.tagBatchSize !== a.tagBatchSize ||
@@ -427,13 +461,25 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
       setDsTesting(false);
     }
   };
+  const runCodexTest = async () => {
+    setCodexTesting(true);
+    setCodexTest(null);
+    try {
+      const r = await api.post<TestResult>('/api/settings/test/codex', {bin: form.codexBin.trim() || undefined});
+      setCodexTest(r.data);
+    } catch (e) {setCodexTest({ok: false, message: msg(e)});}
+    finally {setCodexTesting(false);}
+  };
   const submit = async () => {
     const ok = await save(
       {
         agent: {
           ...(view.env.agentProvider ? {} : {provider: form.provider}),
           ...(typedKey.trim() ? {deepseekApiKey: typedKey.trim()} : {}),
+          ...(typedClaudeKey.trim() ? {claudeCatalogApiKey: typedClaudeKey.trim()} : {}),
           deepseekModel: form.deepseekModel.trim(),
+          codexModel: form.codexModel.trim(),
+          codexBin: form.codexBin.trim(),
           claudeBin: form.claudeBin.trim(),
           model: form.model.trim(),
           tagBatchSize: form.tagBatchSize,
@@ -443,41 +489,42 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
       },
       'AI の設定を保存しました',
     );
-    if (ok) setTypedKey('');
+    if (ok) {setTypedKey(''); setTypedClaudeKey('');}
   };
   const clearDsKey = () => void save({agent: {deepseekApiKey: ''}}, 'DeepSeek の鍵を消しました');
+  const clearClaudeKey = () => void save({agent: {claudeCatalogApiKey: ''}}, 'Claude のモデル一覧用キーを消しました');
 
   const c = view.claude;
   return (
     <section className="card" data-tour="settings-agent">
-      <h2>AI（Claude Code CLI）</h2>
+      <h2>AI の接続先</h2>
       <p className="hint">
-        タグ付け・並べ替え・テロップ・ナレーション原稿・キャプションは、ローカルにインストールされた Claude Code（claude コマンド）を裏で走らせて作ります。接続先が Claude なら API キーは要りません。ターミナルで一度 claude を起動してログインしておいてください。実行のたびに利用枠（または API 課金）を使います。
-        Claude Code の契約が切れたときは、接続先を DeepSeek にすると同じ claude を DeepSeek の API（API キー課金）に向けて走らせます（claude 本体のインストールは引き続き必要です）。
+        Claude は Claude Code CLI、DeepSeek は Claude Code CLI 経由の API 接続、Codex は Codex CLI を使います。Claude と Codex は各 CLI で先にログインしてください。DeepSeek には API キーが必要です。
       </p>
       <div className="row">
         <span>いまの接続先:</span>
         <span className={`pill agent-badge agent-${provider}`} style={{cursor: 'default'}}>
           <span className="agent-badge-dot" aria-hidden="true" />
           {AGENT_PROVIDER_LABEL[provider]}
-          <span className="agent-badge-model">{provider === 'deepseek' ? dsModel : a.model}</span>
+          <span className="agent-badge-model">{provider === 'deepseek' ? dsModel : provider === 'codex' ? a.codexModel : a.model}</span>
         </span>
         {provider === 'deepseek' && !dsKey.present && <span className="pill err">API キーが未設定です</span>}
         {form.provider !== provider && <span className="pill warn">「AI の設定を保存」を押すと {AGENT_PROVIDER_LABEL[form.provider]} に切り替わります</span>}
       </div>
-      <div className="row">
+      {form.provider !== 'codex' && <div className="row">
         <span>
           検出: <span className="mono">{c.bin}</span>
         </span>
         <span className={`pill${c.available ? '' : ' err'}`}>{c.available ? `見つかりました（${SOURCE_LABEL[c.source === 'path' ? 'default' : c.source === 'none' ? 'default' : c.source]}${c.source === 'path' ? '・PATH' : ''}）` : '見つかりません'}</span>
         {c.version && <span className="pill">{c.version}</span>}
-      </div>
+      </div>}
       <div className="form">
         <label className="full" title="裏で走らせる claude をどこに繋ぐか。環境変数 REEL_STUDIO_AGENT_PROVIDER があればそちらが優先されます">
           接続先
-          <select value={form.provider} onChange={(e) => setForm({...form, provider: e.target.value as AgentProvider})} disabled={view.env.agentProvider}>
+          <select value={form.provider} onChange={(e) => {modelRequest.current++; setModels(null); setForm({...form, provider: e.target.value as AgentProvider});}} disabled={view.env.agentProvider}>
             <option value="claude">Claude（ログイン中のアカウント／サブスク）</option>
             <option value="deepseek">DeepSeek（API キー・従量課金）</option>
+            <option value="codex">Codex（ログイン中のアカウント）</option>
           </select>
         </label>
         {deepseek && (
@@ -489,7 +536,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
                   type="password"
                   autoComplete="off"
                   value={typedKey}
-                  onChange={(e) => setTypedKey(e.target.value)}
+                  onChange={(e) => {modelRequest.current++; setModels(null); setTypedKey(e.target.value);}}
                   placeholder={dsKey.present ? `設定済み ${dsKey.masked}（${dsKey.source === 'env' ? '環境変数 DEEPSEEK_API_KEY' : '設定ファイル'}）` : '未設定（sk-… で始まる鍵）'}
                   disabled={view.env.deepseekApiKey}
                   style={{flex: 1, minWidth: 320}}
@@ -509,20 +556,30 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
                 <span className={`pill${dsTest.ok ? '' : ' err'}`}>{dsTest.message}</span>
               </span>
             )}
-            <label title="DeepSeek に繋ぐときの既定のモデル。各画面の「モデル」は opus＝このモデル、sonnet / haiku＝deepseek-v4-flash に読み替えます">
-              DeepSeek のモデル
-              <input list="deepseek-models" value={form.deepseekModel} onChange={(e) => setForm({...form, deepseekModel: e.target.value})} />
-              <datalist id="deepseek-models">
-                {DEEPSEEK_MODELS.map(([id, text]) => (
-                  <option key={id} value={id}>
-                    {text}
-                  </option>
-                ))}
-              </datalist>
-            </label>
           </>
         )}
-        <label className="full">
+        {form.provider === 'claude' && (
+          <label className="full">
+            Claude のモデル一覧用 API キー（任意）
+            <span className="btns">
+              <input type="password" autoComplete="off" value={typedClaudeKey} onChange={(e) => {modelRequest.current++; setModels(null); setTypedClaudeKey(e.target.value);}} placeholder={claudeCatalogKey.present ? `設定済み ${claudeCatalogKey.masked}` : '未設定なら CLI の最新モデル別名を表示'} disabled={view.env.claudeCatalogApiKey} style={{flex: 1, minWidth: 240}} />
+              {claudeCatalogKey.present && claudeCatalogKey.source === 'settings' && <button type="button" className="small danger" onClick={clearClaudeKey}>鍵を消す</button>}
+            </span>
+            <span className="hint">公式 API のモデル一覧を表示するためだけに使います。AI の実行は Claude Code のログインを使います。</span>
+          </label>
+        )}
+        {form.provider === 'codex' && (
+          <label className="full">
+            codex の実行ファイル（任意。空なら PATH から探す）
+            <span className="btns">
+              <input value={form.codexBin} onChange={(e) => {modelRequest.current++; setModels(null); setForm({...form, codexBin: e.target.value});}} placeholder="codex" disabled={view.env.codexBin} style={{flex: 1, minWidth: 240}} />
+              <button type="button" className="small" onClick={() => void runCodexTest()} disabled={codexTesting}>{codexTesting ? '確認中…' : '接続テスト'}</button>
+            </span>
+            <span className="hint">{view.codex?.available ? `検出: ${view.codex.bin} ${view.codex.version ?? ''}${view.codex.loggedIn === false ? '・未ログイン（ターミナルで codex login）' : ''}` : 'Codex CLI が見つかりません'}</span>
+            {codexTest && <span className={`pill${codexTest.ok ? '' : ' err'}`}>{codexTest.message}</span>}
+          </label>
+        )}
+        {form.provider !== 'codex' && <label className="full">
           claude の実行ファイル（任意。空なら PATH から探す）
           <span className="btns">
             <input value={form.claudeBin} onChange={(e) => setForm({...form, claudeBin: e.target.value})} placeholder="例: C:\Users\you\.local\bin\claude.exe" disabled={view.env.claudeBin} style={{flex: 1, minWidth: 320}} />
@@ -530,22 +587,23 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
               {testing ? '確認中…' : 'テスト'}
             </button>
           </span>
-        </label>
-        {test && (
+        </label>}
+        {test && form.provider !== 'codex' && (
           <span>
             <span className={`pill${test.ok ? '' : ' err'}`}>{test.message}</span>
           </span>
         )}
-        <label title={deepseek ? 'Claude に戻したときの既定のモデル（DeepSeek の間は上の「DeepSeek のモデル」が使われます）' : '既定のモデル。各画面の「モデル」でその場だけ変えることもできます'}>
-          {deepseek ? 'Claude の既定のモデル' : '既定のモデル'}
-          <input list="ai-models" value={form.model} onChange={(e) => setForm({...form, model: e.target.value})} disabled={view.env.agentModel} />
-          <datalist id="ai-models">
-            {AI_MODELS.map(([id, text]) => (
-              <option key={id} value={id}>
-                {text}
-              </option>
-            ))}
-          </datalist>
+        <label>
+          {AGENT_PROVIDER_LABEL[form.provider]} のモデル
+          <span className="btns">
+            <select value={models?.models.some((m) => m.id === currentModel) ? currentModel : ''} onChange={(e) => setCurrentModel(e.target.value)} disabled={modelsLoading || !models?.models.length || view.env.agentModel} aria-busy={modelsLoading}>
+              {modelsLoading && <option value="">取得中…</option>}
+              {!modelsLoading && !models?.models.some((m) => m.id === currentModel) && <option value="">モデルを選択</option>}
+              {models?.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <button type="button" className="small" onClick={() => void refreshModels()} disabled={modelsLoading}>一覧を更新</button>
+          </span>
+          {modelsError && <span className="hint" role="alert">{modelsError}</span>}
         </label>
         <label title="タグ付け 1 回で見せるクリップ数。多いと 1 回が長くなり、失敗時に巻き戻る範囲も広がる">
           タグ付けの 1 回あたりクリップ数
@@ -563,7 +621,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
       <div className="row">
         {missingKey && <span className="pill err">DeepSeek の API キーを入れてから保存してください</span>}
         <span style={{flex: 1}} />
-        <button className="primary" onClick={() => void submit()} disabled={!dirty || missingKey}>
+        <button className="primary" onClick={() => void submit()} disabled={!dirty || missingKey || !validModel}>
           AI の設定を保存
         </button>
       </div>
@@ -1114,7 +1172,7 @@ const PersonaGenerate: React.FC<{onCreated: (id: string) => void}> = ({onCreated
   const user = normalizeInstagramUser(target);
   const igWanted = target.trim() !== '';
   const igReady = !!s.config?.instagramMcp;
-  const claude = s.config?.claude !== false;
+  const aiReady = s.config?.agent?.ready !== false;
   const stale = !s.supportsJob('ai-persona');
   const tid = id.trim();
   const idTaken = s.personas.some((p) => p.id === tid);
@@ -1128,8 +1186,8 @@ const PersonaGenerate: React.FC<{onCreated: (id: string) => void}> = ({onCreated
           ? 'Settings の「Instagram の情報取得」に Smartgram の鍵が要ります'
           : !igWanted && !selected.length
             ? 'Instagram のユーザー名を入れるか、分析済みの案件を 1 つ以上選んでください'
-            : !claude
-              ? 'claude が見つかりません（Settings の「AI」）'
+            : !aiReady
+              ? s.config?.agent?.problem ?? 'AI の接続先を確認してください（Settings の「AI」）'
               : stale
                 ? 'Reel Studio を再起動してください（サーバーが古いプロセスです）'
                 : null;
@@ -1271,12 +1329,12 @@ const PersonaRefine: React.FC<{persona: Persona; onProposal: (r: PersonaRefineRe
   const [instruction, setInstruction] = useState('');
   const job = s.jobs.find((j) => j.type === 'ai-persona-refine' && (j.status === 'running' || j.status === 'queued'));
   const last = s.jobs.find((j) => j.type === 'ai-persona-refine' && (j.status === 'done' || j.status === 'failed'));
-  const claude = s.config?.claude !== false;
+  const aiReady = s.config?.agent?.ready !== false;
   const stale = !s.supportsJob('ai-persona-refine');
   const problem = !instruction.trim()
     ? null
-    : !claude
-      ? 'claude が見つかりません（Settings の「AI」）'
+    : !aiReady
+      ? s.config?.agent?.problem ?? 'AI の接続先を確認してください（Settings の「AI」）'
       : stale
         ? s.isCloud
           ? 'PC の Reel Studio を起動し直してください（この機能を知らない古いプロセスです）'

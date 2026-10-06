@@ -46,7 +46,7 @@ const AgentBadge: React.FC<{agent: AgentStatus; onClick: () => void}> = ({agent,
     >
       <span className="agent-badge-dot" aria-hidden="true" />
       AI: {name}
-      {agent.ready ? <span className="agent-badge-model">{agent.model}</span> : <span>{agent.issue === 'no-key' ? '・鍵が未設定' : '・claude なし'}</span>}
+      {agent.ready ? <span className="agent-badge-model">{agent.model || 'CLI の既定'}</span> : <span>{agent.issue === 'no-key' ? '・鍵が未設定' : agent.issue === 'no-codex' ? '・codex なし' : agent.issue === 'no-codex-login' ? '・未ログイン' : '・claude なし'}</span>}
     </button>
   );
 };

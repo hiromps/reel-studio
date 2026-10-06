@@ -20,6 +20,7 @@ import {
   moveCuts,
   newCutId,
   removeCutAt,
+  replaceCutSource,
   rulerStep,
   rulerTicks,
   setCutRange,
@@ -246,6 +247,26 @@ describe('cuts.json の書き換え', () => {
     const r = setCutRange(reel(), 1, {inSec: 2, outSec: 3});
     expect(r.cuts[1]).toMatchObject({id: 'c02', inSec: 2, outSec: 3, playbackRate: 1.5});
     expect(r.cuts[0]).toEqual(reel().cuts[0]);
+  });
+
+  it('NG素材にも差し替えられ、カット尺・テロップ・slot の役割を保つ', () => {
+    const d = reel();
+    d.cuts[0] = {...d.cuts[0], main: {text: '料理の見せ場'}, crop: {zoom: 2, x: 0.2, y: 0.3}, subs: [{text: '元の声', startSec: 0, endSec: 1}]};
+    const ng = clip({id: 'ng02', src: 'uploads/NG02.mp4', user: {hook: false, ng: true, orderHint: null, lock: false}, usableRanges: [{inSec: 3, outSec: 8, label: 'best'}]});
+    const r = replaceCutSource(d, 0, ng)!;
+    expect(r.cuts[0]).toMatchObject({id: 'c01', src: ng.src, inSec: 3, outSec: 5, main: {text: '料理の見せ場'}});
+    expect(r.cuts[0].crop).toBeUndefined();
+    expect(r.cuts[0].subs).toBeUndefined();
+    expect(r.meta?.slots?.[0]).toMatchObject({clipId: 'ng02', role: 'hook'});
+    expect(r.cuts[1]).toEqual(d.cuts[1]);
+  });
+
+  it('新しい素材が短いときは範囲内に収め、素材側の切り出しを引き継ぐ', () => {
+    const source = clip({id: 'short', src: 'uploads/short.mp4', durationSec: 0.9, crop: {zoom: 1.5, x: 0.5, y: 0.5}});
+    const r = replaceCutSource(reel(), 0, source)!;
+    expect(r.cuts[0].inSec).toBe(0);
+    expect(r.cuts[0].outSec).toBeLessThanOrEqual(0.9);
+    expect(r.cuts[0].crop).toEqual(source.crop);
   });
 
   it('分割は前半が元の id、後半が新しい id で、テロップは両方に残る', () => {

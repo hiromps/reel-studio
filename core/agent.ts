@@ -17,7 +17,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {exec, isWindows, type ExecOptions} from './exec';
 import {agentProvider, deepseekApiKey, loadSettings} from './settings';
-import {DEEPSEEK_FAST_MODEL, type AgentProvider} from '../shared/schema/settings';
+import {type AgentProvider} from '../shared/schema/settings';
+import {enforceStyleData, globalStylePrompt} from './style-memory';
 import type {AgentEvent} from '../shared/agent-progress';
 
 export class AgentError extends Error {
@@ -89,6 +90,8 @@ export type AgentOptions = {
   /** 作業ディレクトリ。ここからの相対パスで Read させる */
   cwd: string;
   prompt: string;
+  /** 全案件共通の文体ルールを読み込み、返答の禁止語尾も除く */
+  styleRules?: boolean;
   /** 返り値の形（JSON Schema）。CLI 側で検証される */
   schema: Record<string, unknown>;
   /** 既定は studioConfig.agent.model */
@@ -168,8 +171,8 @@ export const DEEPSEEK_ANTHROPIC_URL = 'https://api.deepseek.com/anthropic';
 /**
  * 接続先に応じて claude の子プロセスに足す環境変数。Claude（既定）なら何も足さず、ログイン中のアカウントを使う。
  * DeepSeek なら ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN で向き先を差し替える（OAuth のログインより優先される）。
- * 画面の「モデル」（opus / sonnet / haiku）はエイリアスの割り当てで DeepSeek のモデルに読み替える：
- * opus＝設定の DeepSeek モデル、sonnet / haiku＝flash。鍵は env でだけ渡す（argv にもログにも出さない）
+ * モデル ID は DeepSeek の公式一覧から選ばれ、Claude Code の各モデル別名にも設定モデルを割り当てる。
+ * 鍵は env でだけ渡す（argv にもログにも出さない）。
  */
 export const providerEnv = (provider: AgentProvider = agentProvider(), apiKey: string | null = deepseekApiKey(), model = loadSettings().agent.deepseekModel): Record<string, string> => {
   if (provider !== 'deepseek') return {};
@@ -181,9 +184,9 @@ export const providerEnv = (provider: AgentProvider = agentProvider(), apiKey: s
     ANTHROPIC_API_KEY: '',
     ANTHROPIC_MODEL: model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: model,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: DEEPSEEK_FAST_MODEL,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: DEEPSEEK_FAST_MODEL,
-    CLAUDE_CODE_SUBAGENT_MODEL: DEEPSEEK_FAST_MODEL,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+    CLAUDE_CODE_SUBAGENT_MODEL: model,
     API_TIMEOUT_MS: '600000',
     // Anthropic 側への計測・更新確認を送らない（DeepSeek の鍵では通らない）
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
@@ -195,10 +198,16 @@ export const providerEnv = (provider: AgentProvider = agentProvider(), apiKey: s
  * stdout だけを JSON として読む（stderr が混ざると壊れるため exec の結果を分けて扱う）。
  */
 export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun<T>> {
+  if (opt.styleRules) opt = {...opt, prompt: `${opt.prompt}\n\n${globalStylePrompt()}`};
+  if (agentProvider() === 'codex') {
+    const {runCodex} = await import('./codex');
+    const run = await runCodex<T>(opt);
+    return opt.styleRules ? {...run, data: enforceStyleData(run.data)} : run;
+  }
   const bin = claudeBin();
   const args = agentArgs(opt);
   // 鍵が無いなどで DeepSeek に繋げないなら、claude を起動する前に止める
-  const backendEnv = providerEnv();
+  const backendEnv = providerEnv(agentProvider(), deepseekApiKey(), opt.model || loadSettings().agent.deepseekModel);
 
   // stdout は 1 行 1 JSON。type=result が最終結果で、それ以外は途中経過
   //   system/init … モデルが動き出した ／ assistant … 思考・本文・ツール呼び出し ／ user … ツールの結果
@@ -294,7 +303,7 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
   }
   if (denied.length) opt.onLine?.(`（権限拒否されたツール: ${denied.join(', ')}）`);
   return {
-    data: res.structured_output as T,
+    data: opt.styleRules ? enforceStyleData(res.structured_output as T) : res.structured_output as T,
     costUsd: res.total_cost_usd ?? 0,
     durationMs: res.duration_ms ?? 0,
     turns: res.num_turns ?? 0,

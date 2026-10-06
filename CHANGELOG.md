@@ -8,7 +8,9 @@ Settings の「版と更新」から）。**案件データ・設定・人格は
 
 ## 未リリース
 
-（まだありません）
+### AI の接続先に Codex を追加しました
+
+Settings の「AI」で Claude・DeepSeek・Codex を選び、モデルはプルダウンから選択できます。DeepSeek は公式 API、Codex は CLI のモデル一覧、Claude は Anthropic API キーがある場合に公式一覧を更新します。Claude Code のログインだけで使う場合は最新モデルに解決される別名を選びます。Codex は `npx codex login` でログインしてから使ってください。
 
 ---
 

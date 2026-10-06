@@ -81,7 +81,7 @@ export const ReferenceCard: React.FC<{
   const unsupported = !s.supportsJob('ai-reference') || !s.supportsJob('ai-mimic');
   const catalog = s.files.catalog.data;
   const brief = s.files.brief.data;
-  const claude = s.config?.claude !== false;
+  const aiReady = s.config?.agent?.ready !== false;
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -289,15 +289,15 @@ export const ReferenceCard: React.FC<{
   const running = analyzing ?? mimicking;
   const igParsed = parseInstagramPostUrl(igUrl);
   const igReady = !!s.config?.instagramMcp;
-  const mimicDisabled = busy || unsupported || !analyzed || !catalog || !brief || !claude;
+  const mimicDisabled = busy || unsupported || !analyzed || !catalog || !brief || !aiReady;
   const mimicTitle = !analyzed
     ? '先に参考動画を分析してください'
     : !catalog
       ? '先に Materials で素材のカタログ化が要ります'
       : !brief
         ? '先に Brief（店名・人格）を保存してください'
-        : !claude
-          ? 'claude が見つかりません（Settings の「AI」）'
+        : !aiReady
+          ? s.config?.agent?.problem ?? 'AI の接続先を確認してください（Settings の「AI」）'
           : '参考動画と同じ区間・秒数・カット数・テロップの型で台本を書き、続けて素材を割り当てて cuts.json と narration.json を作ります';
 
   return (
@@ -400,7 +400,7 @@ export const ReferenceCard: React.FC<{
             <button
               className="small"
               onClick={() => void s.addJob('reference-library', {op: 'name', model: aiModel}, '_studio')}
-              disabled={busy || unsupported || naming || !claude}
+              disabled={busy || unsupported || naming || !aiReady}
               title="名前の無いものに、分析の内容（フック・見せ方・締め）から Claude が名前を付けます（1 回で全部・API 課金）"
             >
               {naming ? '名前を付けています…' : `名前の無い ${library.filter((e) => !e.title.trim()).length} 本に自動で名前を付ける`}
@@ -431,7 +431,7 @@ export const ReferenceCard: React.FC<{
           <span>
             <b>{ref.source.originalName || ref.source.file}</b>（{fmtSec(stats.durationSec)} 秒・{ref.source.width}x{ref.source.height}・音声{ref.source.hasAudio ? 'あり' : 'なし'}）
           </span>
-          <button className="primary" onClick={() => analyze()} disabled={busy || unsupported || !claude} title="シーン検出とコンタクトシートを作り、Claude に型を言語化させます（数分・API 課金）">
+          <button className="primary" onClick={() => analyze()} disabled={busy || unsupported || !aiReady} title="シーン検出とコンタクトシートを作り、AI に型を言語化させます（数分・利用枠または API 課金）">
             型を分析する
           </button>
           <button className="small danger" onClick={() => void remove()} disabled={busy}>
@@ -607,7 +607,7 @@ export const ReferenceCard: React.FC<{
             <button onClick={() => mimic(false)} disabled={mimicDisabled} title="台本は script.md に書き、素材の割り当ては書き込まずに結果だけ残します（下の「割り当ての結果」で承認）">
               台本を作って割り当てを見るだけ
             </button>
-            <button className="small" onClick={() => analyze(true)} disabled={busy || unsupported || !claude} title="同じ動画をもう一度分析します（結果は置き換わり、ライブラリにも新しい方が入ります）">
+            <button className="small" onClick={() => analyze(true)} disabled={busy || unsupported || !aiReady} title="同じ動画をもう一度分析します（結果は置き換わり、ライブラリにも新しい方が入ります）">
               分析をやり直す
             </button>
             <button className="small danger" onClick={() => void remove()} disabled={busy}>

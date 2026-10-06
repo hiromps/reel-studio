@@ -11,6 +11,7 @@ import {pickFolder} from '../core/pick-folder';
 import {ttsAvailable} from '../core/tts';
 import {instagramMcpAvailable} from '../core/instagram-mcp';
 import {claudeAvailable} from '../core/agent';
+import {codexAvailable, codexLoggedIn} from '../core/codex';
 import {agentProvider, deepseekApiKey, loadSettings, settingsDir, settingsProblem} from '../core/settings';
 import {agentStatusOf} from '../shared/schema/settings';
 import {listFonts} from '../core/fonts';
@@ -96,7 +97,7 @@ app.get('/api/health', async (_req, res) => {
   res.json({ok: true, node: process.version, ffmpeg: await ver('ffmpeg'), ffprobe: await ver('ffprobe'), freeMemMB: Math.round(os.freemem() / 1024 / 1024), totalMemMB: Math.round(os.totalmem() / 1024 / 1024)});
 });
 
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', async (_req, res) => {
   res.json({
     dataRoot: studioConfig.dataRoot,
     workDir: studioConfig.workDir,
@@ -121,7 +122,7 @@ app.get('/api/config', (_req, res) => {
     // 裏で走らせる claude が見つかっているか
     claude: claudeAvailable(),
     // いま AI がどこに繋がっているか（Claude / DeepSeek とモデル）。画面上部に常に出す。鍵そのものは返さない
-    agent: agentStatusOf(agentProvider(), studioConfig.agent.model, {claude: claudeAvailable(), deepseekKey: !!deepseekApiKey()}),
+    agent: agentStatusOf(agentProvider(), studioConfig.agent.model, {claude: claudeAvailable(), codex: codexAvailable(), codexLoggedIn: agentProvider() === 'codex' ? await codexLoggedIn() : undefined, deepseekKey: !!deepseekApiKey()}),
     // 取り込み済みの自前フォントと、新しく作る動画で使う既定（Timeline のフォント選択が使う）
     fonts: listFonts(),
     telopFont: loadSettings().telop.font ?? null,

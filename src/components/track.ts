@@ -178,6 +178,28 @@ export const setCutRange = (data: ReelData, index: number, range: {inSec: number
   cuts: data.cuts.map((c, k) => (k === index ? {...c, inSec: range.inSec, outSec: range.outSec} : c)),
 });
 
+/** 選択カットの映像素材だけを差し替える。テロップと役割を残し、素材固有の区間・切り出し・字幕を更新する。 */
+export const replaceCutSource = (data: ReelData, index: number, clip: Clip): ReelData | null => {
+  const current = data.cuts[index];
+  if (!current || !Number.isFinite(clip.probe.durationSec) || clip.probe.durationSec < MIN_CUT_SEC) return null;
+  if (current.src === clip.src) return data;
+  const preferred = defaultRangeFor(clip, data.fps, 0);
+  const wanted = Math.max(MIN_CUT_SEC, round3(current.outSec - current.inSec));
+  const available = Math.max(0, round3(preferred.outSec - preferred.inSec));
+  const length = Math.min(wanted, available);
+  const next = {...current, src: clip.src, inSec: preferred.inSec, outSec: round3(preferred.inSec + length)};
+  if (clip.crop) next.crop = clip.crop;
+  else delete next.crop;
+  delete next.subs;
+  return {
+    ...data,
+    cuts: data.cuts.map((c, k) => (k === index ? next : c)),
+    ...(data.meta?.slots && current.id
+      ? {meta: {...data.meta, slots: data.meta.slots.map((slot) => (slot.cutId === current.id ? {...slot, clipId: clip.id} : slot))}}
+      : {}),
+  };
+};
+
 /**
  * カットを素材内の atSec で 2 つに割る。前半が元の id と slot を持ち、後半は新しい id（テロップは両方に残す＝同じ文言が続く）。
  * 端に寄りすぎて最小尺が残らないときは null

@@ -65,8 +65,8 @@ describe('providerEnv（DeepSeek の向き先）', () => {
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe('sk-test-12345678');
     expect(env.ANTHROPIC_API_KEY).toBe('');
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('deepseek-v4-pro');
-    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('deepseek-v4-flash');
-    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('deepseek-v4-flash');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('deepseek-v4-pro');
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('deepseek-v4-pro');
   });
 
   it('鍵が無ければ claude を起動する前に止める', () => {
@@ -74,10 +74,12 @@ describe('providerEnv（DeepSeek の向き先）', () => {
   });
 
   it('画面用の見え方に鍵の値は載らない', () => {
-    saveSettings(mergeSettings(defaultSettings(), {agent: {provider: 'deepseek', deepseekApiKey: 'sk-secret-abcd9999'}}));
+    saveSettings(mergeSettings(defaultSettings(), {agent: {provider: 'deepseek', deepseekApiKey: 'sk-secret-abcd9999', claudeCatalogApiKey: 'sk-ant-secret-1234'}}));
     const v = settingsView({bin: 'claude', available: false, source: 'none', version: null}, home);
     expect(JSON.stringify(v)).not.toContain('sk-secret-abcd9999');
+    expect(JSON.stringify(v)).not.toContain('sk-ant-secret-1234');
     expect(v.settings.agent.deepseekApiKey).toEqual({present: true, masked: '••••9999', source: 'settings'});
+    expect(v.settings.agent.claudeCatalogApiKey).toEqual({present: true, masked: '••••1234', source: 'settings'});
     expect(v.settings.agent.provider).toBe('deepseek');
   });
 });
@@ -93,5 +95,10 @@ describe('agentStatusOf（上部バーの接続先表示）', () => {
   });
   it('claude が無ければ接続先に関わらず使えない', () => {
     expect(agentStatusOf('deepseek', 'deepseek-v4-pro', {claude: false, deepseekKey: true}).problem).toContain('claude');
+  });
+  it('Codex は Claude が無くても CLI があれば使える', () => {
+    expect(agentStatusOf('codex', 'gpt-codex', {claude: false, codex: true, deepseekKey: false}).ready).toBe(true);
+    expect(agentStatusOf('codex', 'gpt-codex', {claude: true, codex: false, deepseekKey: false}).issue).toBe('no-codex');
+    expect(agentStatusOf('codex', 'gpt-codex', {claude: true, codex: true, codexLoggedIn: false, deepseekKey: false}).issue).toBe('no-codex-login');
   });
 });

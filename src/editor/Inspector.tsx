@@ -8,7 +8,7 @@ import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
 import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
-import {fallbackDuration} from '../components/trim';
+import {fallbackDuration, fixedTrimRange, trimZoomView, type TrimRange} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
 import {IssueList} from '../components/IssueList';
 import {FIT_DEFAULTS} from '@shared/fit';
@@ -156,11 +156,26 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
 
 // ───────────────────────── カット ─────────────────────────
 export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolean}> = ({m, index, onSeekCut, focusTelop}) => {
-  const {cuts, catalog, s, clipOf, slotOf, groupOfCut, patchCut, patchSlot, moveCut, duplicateCut, removeCut, splitCut, pushHistory, setCuts, subsFrom} = m;
+  const {cuts, catalog, s, clipOf, slotOf, groupOfCut, patchCut, patchSlot, moveCut, duplicateCut, removeCut, splitCut, replaceClip, pushHistory, setCuts, subsFrom} = m;
   const telopRef = useRef<HTMLInputElement>(null);
+  const quickVideoRef = useRef<HTMLVideoElement>(null);
+  const [quickCandidate, setQuickCandidate] = useState<{index: number; src: string; range: TrimRange} | null>(null);
+  const [quickPendingSave, setQuickPendingSave] = useState<{index: number; src: string; range: TrimRange} | null>(null);
+  const [quickZoomSec, setQuickZoomSec] = useState(4);
+  const [quickZoomStart, setQuickZoomStart] = useState(0);
+  const [replaceFor, setReplaceFor] = useState<string | null>(null);
+  const [replaceQuery, setReplaceQuery] = useState('');
+  const [replaceId, setReplaceId] = useState<string | null>(null);
   useEffect(() => {
     if (focusTelop) telopRef.current?.focus();
   }, [focusTelop, index]);
+  const currentForSave = cuts?.cuts[quickPendingSave?.index ?? -1];
+  useEffect(() => {
+    if (!quickPendingSave || !currentForSave || !s.files.cuts.dirty) return;
+    if (currentForSave.src !== quickPendingSave.src || currentForSave.inSec !== quickPendingSave.range.inSec || currentForSave.outSec !== quickPendingSave.range.outSec) return;
+    setQuickPendingSave(null);
+    void s.saveFile('cuts');
+  }, [quickPendingSave, currentForSave, s]);
   if (!cuts) return null;
   const c = cuts.cuts[index];
   if (!c) return null;
@@ -169,7 +184,38 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
   const gi = groupOfCut.get(index);
   const text = c.main?.text ?? '';
   const fpsStep = 1 / cuts.fps;
-  const clipBySrc = new Map((catalog?.clips ?? []).map((k) => [k.src, k]));
+  const replaceKey = `${index}:${c.id ?? c.src}`;
+  const replacing = replaceFor === replaceKey;
+  const replacement = catalog?.clips.find((k) => k.id === replaceId);
+  const replaceMatches = (catalog?.clips ?? []).filter((k) =>
+    [k.id, k.slug, k.original, k.tags?.description ?? '', k.tags?.subject ?? '', k.user.ng ? 'NG' : ''].join(' ').toLowerCase().includes(replaceQuery.trim().toLowerCase()),
+  );
+  const confirmReplace = () => {
+    if (!replacement) return;
+    const error = replaceClip(index, replacement.id);
+    if (error) return s.toast(error, 'error');
+    s.toast(`カット ${index + 1} を ${replacement.id} に差し替えました`, 'ok');
+    setReplaceFor(null);
+    setReplaceId(null);
+  };
+  const quick = quickCandidate?.index === index && quickCandidate.src === c.src ? quickCandidate.range : null;
+  const sourceDuration = clip?.probe.durationSec ?? fallbackDuration(c);
+  const canQuickTrim = !!clip && fixedTrimRange(0, sourceDuration, cuts.fps, 0.8 * (c.playbackRate ?? 1)) !== null;
+  const quickLength = 0.8 * (c.playbackRate ?? 1);
+  const setQuickStart = (start: number, center = false) => {
+    const next = fixedTrimRange(start, sourceDuration, cuts.fps, quickLength);
+    if (!next) return;
+    setQuickCandidate({index, src: c.src, range: next});
+    if (center) setQuickZoomStart(trimZoomView(next, sourceDuration, quickZoomSec).inSec);
+    const video = quickVideoRef.current;
+    if (video) video.currentTime = next.inSec;
+  };
+  const adoptQuick = () => {
+    if (!quick) return;
+    patchCut(index, quick);
+    setQuickPendingSave({index, src: c.src, range: quick});
+    setQuickCandidate(null);
+  };
 
   return (
     <>
@@ -204,25 +250,15 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
             <CutThumb slug={s.active} src={c.src} inSec={c.inSec} width={200} fallback={clip?.thumbs.sheet && s.mediaBase ? `${s.mediaBase}/studio/${clip.thumbs.sheet}` : null} />
           </div>
           <div className="insp-cut-meta">
-            <label>
-              素材
-              <select
-                value={clip?.src ?? c.src}
-                onChange={(e) => {
-                  const nc = clipBySrc.get(e.target.value);
-                  if (!nc) return patchCut(index, {src: e.target.value});
-                  const dur = Math.min(cutDurationSec(c), nc.probe.durationSec);
-                  patchCut(index, {src: nc.src, inSec: 0, outSec: Math.round(dur * 1000) / 1000});
-                }}
-              >
-                {!clip && <option value={c.src}>{c.src}</option>}
-                {(catalog?.clips ?? []).map((k) => (
-                  <option key={k.id} value={k.src}>
-                    {k.id} {k.tags?.description ?? k.slug}（{k.probe.durationSec.toFixed(1)}s）
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div><b>素材 {clip?.id ?? c.src}</b> {clip?.user.ng && <span className="hint">NG 指定</span>}</div>
+            <div className="hint">{clip?.tags?.description ?? clip?.slug ?? ''}</div>
+            <button className="small" onClick={() => {
+              setReplaceFor(replacing ? null : replaceKey);
+              setReplaceQuery('');
+              setReplaceId(null);
+            }} disabled={!catalog?.clips.length} aria-expanded={replacing}>
+              {replacing ? '差し替えを閉じる' : '素材を差し替える'}
+            </button>
             <div className="hint">
               {clip ? `${clip.tags ? KIND_LABEL[clip.tags.kind] : '未タグ'} / ${clip.probe.durationSec.toFixed(2)}s / ${clip.probe.fps}fps` : 'catalog に無い素材'}
             </div>
@@ -232,17 +268,93 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
             </div>
           </div>
         </div>
+        {replacing && (
+          <div className="replace-picker">
+            <label>
+              差し替える素材を検索
+              <input value={replaceQuery} onChange={(e) => setReplaceQuery(e.target.value)} placeholder="例：02、料理名、NG" autoFocus />
+            </label>
+            <div className="replace-results" role="group" aria-label="差し替え候補">
+              {replaceMatches.map((k) => (
+                <button key={k.id} className={`replace-option${replaceId === k.id ? ' selected' : ''}`} onClick={() => setReplaceId(k.id)} aria-pressed={replaceId === k.id}>
+                  {k.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${k.thumbs.sheet}`} alt="" loading="lazy" /> : <span className="thumb-none">no thumb</span>}
+                  <span><b>{k.id}</b> {k.tags?.description ?? k.slug}<small>{k.probe.durationSec.toFixed(1)}秒 {k.user.ng ? '・NG指定' : ''}{k.src === c.src ? '・現在の素材' : ''}</small></span>
+                </button>
+              ))}
+              {!replaceMatches.length && <span className="hint">一致する素材がありません</span>}
+            </div>
+            {replacement && (
+              <div className="replace-confirm">
+                {s.mediaBase && <video key={replacement.src} src={`${s.mediaBase}/${replacement.src}`} controls muted playsInline preload="none" aria-label={`${replacement.id} の確認映像`} />}
+                <div>
+                  <span>カット {index + 1}：{clip?.id ?? c.src} → <b>{replacement.id}</b>{replacement.user.ng ? '（NG指定のまま使用）' : ''}</span>
+                  <button className="small primary" onClick={confirmReplace} disabled={replacement.src === c.src}>この素材に差し替える</button>
+                </div>
+              </div>
+            )}
+            <span className="hint">テロップとカットの位置は維持。素材尺が短い場合はカットを短縮します。保存は画面上部の「保存」から。</span>
+          </div>
+        )}
+        <div className="quick-trim-actions">
+          <button className="small" disabled={!canQuickTrim} onClick={() => setQuickStart(c.inSec, true)} title="現在の IN から 0.8 秒の候補を作る">
+            0.8秒を選ぶ
+          </button>
+          {!clip && <span className="hint">素材の尺が不明です</span>}
+          {clip && !canQuickTrim && <span className="hint">素材が 0.8 秒分より短いです</span>}
+          {quick && <span className="hint">帯の窓か下のスライダーを動かして確認</span>}
+        </div>
         <TrimBar
-          inSec={c.inSec}
-          outSec={c.outSec}
-          durationSec={clip?.probe.durationSec ?? fallbackDuration(c)}
+          inSec={quick?.inSec ?? c.inSec}
+          outSec={quick?.outSec ?? c.outSec}
+          durationSec={sourceDuration}
           fps={cuts.fps}
           strip={clip?.thumbs.strip}
           mediaBase={s.mediaBase}
           usableRanges={clip?.usableRanges}
-          onStart={pushHistory}
+          disabled={!!quick}
+          moveOnly={!!quick}
+          onStart={quick ? undefined : pushHistory}
           onChange={(r) => setCuts({...cuts, cuts: cuts.cuts.map((x, k) => (k === index ? {...x, ...r} : x))})}
         />
+        {quick && (
+          <div className="quick-trim-choice">
+            <div className="quick-trim-zoom-head">
+              <b>区間を拡大</b>
+              <span className="btns">
+                {[2, 4, 8].map((seconds) => <button key={seconds} className={`small chip${quickZoomSec === seconds ? ' on' : ''}`} onClick={() => {
+                  setQuickZoomSec(seconds);
+                  setQuickZoomStart(trimZoomView(quick, sourceDuration, seconds).inSec);
+                }}>{seconds}秒幅</button>)}
+              </span>
+              <button className="small" onClick={() => setQuickZoomStart(trimZoomView(quick, sourceDuration, quickZoomSec).inSec)}>現在位置を中心に</button>
+            </div>
+            <TrimBar
+              inSec={quick.inSec}
+              outSec={quick.outSec}
+              durationSec={sourceDuration}
+              fps={cuts.fps}
+              strip={clip?.thumbs.strip}
+              mediaBase={s.mediaBase}
+              usableRanges={clip?.usableRanges}
+              moveOnly
+              view={{inSec: quickZoomStart, outSec: Math.min(sourceDuration, quickZoomStart + quickZoomSec)}}
+              onChange={(r) => setQuickStart(r.inSec)}
+            />
+            <video ref={quickVideoRef} src={s.mediaBase ? `${s.mediaBase}/${c.src}` : undefined} autoPlay muted playsInline preload="metadata" onLoadedMetadata={(e) => {e.currentTarget.playbackRate = c.playbackRate ?? 1; e.currentTarget.currentTime = quick.inSec;}} onTimeUpdate={(e) => {
+              if (e.currentTarget.currentTime >= quick.outSec - 0.02 || e.currentTarget.currentTime < quick.inSec - 0.05) e.currentTarget.currentTime = quick.inSec;
+            }} aria-label="0.8秒の候補を再生" />
+            <label>
+              開始位置 {quick.inSec.toFixed(2)}秒
+              <input type="range" min={0} max={Math.max(0, sourceDuration - (quick.outSec - quick.inSec))} step="any" value={quick.inSec} onChange={(e) => setQuickStart(Number(e.target.value), true)} aria-label="0.8秒区間の開始位置" />
+            </label>
+            <div className="quick-trim-nudge">
+              <button className="small" onClick={() => setQuickStart(quick.inSec - 1 / cuts.fps, true)}>−1コマ</button>
+              <button className="small" onClick={() => setQuickStart(quick.inSec + 1 / cuts.fps, true)}>＋1コマ</button>
+            </div>
+            <button className="small primary" onClick={adoptQuick}>この区間を採用して保存</button>
+            <button className="small" onClick={() => setQuickCandidate(null)}>キャンセル</button>
+          </div>
+        )}
 
         {/* 画面内の切り出し（アスペクト比は変えない）。カットごとに決められる。
             素材側（Materials・選別モード）で決めた値は、構成を組んだときにここへ引き継がれている */}
@@ -273,7 +385,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
             </button>
           )}
         </details>
-        <div className="row">
+        {!quick && <div className="row">
           <label>
             IN
             <span className="btns">
@@ -317,7 +429,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
               }
             />
           </label>
-        </div>
+        </div>}
       </Section>
 
       <Section

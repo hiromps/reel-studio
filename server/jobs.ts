@@ -14,7 +14,7 @@ import {npmInstall, resolveProjectDir, resolveProjectDirStrict, syncEngine, read
 import {applyAliases} from '../core/alias';
 import {realignAliases} from '../shared/alias';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
-import {claudeAvailable, claudeBin} from '../core/agent';
+import {agentAvailable, agentMissingMessage} from '../core/agent-availability';
 import {generateTts} from '../core/tts';
 import {autoPlaceSfx, scanLibrary} from '../core/sfx';
 import {deliver} from '../core/deliver';
@@ -190,7 +190,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 裏で claude を走らせる。書き込みは core/ai.ts 側が zod 検証を通してから行う
       case 'ai-tag': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiTag(dir, {
           force: !!p.force,
           batchSize: typeof p.batchSize === 'number' ? p.batchSize : undefined,
@@ -203,7 +203,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {tagged: r.tagged.length, batches: r.batches, costUsd: r.costUsd, facts: r.facts.length};
       }
       case 'ai-order': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiOrder(dir, {
           write: p.write !== false,
           copy: p.copy !== false,
@@ -218,7 +218,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {applied: true, written: r.written, cuts: r.plan?.cuts.cuts.length ?? 0, costUsd: r.costUsd, notes: r.notes, losesFinalTelops: r.losesFinalTelops};
       }
       case 'ai-telop': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiTelop(dir, {
           force: !!p.force,
           model: typeof p.model === 'string' ? p.model : undefined,
@@ -230,7 +230,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {filled: r.filled.length, costUsd: r.costUsd, notes: r.notes, placeholders: r.validation?.summary.placeholders ?? 0};
       }
       case 'ai-narration': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiNarration(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
@@ -241,7 +241,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 自然言語の台本 → cuts.json + narration.json（型ではなく台本が正）
       case 'ai-script': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const write = p.write !== false;
         const r = await aiScript(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
@@ -261,7 +261,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 依頼文 → 台本（script.md）。assemble なら続けて「台本から組み立てる」
       case 'ai-script-draft': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const write = p.write !== false;
         const r = await aiScriptDraft(dir, {
           request: typeof p.request === 'string' ? p.request : '',
@@ -335,7 +335,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
             return {reused: true, segments: cur.segments.length, cuts: cur.cuts.length, hookType: cur.pattern.hookType, summary: cur.summary, costUsd: 0};
           }
         }
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await analyzeReference(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
           onLine,
@@ -346,7 +346,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 分析した型を写した台本（script.md）を書き、続けて「台本から組み立てる」を行う
       case 'ai-mimic': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const write = p.write !== false;
         const r = await aiMimic(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
@@ -373,7 +373,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       // 人格を分析済みの動画から言語化して作る（案件に属さない。slug は _studio）。
       // Instagram のユーザー名があれば Smartgram MCP で最新の動画を落として 1 本ずつ型を分析し、案件の参考動画の分析と合わせる
       case 'ai-persona': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const ig = p.instagram && typeof p.instagram === 'object' ? (p.instagram as {target?: unknown; count?: unknown}) : null;
         const r = await generatePersona({
           id: typeof p.id === 'string' ? p.id : '',
@@ -393,7 +393,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 既存の人格を指示どおりに磨く。案を返すだけ（保存は画面の「人格を保存」）
       case 'ai-persona-refine': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         return await refinePersona({
           id: typeof p.id === 'string' ? p.id : '',
           instruction: typeof p.instruction === 'string' ? p.instruction : '',
@@ -404,7 +404,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         });
       }
       case 'ai-caption': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiCaption(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
           instruction: typeof p.instruction === 'string' ? p.instruction : undefined,
@@ -418,7 +418,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // 店舗情報を Web で裏取りして brief.facts に入れる（Instagram > Google マップ）
       case 'ai-facts': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiFacts(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
           force: !!p.force,
@@ -429,7 +429,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {added: r.added, kept: r.kept, conflicts: r.conflicts, unresolved: r.unresolved, instagram: r.instagram, costUsd: r.costUsd};
       }
       case 'ai-edit': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const instruction = typeof p.instruction === 'string' ? p.instruction : '';
         const r = await aiEdit(dir, instruction, {
           model: typeof p.model === 'string' ? p.model : undefined,
@@ -480,7 +480,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       }
       // トライアルリールのフック案（A は今の形・B/C は別の切り口）とパターン別キャプションを hooks.json に書く
       case 'ai-hooks': {
-        if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
         const r = await aiHooks(dir, {
           count: typeof p.count === 'number' ? p.count : undefined,
           cutCount: typeof p.cutCount === 'number' ? p.cutCount : undefined,
@@ -699,7 +699,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
       case 'reference-library': {
         // 名前の無いもの（all なら全部）に、分析の内容から claude が名前を付ける
         if (p.op === 'name') {
-          if (!claudeAvailable()) throw new Error(`claude 実行ファイルが見つかりません（${claudeBin()}）。PATH に入れるか REEL_STUDIO_CLAUDE_BIN で場所を指定してください`);
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
           const r = await nameLibraryEntries({all: !!p.all, model: typeof p.model === 'string' ? p.model : undefined, onLine, onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}), signal});
           return {named: r.named.length, titles: r.named, costUsd: r.costUsd};
         }

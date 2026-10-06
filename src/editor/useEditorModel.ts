@@ -14,7 +14,7 @@ import {SFX_DEFAULTS, checkSfx, type SfxLibrary} from '@shared/sfx';
 import {useUndo} from '../hooks/useUndo';
 import {jobChangeToRecord} from '../hooks/undoStack';
 import {useDebounced} from '../components/useDebounced';
-import {defaultRangeFor, insertCutAt, makeCut, newCutId, removeCutAt, splitCutAt, sourceSecAt, usageBySrc, createReel} from '../components/track';
+import {defaultRangeFor, insertCutAt, makeCut, newCutId, removeCutAt, replaceCutSource, splitCutAt, sourceSecAt, usageBySrc, createReel} from '../components/track';
 import {reorderBlock, destIndexOf} from '../components/reorder';
 import {selectionAfterRemove, type Selection} from './selection';
 
@@ -236,6 +236,17 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
       return null;
     },
     [catalog, cuts, fps, maxCutSec, brief, spec, s.config?.telopFont, setCuts, commitCuts],
+  );
+  const replaceClip = useCallback(
+    (index: number, clipId: string): string | null => {
+      const clip = catalog?.clips.find((x) => x.id === clipId);
+      if (!cuts || !clip) return '素材が見つかりません';
+      const next = replaceCutSource(cuts, index, clip);
+      if (!next) return 'この素材には使える長さがありません';
+      if (next !== cuts) commitCuts(next);
+      return null;
+    },
+    [catalog, cuts, commitCuts],
   );
 
   // ---- テロップグループの操作（グループ内の全カットに同じ文言） ----
@@ -487,6 +498,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     removeCut,
     splitCut,
     addClip,
+    replaceClip,
     setGroupText,
     setGroupOrientation,
     patchSeg,

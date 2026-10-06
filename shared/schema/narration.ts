@@ -42,7 +42,7 @@ export type Sfx = z.infer<typeof SfxSchema>;
  * 声の大きさ（narrationGainDb）の既定。narration.json に指定が無い案件はこれで混ぜる。
  * scripts/mix-narration.cjs は TS を読めないので同じ値を直書きしている。変えるときは両方直す
  */
-export const NARRATION_GAIN_DB_DEFAULT = 10;
+export const NARRATION_GAIN_DB_DEFAULT = 8;
 
 export const NarrationSchema = z
   .object({

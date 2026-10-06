@@ -11,6 +11,7 @@ import {TrimBar} from './TrimBar';
 import {mediaVersion} from './MosaicPanel';
 import {primaryRangeIndex, rangeForBar, withRange, withRangeLabel, withoutPrimaryRange} from './triage';
 import {useStudio} from '../state/store';
+import {fixedTrimRange, trimZoomView, type TrimRange} from './trim';
 
 /**
  * 素材の更新。historyKey を渡すと、同じキーの連続した変更（ドラッグ・スライダー）が
@@ -39,11 +40,28 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
   const [failed, setFailed] = useState<string | null>(null);
   /** 使える区間だけを繰り返し再生する（決めた部分がどう見えるかを確かめる） */
   const [loopRange, setLoopRange] = useState(defaultLoop);
+  const [candidate, setCandidate] = useState<{id: string; range: TrimRange} | null>(null);
+  const [pendingSave, setPendingSave] = useState<{id: string; range: TrimRange} | null>(null);
+  const [zoomSec, setZoomSec] = useState(4);
+  const [zoomStart, setZoomStart] = useState(0);
 
   const pi = primaryRangeIndex(clip);
   const range = pi >= 0 ? clip.usableRanges[pi] : null;
   const duration = clip.probe.durationSec;
-  const {inSec, outSec} = rangeForBar(clip);
+  const chosen = rangeForBar(clip);
+  const draft = candidate?.id === clip.id ? candidate.range : null;
+  const {inSec, outSec} = draft ?? chosen;
+  const canQuickTrim = fixedTrimRange(0, duration, clip.probe.fps) !== null;
+
+  useEffect(() => {
+    if (!pendingSave || !s.files.catalog.dirty) return;
+    const savedClip = s.files.catalog.data?.clips.find((c) => c.id === pendingSave.id);
+    if (!savedClip) return;
+    const saved = rangeForBar(savedClip);
+    if (saved.inSec !== pendingSave.range.inSec || saved.outSec !== pendingSave.range.outSec) return;
+    setPendingSave(null);
+    void s.saveFile('catalog');
+  }, [pendingSave, s]);
 
   const setRange = (next: {inSec: number; outSec: number}) => onUpdate(clip.id, (c) => withRange(c, next), `trim:${clip.id}`);
   const setLabel = (label: UsableRange['label']) => onUpdate(clip.id, (c) => withRangeLabel(c, label, {inSec, outSec}));
@@ -65,7 +83,7 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
   /** 区間を繰り返し再生する。IN を動かしたらそこから見せる */
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || !loopRange || !range) return;
+    if (!v || !loopRange || (!range && !draft)) return;
     const onTime = () => {
       if (v.currentTime >= outSec - 0.02 || v.currentTime < inSec - 0.05) {
         v.currentTime = inSec;
@@ -74,7 +92,31 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
     };
     v.addEventListener('timeupdate', onTime);
     return () => v.removeEventListener('timeupdate', onTime);
-  }, [videoRef, clip.id, loopRange, range, inSec, outSec]);
+  }, [videoRef, clip.id, loopRange, range, draft, inSec, outSec]);
+
+  const startQuickTrim = () => {
+    const at = videoRef.current?.currentTime ?? chosen.inSec;
+    const next = fixedTrimRange(at, duration, clip.probe.fps);
+    if (!next) return;
+    setCandidate({id: clip.id, range: next});
+    setZoomStart(trimZoomView(next, duration, zoomSec).inSec);
+    setLoopRange(true);
+    seekIn(next.inSec);
+    void videoRef.current?.play().catch(() => undefined);
+  };
+  const updateQuickTrim = (start: number, center: boolean) => {
+    const next = fixedTrimRange(start, duration, clip.probe.fps);
+    if (!next) return;
+    setCandidate({id: clip.id, range: next});
+    if (center) setZoomStart(trimZoomView(next, duration, zoomSec).inSec);
+    seekIn(next.inSec);
+  };
+  const adoptQuickTrim = () => {
+    if (!draft) return;
+    onUpdate(clip.id, (c) => withRangeLabel(withRange(c, draft), 'best', draft));
+    setPendingSave({id: clip.id, range: draft});
+    setCandidate(null);
+  };
 
   return (
     <div className={`clip-editor${big ? ' big' : ''}`}>
@@ -115,6 +157,13 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
 
       {/* 使える区間（トリミング）。帯を掴むとその場で区間ができる */}
       <div className="clip-trim">
+        <div className="quick-trim-actions">
+          <button className="small" onClick={startQuickTrim} disabled={!canQuickTrim} title="いまの再生位置から 0.8 秒を選び、位置を調整する">
+            0.8秒を選ぶ
+          </button>
+          {!canQuickTrim && <span className="hint">素材が 0.8 秒未満です</span>}
+          {draft && <span className="hint">帯の窓か下のスライダーを動かし、映像で確認</span>}
+        </div>
         <TrimBar
           inSec={inSec}
           outSec={outSec}
@@ -123,12 +172,50 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
           strip={clip.thumbs.strip}
           mediaBase={mediaBase}
           usableRanges={clip.usableRanges}
+          disabled={!!draft}
+          moveOnly={!!draft}
           onChange={(r) => {
             setRange(r);
             seekIn(r.inSec);
           }}
         />
-        <div className="clip-trim-row">
+        {draft && (
+          <div className="quick-trim-choice">
+            <div className="quick-trim-zoom-head">
+              <b>区間を拡大</b>
+              <span className="btns">
+                {[2, 4, 8].map((seconds) => <button key={seconds} className={`small chip${zoomSec === seconds ? ' on' : ''}`} onClick={() => {
+                  setZoomSec(seconds);
+                  setZoomStart(trimZoomView(draft, duration, seconds).inSec);
+                }}>{seconds}秒幅</button>)}
+              </span>
+              <button className="small" onClick={() => setZoomStart(trimZoomView(draft, duration, zoomSec).inSec)}>現在位置を中心に</button>
+            </div>
+            <TrimBar
+              inSec={draft.inSec}
+              outSec={draft.outSec}
+              durationSec={duration}
+              fps={clip.probe.fps}
+              strip={clip.thumbs.strip}
+              mediaBase={mediaBase}
+              usableRanges={clip.usableRanges}
+              moveOnly
+              view={{inSec: zoomStart, outSec: Math.min(duration, zoomStart + zoomSec)}}
+              onChange={(r) => updateQuickTrim(r.inSec, false)}
+            />
+            <label>
+              開始位置 {draft.inSec.toFixed(2)}秒
+              <input type="range" min={0} max={Math.max(0, duration - (draft.outSec - draft.inSec))} step="any" value={draft.inSec} onChange={(e) => updateQuickTrim(Number(e.target.value), true)} aria-label="0.8秒区間の開始位置" />
+            </label>
+            <div className="quick-trim-nudge">
+              <button className="small" onClick={() => updateQuickTrim(draft.inSec - 1 / clip.probe.fps, true)}>−1コマ</button>
+              <button className="small" onClick={() => updateQuickTrim(draft.inSec + 1 / clip.probe.fps, true)}>＋1コマ</button>
+            </div>
+            <button className="small primary" onClick={adoptQuickTrim}>この区間を採用して保存</button>
+            <button className="small" onClick={() => setCandidate(null)}>キャンセル</button>
+          </div>
+        )}
+        {!draft && <div className="clip-trim-row">
           <select value={range?.label ?? 'best'} onChange={(e) => setLabel(e.target.value as UsableRange['label'])} title="この区間の扱い" aria-label="区間の扱い">
             {LABELS.map((l) => (
               <option key={l} value={l}>
@@ -150,7 +237,7 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
             区間を消す
           </button>
           {pi < 0 && <span className="hint">未指定（全尺から使う）。帯を掴むと区間ができます</span>}
-        </div>
+        </div>}
       </div>
     </div>
   );

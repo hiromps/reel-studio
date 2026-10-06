@@ -161,7 +161,7 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
                   送信（Ctrl+Enter）
                 </button>
                 <AiModelSelect value={model} onChange={setModel} />
-                <span className="hint">変更前は .studio/backups に残ります</span>
+                <span className="hint">変更前は .studio/backups に残ります。共通の文体修正は次の案件にも引き継ぎます</span>
               </div>
               {lastEdit && <EditResult status={lastEdit.status} error={lastEdit.error} r={editResult} />}
             </>

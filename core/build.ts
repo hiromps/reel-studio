@@ -8,7 +8,7 @@ import {generateTts, needsTtsIds, ttsAvailable} from './tts';
 import {mixNarration} from './mix';
 import {deliver, narrationReady} from './deliver';
 import {aiCaption, aiNarration} from './ai';
-import {claudeAvailable} from './agent';
+import {agentAvailable} from './agent-availability';
 import {BUILD_STEP_LABEL, orderBuildSteps, planBuild, type BuildFacts, type BuildStep, type BuildStepId} from '../shared/build';
 
 const mtime = (p: string): number => {
@@ -70,7 +70,7 @@ export const buildFacts = (dir: string): BuildFacts => {
     mixStaleReason: ready.ok ? undefined : ready.reason,
     hasCaption: !!readCaption(dir)?.trim(),
     ttsAvailable: ttsAvailable(),
-    claudeAvailable: claudeAvailable(),
+    claudeAvailable: agentAvailable(),
   };
 };
 

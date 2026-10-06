@@ -20,7 +20,9 @@ import {ensureCutFrame} from './cut-frames';
 import {readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaption, writeCuts, writeNarration} from './project';
 import {validateProject} from './render';
 import {runAgent, type AgentEvent, type AgentRun} from './agent';
+import {agentProvider} from './settings';
 import {agentAddDirs, captionGuideLabel, materializePersonaDocs, promptPath} from './persona-docs';
+import {learnStyleRules, shouldLearnStyleInstruction} from './style-memory';
 import {hookRuleLines} from '../shared/personas';
 import {instagramMcpEnv, instagramMcpForAgent, instagramToolLabel, isInstagramMcpTool} from './instagram-mcp';
 import {activitySummary, createAgentTracker, fmtElapsed, progressView, type ProgressLabels} from '../shared/agent-progress';
@@ -109,7 +111,7 @@ export const agentProgress = (o: {watch?: string[]; onProgress?: AiProgress; log
   const onEvent = (e: AgentEvent) => {
     const step = tr.onEvent(e);
     const st = tr.stats;
-    if (step === 'init') o.log?.(`  ${p}claude が起動しました${st.model ? `（${st.model}）` : ''}`);
+    if (step === 'init') o.log?.(`  ${p}${agentProvider() === 'codex' ? 'Codex' : 'claude'} が起動しました${st.model ? `（${st.model}）` : ''}`);
     else if (step === 'watched') o.log?.(`  ${p}${o.labels?.reading ?? '画を確認中'} ${st.watched.done}/${st.watched.total}（${st.watched.last}）`);
     else if (step === 'tool') o.log?.(`  ${p}▸ ${st.lastTool}${st.lastTarget ? ` ${st.lastTarget}` : ''}`);
     else if (step === 'writing') o.log?.(`  ${p}${o.labels?.writing ?? '結果を書き出しています'}（${activitySummary(st)}）`);
@@ -466,6 +468,7 @@ export async function aiTelop(
   const run: AgentRun<TelopResponse> = await runAgent<TelopResponse>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: TELOP_SCHEMA,
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
@@ -640,6 +643,7 @@ export async function aiNarration(
   const run = await runAgent<NarrationResponse>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: NARRATION_SCHEMA,
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
@@ -865,7 +869,7 @@ export async function aiFacts(
     onLine: log,
     onEvent: (e) => {
       if (e.kind === 'heartbeat') return opt.onProgress?.(Math.min(seen, FACT_KEYS.length), seen ? FACT_KEYS.length : 0, `${lastPhase}（${fmtElapsed(e.elapsedSec)}）`);
-      if (e.kind === 'init') return opt.onProgress?.(0, 0, 'claude が起動しました');
+      if (e.kind === 'init') return opt.onProgress?.(0, 0, `${agentProvider() === 'codex' ? 'Codex' : 'claude'} が起動しました`);
       if (e.kind !== 'tool') return;
       if (e.name === 'WebSearch') step(`検索中「${String((e.input as {query?: string}).query ?? '')}」`.slice(0, 64));
       else if (e.name === 'WebFetch') step(`確認中 ${String((e.input as {url?: string}).url ?? '').replace(/^https?:\/\//, '').slice(0, 44)}`);
@@ -1062,6 +1066,7 @@ export async function aiCaption(
   const run = await runAgent<CaptionResponse>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: CAPTION_SCHEMA,
     addDirs: agentAddDirs(docs, projectDir, examples),
     model: opt.model ?? studioConfig.agent.model,
@@ -1144,6 +1149,7 @@ const PATCH_SCHEMA = {
     order: {type: 'array', items: {type: 'string'}, description: '並べ替え後の全カット（残す既存の cutId と、add の ref）を先頭から列挙する。並び替えないなら省略'},
     theme: {type: 'string', enum: ['pop', 'bold', 'human', 'stylish']},
     unapplied: {type: 'array', items: {type: 'string'}, description: 'できなかったこと・判断がつかず確認したいこと'},
+    learnedRules: {type: 'array', items: {type: 'string'}, description: '今後の全案件・全台本に共通で守るべき、ユーザーが明示した文体の修正だけ。案件固有の料理・店・構成の指示は含めない。無ければ空配列'},
   },
 } as const;
 
@@ -1156,6 +1162,7 @@ export type Patch = {
   order?: string[];
   theme?: 'pop' | 'bold' | 'human' | 'stylish';
   unapplied?: string[];
+  learnedRules?: string[];
 };
 
 export type AiEditResult = {
@@ -1216,6 +1223,8 @@ export function applyPatch(
   const applied: string[] = [];
   const unapplied = [...(patch.unapplied ?? [])];
   const needsTts: string[] = [];
+  // 台本から作った cuts には meta.telopGroups が無い。AI に見せる ID と同じ対応を先に固定する。
+  const telopGroupIds = new Map(telopTargets(cuts).map((g) => [g.id, g.cuts.map((i) => cuts.cuts[i]?.id).filter((id): id is string => !!id)]));
   const next: ReelData = {...cuts, cuts: cuts.cuts.map((c) => ({...c, main: c.main ? {...c.main} : undefined}))};
   if (next.meta?.telopGroups) next.meta = {...next.meta, telopGroups: next.meta.telopGroups.map((g) => ({...g, cutIds: [...g.cutIds]}))};
 
@@ -1303,8 +1312,17 @@ export function applyPatch(
     }
   }
 
+  const groupSeen = new Map<string, number>();
+  const groupCounts = new Map<string, number>();
+  for (const t of patch.telops ?? []) if (t.group) groupCounts.set(t.group, (groupCounts.get(t.group) ?? 0) + 1);
   for (const t of patch.telops ?? []) {
-    const ids = t.group ? (next.meta?.telopGroups?.find((g) => g.id === t.group)?.cutIds ?? []) : t.cutId ? [t.cutId] : [];
+    const groupIds = t.group ? (telopGroupIds.get(t.group) ?? []) : [];
+    const occurrence = t.group ? (groupSeen.get(t.group) ?? 0) : 0;
+    if (t.group) groupSeen.set(t.group, occurrence + 1);
+    // 同じ group にカット数だけ文言が来たら、順番に 1 カットずつ書き換える。
+    const ids = t.group && groupCounts.get(t.group) === groupIds.length && groupIds.length > 1
+      ? [groupIds[occurrence]]
+      : t.group ? groupIds : t.cutId ? [t.cutId] : [];
     const idx = ids.map(indexOfCut).filter((i) => i >= 0);
     if (!idx.length) {
       unapplied.push(`telops: ${t.group ?? t.cutId ?? '(指定なし)'} が無い`);
@@ -1409,15 +1427,15 @@ export async function aiEdit(
     return catalog.clips.find((x) => x.src === real || x.proxyOf === real);
   };
   const slotOf = (c: Cut) => cuts.meta?.slots?.find((s) => s.cutId === c.id);
-  const groupOf = (c: Cut) => cuts.meta?.telopGroups?.find((g) => c.id && g.cutIds.includes(c.id));
+  const groupByCut = new Map(telopTargets(cuts).flatMap((g) => g.cuts.map((i) => [i, g.id] as const)));
 
   // カットごとに 1 行。必要な絵だけ Read させるためフレームのパスも添える
   const frames = await Promise.all(cuts.cuts.map((c) => ensureCutFrame(projectDir, c.src, c.inSec + 0.3, 320)));
   const cutLines = cuts.cuts.map((c, i) => {
     const cl = clipOf(c);
-    const g = groupOf(c);
+    const g = groupByCut.get(i);
     const f = frames[i];
-    return `- ${c.id ?? `#${i + 1}`} / ${i + 1}番目 / 役割 ${slotOf(c)?.role ?? '-'} / ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}（${cutDurationSec(c).toFixed(2)}秒）${c.playbackRate ? ` / rate ${c.playbackRate}` : ''} / 素材 ${cl?.tags?.description ?? cl?.slug ?? c.src}${g ? ` / テロップ ${g.id}` : ''}「${c.main?.text ?? (c.subs?.length ? '（会話字幕）' : '（無し）')}」${f ? ` / 画 ${path.relative(projectDir, f).replace(/\\/g, '/')}` : ''}`;
+    return `- ${c.id ?? `#${i + 1}`} / ${i + 1}番目 / 役割 ${slotOf(c)?.role ?? '-'} / ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}（${cutDurationSec(c).toFixed(2)}秒）${c.playbackRate ? ` / rate ${c.playbackRate}` : ''} / 素材 ${cl?.tags?.description ?? cl?.slug ?? c.src}${g ? ` / テロップ ${g}` : ''}「${c.main?.text ?? (c.subs?.length ? '（会話字幕）' : '（無し）')}」${f ? ` / 画 ${path.relative(projectDir, f).replace(/\\/g, '/')}` : ''}`;
   });
 
   const narrLines: string[] = [];
@@ -1467,6 +1485,7 @@ export async function aiEdit(
     ...clipLines,
     '',
     '指示に関係するところだけ直す。関係ないところは触らない。返すのは差分だけで、ファイルは自分で書き換えないこと。',
+    'テロップをナレーションに合わせる指示では、ナレーションは参照元として使い、ナレーションの文言・位置は変えない。両方の変更を明示された場合だけ両方直す。',
     '差分でできること: 素材からカットを足す（add。ref に n1, n2 … と仮の名前を付け、order・telops・cuts の cutId にその ref を使える）／区間・倍速・削除（cuts）／並べ替え（order＝残す既存の cutId と add の ref を全部、先頭から）／テロップ（telops）／ナレーションの文言・位置の変更と追加・削除（narration）／theme。',
     '**頼まれたことは、できる部分は全部この差分でやりきる**。一部に確認したいことがあっても、残りを見送らない。確認事項は unapplied に書き、その部分は無難な案で入れておくか、入れずに残す。',
     'カットを足したり並べ替えたりすると後ろのカットの位置がずれる。ナレーションがあるときは、並べ替え後の時間軸でブロックが対応するカットの区間に来るよう at を直し、足したカットに合うブロックが要るなら add で足す。',
@@ -1481,8 +1500,10 @@ export async function aiEdit(
     ...hookRuleLines(persona, 'テロップ・ナレーションの冒頭（フック）'),
     `- カットの尺は ${maxCutSec} 秒を超えない（会話字幕のカットは例外）`,
     '- 同じテロップ文言が続くカットは 1 グループ。group で指すと全部まとめて変わる',
+    '- 同じグループ内でカットごとに違うテロップにするなら group ではなく各 cutId で指す。group は一覧に出た ID だけを使う',
     '',
     'できないこと・判断がつかないことは unapplied に書いて、勝手に決めない。',
+    'ユーザーの指示が今後の全案件に通用する文体上の訂正（禁止する語尾・言葉遣い等）なら learnedRules に短い命令文で入れる。店名・料理・この動画だけの構成や位置の指示は学習しない。一般化できないときは空配列。',
   ]
     .filter(Boolean)
     .join('\n');
@@ -1494,6 +1515,7 @@ export async function aiEdit(
   const run: AgentRun<Patch> = await runAgent<Patch>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: PATCH_SCHEMA,
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
@@ -1520,6 +1542,10 @@ export async function aiEdit(
     const parsedNarr = NarrationSchema.safeParse(r.narration);
     if (!parsedNarr.success) unapplied.push(`narration.json の形が壊れるので書いていない: ${parsedNarr.error.issues[0]?.message ?? ''}`);
     else writeNarration(projectDir, parsedNarr.data);
+  }
+
+  if (applied.length && shouldLearnStyleInstruction(instruction) && patch.learnedRules?.length) {
+    for (const rule of learnStyleRules(patch.learnedRules)) log(`  共通ルールとして学習: ${rule.text}`);
   }
 
   log(`AI 修正完了: ${applied.length} 件 / $${run.costUsd.toFixed(3)}`);

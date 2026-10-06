@@ -2,10 +2,12 @@
 import {Router} from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import {DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema} from '../../shared/schema/settings';
+import {AGENT_PROVIDERS, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider} from '../../shared/schema/settings';
 import {deepseekApiKey, deepseekKeyView, fishKeyView, instagramKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
 import {listFonts} from '../../core/fonts';
 import {claudeAvailable, claudeBin, claudeBinInfo, claudeVersion, resetClaudeBin} from '../../core/agent';
+import {codexAvailable, codexBinInfo, codexLoggedIn, codexVersion} from '../../core/codex';
+import {listAgentModels} from '../../core/agent-models';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
 import {instagramMcpEnv, probeInstagramMcp, resetInstagramMcpEnv} from '../../core/instagram-mcp';
 import {probeDeepseekKey} from '../../shared/deepseek';
@@ -21,7 +23,11 @@ const view = async () => {
   const info = claudeBinInfo();
   const available = claudeAvailable();
   const version = available ? await claudeVersion(info.bin) : null;
-  return settingsView({bin: info.bin, available, source: info.source, version}, studioConfig.templateDir, listFonts());
+  const codex = codexBinInfo();
+  const codexReady = codexAvailable();
+  const result = settingsView({bin: info.bin, available, source: info.source, version}, studioConfig.templateDir, listFonts());
+  result.codex = {bin: codex.bin, available: codexReady, loggedIn: codexReady ? await codexLoggedIn(codex.bin) : false, source: codex.source, version: codexReady ? await codexVersion(codex.bin) : null};
+  return result;
 };
 
 settingsRouter.get('/', async (_req, res) => {
@@ -29,6 +35,17 @@ settingsRouter.get('/', async (_req, res) => {
     res.json(await view());
   } catch (e) {
     res.status(500).json({error: (e as Error).message});
+  }
+});
+
+/** モデル選択肢。入力中の DeepSeek 鍵でも更新できるよう POST にする。鍵は応答へ含めない。 */
+settingsRouter.post('/models', async (req, res) => {
+  const provider = req.body?.provider;
+  if (!AGENT_PROVIDERS.includes(provider as AgentProvider)) return res.status(400).json({error: '接続先が不正です'});
+  try {
+    res.json(await listAgentModels(provider as AgentProvider, {deepseekKey: typeof req.body?.apiKey === 'string' ? req.body.apiKey : undefined, claudeKey: typeof req.body?.apiKey === 'string' ? req.body.apiKey : undefined, codexBin: typeof req.body?.bin === 'string' ? req.body.bin : undefined}));
+  } catch (e) {
+    res.status(502).json({error: (e as Error).message});
   }
 });
 
@@ -95,6 +112,15 @@ settingsRouter.post('/test/claude', async (req, res) => {
     version,
     message: version ? `動きました（${version}）` : 'claude --version が動きませんでした。Claude Code のインストールと、ターミナルで claude を一度起動してログイン済みかを確認してください',
   });
+});
+
+settingsRouter.post('/test/codex', async (req, res) => {
+  const typed = typeof req.body?.bin === 'string' ? req.body.bin.trim() : '';
+  const bin = typed || codexBinInfo().bin;
+  if (path.isAbsolute(bin) && !fs.existsSync(bin)) return res.json({ok: false, bin, version: null, message: `ファイルが見つかりません: ${bin}`});
+  const version = await codexVersion(bin);
+  const loggedIn = version ? await codexLoggedIn(bin) : false;
+  res.json({ok: !!version && loggedIn, bin, version, message: !version ? 'codex --version が動きませんでした。Codex CLI のインストールを確認してください' : loggedIn ? `動きました（${version}）` : 'Codex CLI にログインしていません。ターミナルで codex login を実行してください'});
 });
 
 /** DeepSeek の鍵が通るか（残高 API。課金なし）。本文の apiKey があればそれを、無ければ保存済み／環境変数の鍵を試す。鍵は返さない */

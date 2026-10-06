@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {MIN_CUT_SEC, applyTrim, fallbackDuration, nudgeSec, ratioOf, secAtX} from '../src/components/trim';
+import {MIN_CUT_SEC, applyTrim, fallbackDuration, fixedTrimRange, nudgeSec, ratioOf, secAtX, trimZoomView} from '../src/components/trim';
 
 const FPS = 60;
 const base = {inSec: 1.0, outSec: 3.0};
@@ -94,5 +94,27 @@ describe('補助', () => {
   it('fallbackDuration は今の OUT より広い', () => {
     expect(fallbackDuration({inSec: 0, outSec: 2})).toBeGreaterThan(2);
     expect(fallbackDuration({inSec: 0, outSec: 0.1})).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('0.8秒の固定区間', () => {
+  it('現在位置から 0.8 秒を選び、終端では区間全体を内側に寄せる', () => {
+    expect(fixedTrimRange(2, 10, 30)).toEqual({inSec: 2, outSec: 2.8});
+    expect(fixedTrimRange(9.7, 10, 30)).toEqual({inSec: 9.2, outSec: 10});
+  });
+
+  it('素材が短いと候補を作らない', () => {
+    expect(fixedTrimRange(0, 0.79, 30)).toBeNull();
+  });
+
+  it('倍速カットは再生尺が 0.8 秒になる素材尺で切る', () => {
+    const r = fixedTrimRange(1, 6, 30, 1.6);
+    expect(r).toEqual({inSec: 1, outSec: 2.6});
+    expect((r!.outSec - r!.inSec) / 2).toBeCloseTo(0.8);
+  });
+
+  it('長い素材では選択位置の前後4秒だけを拡大し、端では表示範囲を内側に寄せる', () => {
+    expect(trimZoomView({inSec: 50, outSec: 50.8}, 120, 4)).toEqual({inSec: 48.4, outSec: 52.4});
+    expect(trimZoomView({inSec: 119.2, outSec: 120}, 120, 4)).toEqual({inSec: 116, outSec: 120});
   });
 });

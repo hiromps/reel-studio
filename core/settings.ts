@@ -101,7 +101,10 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(agent, 'model', patch.agent.model);
     if (patch.agent.provider) agent.provider = patch.agent.provider;
     setOrClear(agent, 'deepseekApiKey', patch.agent.deepseekApiKey);
+    setOrClear(agent, 'claudeCatalogApiKey', patch.agent.claudeCatalogApiKey);
     setOrClear(agent, 'deepseekModel', patch.agent.deepseekModel);
+    setOrClear(agent, 'codexModel', patch.agent.codexModel);
+    setOrClear(agent, 'codexBin', patch.agent.codexBin);
     for (const k of ['tagBatchSize', 'tagConcurrency', 'timeoutMin'] as const) if (patch.agent[k] !== undefined) agent[k] = patch.agent[k];
   }
   if (patch.telop) setOrClear(next.telop as Record<string, unknown>, 'font', patch.telop.font);
@@ -233,6 +236,19 @@ export const deepseekKeyView = (): SecretView => {
   return {present: false, masked: '', source: null};
 };
 
+export const claudeCatalogApiKey = (): string | null => {
+  const env = process.env.ANTHROPIC_API_KEY?.trim();
+  if (env && !env.startsWith('${')) return env;
+  return loadSettings().agent.claudeCatalogApiKey?.trim() || null;
+};
+
+export const claudeCatalogKeyView = (): SecretView => {
+  const env = process.env.ANTHROPIC_API_KEY?.trim();
+  if (env && !env.startsWith('${')) return {present: true, masked: maskSecret(env), source: 'env'};
+  const conf = loadSettings().agent.claudeCatalogApiKey?.trim();
+  return conf ? {present: true, masked: maskSecret(conf), source: 'settings'} : {present: false, masked: '', source: null};
+};
+
 /**
  * GET /api/settings の本体。claude の情報は呼び出し側（core/agent.ts を知っている層）が足す。
  * fonts も引数で受ける（core/fonts.ts はこのファイルを使う側なので、ここから呼ぶと循環する）
@@ -246,8 +262,9 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
   void _omitToken;
   const {mcpKey: _omitMcpKey, ...instagramRest} = s.instagram;
   void _omitMcpKey;
-  const {deepseekApiKey: _omitDsKey, ...agentRest} = s.agent;
+  const {deepseekApiKey: _omitDsKey, claudeCatalogApiKey: _omitClaudeKey, ...agentRest} = s.agent;
   void _omitDsKey;
+  void _omitClaudeKey;
   const pathsView = {} as SettingsView['paths'];
   for (const k of PATH_KEYS) pathsView[k] = {value: paths[k], source: sources[k], exists: fs.existsSync(paths[k])};
   pathsView.templateDir = templateDir;
@@ -259,7 +276,7 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
     settings: {
       ...s,
       tts: {...ttsRest, apiKey: fishKeyView()},
-      agent: {...agentRest, provider: agentProvider(), deepseekApiKey: deepseekKeyView()},
+      agent: {...agentRest, provider: agentProvider(), deepseekApiKey: deepseekKeyView(), claudeCatalogApiKey: claudeCatalogKeyView()},
       cloud: {...cloudRest, token: cloudTokenView()},
       instagram: {...instagramRest, mcpKey: instagramKeyView()},
     },
@@ -269,6 +286,8 @@ export const settingsView = (claude: SettingsView['claude'], templateDir: string
       fishApiKey: !!process.env.FISH_API_KEY?.trim(),
       fishModelId: !!process.env.FISH_MODEL_ID?.trim(),
       claudeBin: !!process.env.REEL_STUDIO_CLAUDE_BIN?.trim(),
+      codexBin: !!process.env.REEL_STUDIO_CODEX_BIN?.trim(),
+      claudeCatalogApiKey: !!process.env.ANTHROPIC_API_KEY?.trim(),
       agentModel: !!process.env.REEL_STUDIO_AGENT_MODEL?.trim(),
       agentProvider: !!envProvider(),
       deepseekApiKey: !!process.env.DEEPSEEK_API_KEY?.trim(),

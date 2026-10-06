@@ -152,7 +152,7 @@ export async function aiScriptDraft(dir: string, opt: ScriptDraftOptions): Promi
 
   log(`依頼文から台本を書く: 素材 ${usable.length} 本 / 目安 ${targetSec} 秒（model=${model}）`);
   const {onEvent} = agentProgress({onProgress: opt.onProgress, log, labels: {thinking: '依頼文と素材から台本を考えています', writing: '台本を書き出しています'}});
-  const run: AgentRun<unknown> = await runAgent({cwd: dir, prompt, schema: DRAFT_SCHEMA, model, timeoutMs: studioConfig.agent.timeoutMs, onLine: log, onEvent, signal: opt.signal});
+  const run: AgentRun<unknown> = await runAgent({cwd: dir, prompt, styleRules: true, schema: DRAFT_SCHEMA, model, timeoutMs: studioConfig.agent.timeoutMs, onLine: log, onEvent, signal: opt.signal});
   opt.onProgress?.(0, 0, '検算しています');
 
   const parsed = ScriptDraftSchema.safeParse(run.data);

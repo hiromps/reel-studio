@@ -140,8 +140,9 @@ git pull
 2. **音声生成（Fish Audio）** — API キーを入れて「接続テスト」。鍵は画面には戻ってこず（末尾 4 桁だけ表示）、平文で `settings.json` に保存されます。
    Windows ではユーザープロファイルのアクセス権だけで守られる点に注意してください。環境変数 `FISH_API_KEY` があればそちらが優先されます。
    人格の既定ボイス以外に選びたいモデル（他の人の公開モデルなど）は「追加ボイス」に reference_id を登録します。
-3. **AI（Claude Code CLI）** — `claude` の検出結果とバージョンが出ます。PATH に無ければ実行ファイルの場所を指定できます。
-   既定モデル（opus / sonnet / haiku）とタグ付けの並列数もここ。
+3. **AI の接続先** — Claude、DeepSeek、Codex を選びます。モデル欄は各接続先から取得した候補のプルダウンで、手入力は不要です。
+   DeepSeek は API キーが必要です。Codex CLI は依存関係として同梱されますが、初回はターミナルで `npx codex login` を実行してください。
+   Claude は既存の Claude Code ログインを使います。公式 API の完全なモデル一覧が必要なら、一覧取得専用の Anthropic API キーを任意で設定できます。
 4. **Instagram の情報取得（Smartgram MCP）** — キャプションを書く前の「店舗情報の裏取り」で、店の公式 Instagram を
    [Smartgram](https://app.smartgram.jp/) の MCP サーバー経由で読めるようにします（任意）。MCP 用 API キーを入れて「接続テスト」。
    無ければ Web 検索だけで裏取りしますが、Instagram はログイン壁で読めないことが多く、検索スニペット頼みになります。
@@ -196,8 +197,10 @@ CLI からは `bin/reel settings show` で現在の設定（鍵はマスク）�
 | `FISH_API_KEY` / `FISH_MODEL_ID` | Fish Audio の鍵とモデル（既定 `s2.1-pro-free`） |
 | `REEL_STUDIO_CLAUDE_BIN` | `claude` 実行ファイルの場所 |
 | `REEL_STUDIO_AGENT_MODEL` | AI の既定モデル |
-| `REEL_STUDIO_AGENT_PROVIDER` | AI の接続先（`claude` / `deepseek`。Claude Code の契約が切れたとき用） |
+| `REEL_STUDIO_AGENT_PROVIDER` | AI の接続先（`claude` / `deepseek` / `codex`） |
 | `DEEPSEEK_API_KEY` | 接続先が DeepSeek のときの API キー |
+| `ANTHROPIC_API_KEY` | Claude の公式モデル一覧取得用（任意。CLI の認証にも影響するため、一覧専用なら Settings の入力欄を使う） |
+| `REEL_STUDIO_CODEX_BIN` | Codex CLI の実行ファイル（任意。通常は同梱版を使う） |
 | `REEL_STUDIO_MOSAIC_PYTHON` | 顔モザイク（deface）に使う python |
 | `REEL_STUDIO_PORT` / `REEL_STUDIO_HOST` | サーバーのポート（既定 4310）とホスト（既定 127.0.0.1） |
 | `REEL_STUDIO_JOB_CONCURRENCY` | 同時に走らせるジョブ数（既定 2。ffmpeg / Remotion 系は常に 1） |

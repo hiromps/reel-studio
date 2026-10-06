@@ -247,6 +247,7 @@ export async function aiHooks(
   const run = await runAgent<HooksResponse>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: HOOKS_SCHEMA,
     addDirs: agentAddDirs(docs, projectDir, examples),
     model: opt.model ?? studioConfig.agent.model,
@@ -408,6 +409,7 @@ export async function aiWinner(
   const run = await runAgent<WinnerResponse>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: WINNER_SCHEMA,
     addDirs: agentAddDirs(docs, projectDir),
     model: opt.model ?? studioConfig.agent.model,

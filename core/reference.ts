@@ -934,6 +934,7 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
   const run: AgentRun<unknown> = await runAgent({
     cwd: dir,
     prompt,
+    styleRules: true,
     schema: MIMIC_SCHEMA,
     model,
     timeoutMs: studioConfig.agent.timeoutMs,

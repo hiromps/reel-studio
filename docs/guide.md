@@ -308,6 +308,8 @@ IG ハンドルが取れ、住所と電話は集約サイト経由（Google マ�
 
 ### 自由指示（`ai-edit`）の作り
 
+「〜やでを使わない」など、案件固有ではない文体の修正は AI 修正の結果から全案件共通のルールとして抽出し、設定の置き場の `style-memory.json` に保存する。次回以降の台本、型を写す、組み立て、テロップ、ナレーション、キャプション、AI 修正に渡す。店名・料理・この動画だけの構成指示は学習しない。全案件共通で「〜やで」など中途半端な関西弁と「○○です」の締めを避け、テロップを体言止めか「〜すぎる」「〜すぎた・・・」などで言い切る。モデルの重みを更新する機能ではなく、保存したルールを毎回の生成指示に含める仕組み。
+
 エージェントは**ファイルを書き換えず、差分だけを決まった形で返す**（`summary` / `add` / `telops` / `narration` / `cuts` / `order` / `theme` / `unapplied`）。`add` は素材一覧（プロンプトに id・尺・使える区間を載せる）からカットを足す欄で、仮の名前 `ref`（n1 …）を `order` / `telops` / `cuts` から指せる。
 それを `core/ai.ts` の `applyPatch`（足す → 区間・削除 → 並べ替え → テロップ → theme の順）が適用し、`ReelDataSchema` / `NarrationSchema` に通してから書く。形が壊れる差分は書かずに `unapplied` に落ちる。
 変更前のファイルは `.studio/backups/` に残る。渡す文脈は、全カットの行（id・役割・区間・素材・テロップ・**カット頭のフレーム画像のパス**）と、
@@ -388,10 +390,16 @@ Settings の「AI」→「接続先」を **DeepSeek** にして API キー（ht
 同じ `claude` を DeepSeek の Anthropic 互換 API（`https://api.deepseek.com/anthropic`）に向けて走らせる（`core/agent.ts` の `providerEnv`）。
 `claude` 本体のインストールは引き続き必要（ログインは不要）。「接続テスト」は残高 API を叩くだけなので課金されない。
 
-- 既定のモデルは「DeepSeek のモデル」（`deepseek-v4-pro`）。各画面のモデル選択は opus＝このモデル、sonnet / haiku＝`deepseek-v4-flash` に読み替える
+- Settings と各画面のモデル選択は DeepSeek の `GET /models` から取得した候補を使う。新しいモデルも「一覧を更新」で選べる。入力欄で ID を手書きする方式は使わない
 - 鍵が通らない（401/403）ときは claude の再試行（最大 10 回・数分）を待たずに、最初の 1 回でジョブを止める
 - 環境変数で固定するなら `REEL_STUDIO_AGENT_PROVIDER=deepseek` と `DEEPSEEK_API_KEY`
 - ログ・作業記録の金額（`costUsd`）は claude が Claude の単価で計算した値なので、DeepSeek の実際の請求とは合わない。残高は「接続テスト」で見る
+
+### 接続先を Codex にする
+
+Settings の「AI」→「接続先」で **Codex** を選ぶ。Codex CLI は npm の依存関係として同梱され、ターミナルで `npx codex login` を一度行う。モデル候補は Codex CLI の app-server `model/list` から取得する。AI の作業は `codex exec` を読み取り専用サンドボックスで実行し、JSON Schema に合う結果を受け取る。Claude Code のインストールは必要ない。
+
+Claude のモデル候補は Anthropic API キーを設定すれば公式 `GET /v1/models` から取得する。キーがない Claude Code のサブスクリプション利用時は CLI が最新バージョンに解決するモデル別名を選べる。Settings の「Claude のモデル一覧用 API キー」は一覧取得だけに使い、CLI のログイン設定は変更しない。
 
 ## Brief の「作り方の流れ」（3 つの作り方と順序）
 
@@ -979,7 +987,7 @@ Render のナレーションカードの **「ボイス」** で読み上げる�
 
 ### 声と環境音の音量
 
-`narration.json` の `narrationGainDb`（−6〜+12 dB・既定 +10）と `ambientGain`（0〜0.6・既定 0.22）をスライダーで変える。
+`narration.json` の `narrationGainDb`（−6〜+12 dB・既定 +8）と `ambientGain`（0〜0.6・既定 0.22）をスライダーで変える。
 `scripts/mix-narration.cjs`がこれを読む。**変えても音声の再生成は不要**で、mix をやり直すだけでよい。
 
 ## 仕上げ（Render 画面・`reel build`）

@@ -17,6 +17,8 @@ import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {exec} from '../core/exec';
 import {claudeAvailable, claudeBin, claudeVersion, resetClaudeBin} from '../core/agent';
+import {codexAvailable, codexBinInfo, codexLoggedIn, codexVersion} from '../core/codex';
+import {listAgentModels} from '../core/agent-models';
 import {ttsAvailable, resetFishEnv} from '../core/tts';
 import {resetInstagramMcpEnv} from '../core/instagram-mcp';
 import {mosaicStatus, resetMosaicStatus} from '../core/mosaic';
@@ -192,7 +194,14 @@ const applyRemoteChanges = async (client: CloudClient, reply: Awaited<ReturnType
 
 const currentSettingsView = async () => {
   const available = claudeAvailable();
-  return settingsView({bin: claudeBin(), available, source: 'path', version: available ? await claudeVersion() : null}, studioConfig.templateDir, listFonts());
+  const view = settingsView({bin: claudeBin(), available, source: 'path', version: available ? await claudeVersion() : null}, studioConfig.templateDir, listFonts());
+  const codex = codexBinInfo();
+  view.codex = {bin: codex.bin, source: codex.source, available: codexAvailable(), loggedIn: codexAvailable() ? await codexLoggedIn(codex.bin) : false, version: codexAvailable() ? await codexVersion(codex.bin) : null};
+  const providers = ['claude', 'deepseek', 'codex'] as const;
+  const catalogs = await Promise.allSettled(providers.map((provider) => listAgentModels(provider)));
+  view.agentModels = {};
+  catalogs.forEach((result, index) => {if (result.status === 'fulfilled') view.agentModels![providers[index]] = result.value;});
+  return view;
 };
 
 // ───────────────────────── ジョブの実行 ─────────────────────────

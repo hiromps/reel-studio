@@ -38,6 +38,7 @@
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@openai/codex": "^0.160.1",
     "@remotion/player": "4.0.522",
     "@vercel/blob": "^2.8.0",
     "chokidar": "^4.0.3",

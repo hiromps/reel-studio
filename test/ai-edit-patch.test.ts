@@ -43,6 +43,20 @@ describe('addedCutRange', () => {
 });
 
 describe('applyPatch', () => {
+  it('meta の無い台本カットでも推定した g01 のテロップを更新する', () => {
+    const cuts = reel([cut('c01', 'uploads/a.mp4', '旧'), cut('c02', 'uploads/b.mp4', '旧'), cut('c03', 'uploads/c.mp4', '次')]);
+    const r = applyPatch(cuts, null, catalog, {summary: '', telops: [{group: 'g01', text: '新しい文言'}]}, {maxCutSec: 3});
+    expect(r.cuts.cuts.map((c) => c.main?.text)).toEqual(['新しい文言', '新しい文言', '次']);
+    expect(r.unapplied).toEqual([]);
+  });
+
+  it('同じグループにカット数だけ文言が来たら各カットへ順に適用する', () => {
+    const cuts = reel([cut('c01', 'uploads/a.mp4', '旧'), cut('c02', 'uploads/b.mp4', '旧')]);
+    const r = applyPatch(cuts, null, catalog, {summary: '', telops: [{group: 'g01', text: '一つ目'}, {group: 'g01', text: '二つ目'}]}, {maxCutSec: 3});
+    expect(r.cuts.cuts.map((c) => c.main?.text)).toEqual(['一つ目', '二つ目']);
+    expect(r.unapplied).toEqual([]);
+  });
+
   it('素材からカットを足し、ref で並べ替えとテロップを指せる', () => {
     const r = apply({
       add: [

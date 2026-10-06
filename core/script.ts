@@ -13,7 +13,7 @@ import {readBrief, readNarration, writeCuts, writeNarration} from './project';
 import {loadCatalog, studioDir} from './catalog';
 import {runAgent} from './agent';
 import {readJsonFile, writeJsonAtomic} from './json-io';
-import {loadSettings} from './settings';
+import {agentProvider, loadSettings} from './settings';
 import {activitySummary, createAgentTracker, progressView} from '../shared/agent-progress';
 import {studioConfig} from '../studio.config';
 import {type ReelData} from '../shared/schema/cuts';
@@ -324,6 +324,7 @@ export async function aiScript(
   const run = await runAgent<ScriptPlan>({
     cwd: projectDir,
     prompt,
+    styleRules: true,
     schema: PLAN_SCHEMA,
     model: opt.model ?? studioConfig.agent.model,
     timeoutMs: studioConfig.agent.timeoutMs,
@@ -331,7 +332,7 @@ export async function aiScript(
     onEvent: (e) => {
       const step = tracker.onEvent(e);
       const st = tracker.stats;
-      if (step === 'init') log(`  claude が起動しました${st.model ? `（${st.model}）` : ''}`);
+      if (step === 'init') log(`  ${agentProvider() === 'codex' ? 'Codex' : 'claude'} が起動しました${st.model ? `（${st.model}）` : ''}`);
       else if (step === 'tool') log(`  ▸ ${st.lastTool}${st.lastTarget ? ` ${st.lastTarget}` : ''}`);
       else if (step === 'writing') log(`  組み立てを書き出しています（${activitySummary(st)}）`);
       else if (step === 'heartbeat' && st.elapsedSec - lastHb >= 30) {

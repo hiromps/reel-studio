@@ -362,6 +362,11 @@ label > textarea {
   color: var(--tint-yellow-fg);
   border-color: color-mix(in srgb, var(--tint-yellow-fg) 35%, transparent);
 }
+.pill.agent-codex {
+  background: var(--tint-blue);
+  color: var(--tint-blue-fg);
+  border-color: color-mix(in srgb, var(--tint-blue-fg) 35%, transparent);
+}
 .agent-badge-dot {
   width: 7px;
   height: 7px;
@@ -1546,6 +1551,56 @@ pre.md {
   align-items: center;
   gap: 8px;
 }
+.quick-trim-actions,
+.quick-trim-choice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+}
+.quick-trim-choice {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.quick-trim-choice > .trim,
+.quick-trim-zoom-head {
+  flex: 1 1 100%;
+}
+.quick-trim-zoom-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.quick-trim-nudge {
+  display: flex;
+  gap: 8px;
+}
+.quick-trim-zoom-head .btns {
+  flex-wrap: wrap;
+}
+.quick-trim-choice label {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 4px;
+}
+.quick-trim-choice input[type='range'] {
+  width: 100%;
+  min-height: 44px;
+}
+.quick-trim-choice video {
+  width: min(100%, 160px);
+  max-height: 210px;
+  background: #000;
+  border-radius: 8px;
+}
+.quick-trim-actions button,
+.quick-trim-choice button {
+  min-height: 44px;
+}
 .clip-trim-row > select {
   flex: 0 1 auto;
   min-width: 0;
@@ -2617,6 +2672,77 @@ a.btn-like:hover {
 }
 .insp-cut-meta select {
   max-width: 100%;
+}
+.replace-picker {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.replace-picker > label {
+  display: grid;
+  gap: 4px;
+}
+.replace-picker > label input {
+  width: 100%;
+  min-width: 0;
+}
+.replace-results {
+  display: grid;
+  gap: 4px;
+  max-height: 270px;
+  overflow-y: auto;
+}
+.replace-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.replace-option.selected {
+  border-color: var(--accent2);
+}
+.replace-option img,
+.replace-option .thumb-none {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+.replace-option span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.replace-option small {
+  display: block;
+  color: var(--muted);
+}
+.replace-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.replace-confirm video {
+  width: min(100%, 180px);
+  max-height: 240px;
+  border-radius: 8px;
+  background: #000;
+}
+.replace-confirm > div {
+  display: grid;
+  gap: 8px;
+}
+.replace-confirm button {
+  min-height: 44px;
 }
 .insp-keys {
   margin: 0;

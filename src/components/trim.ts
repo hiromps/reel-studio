@@ -6,6 +6,25 @@ import {round3, snapSec} from '@shared/timeline';
 export const MIN_CUT_SEC = 0.2;
 
 export type TrimRange = {inSec: number; outSec: number};
+export const QUICK_TRIM_SEC = 0.8;
+
+/** 指定した位置から約 0.8 秒の窓を作る。素材端では窓全体を内側へ寄せる。 */
+export const fixedTrimRange = (startSec: number, durationSec: number, fps: number, lengthSec = QUICK_TRIM_SEC): TrimRange | null => {
+  if (!Number.isFinite(durationSec) || !Number.isFinite(fps) || fps <= 0 || durationSec < lengthSec) return null;
+  const frames = Math.max(1, Math.round(lengthSec * fps));
+  const length = round3(frames / fps);
+  if (durationSec < length) return null;
+  const maxIn = round3(durationSec - length);
+  const inSec = clamp(snapSec(startSec, fps), 0, maxIn);
+  return {inSec, outSec: round3(inSec + length)};
+};
+
+/** 固定区間の周囲だけを帯に表示するための拡大範囲。 */
+export const trimZoomView = (range: TrimRange, durationSec: number, zoomSec: number): TrimRange => {
+  const span = Math.min(durationSec, Math.max(range.outSec - range.inSec, zoomSec));
+  const start = clamp(range.inSec - (span - (range.outSec - range.inSec)) / 2, 0, Math.max(0, durationSec - span));
+  return {inSec: round3(start), outSec: round3(start + span)};
+};
 /** in = 頭を掴む / out = 尻を掴む / move = 尺を保ったまま窓ごと動かす */
 export type TrimHandle = 'in' | 'out' | 'move';
 

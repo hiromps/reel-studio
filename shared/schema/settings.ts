@@ -32,26 +32,21 @@ const TtsSchema = z.object({
  * 裏で走らせる claude の接続先。claude＝ログイン中の Claude（サブスク／Anthropic）、
  * deepseek＝DeepSeek の Anthropic 互換 API（API キー課金）。Claude Code の契約が切れたとき用
  */
-export const AGENT_PROVIDERS = ['claude', 'deepseek'] as const;
+export const AGENT_PROVIDERS = ['claude', 'deepseek', 'codex'] as const;
 export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
-/** DeepSeek のモデル（2026-10 時点の公式ドキュメント）。pro＝精度重視／flash＝速い・安い */
-export const DEEPSEEK_MODELS = [
-  ['deepseek-v4-pro', 'deepseek-v4-pro（精度重視）'],
-  ['deepseek-v4-flash', 'deepseek-v4-flash（速い・安い）'],
-] as const;
+/** 既存設定との互換のための初期値。選択肢は DeepSeek の API から取得する */
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-pro';
-export const DEEPSEEK_FAST_MODEL = 'deepseek-v4-flash';
-export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {claude: 'Claude', deepseek: 'DeepSeek'};
+export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {claude: 'Claude', deepseek: 'DeepSeek', codex: 'Codex'};
 
 /**
  * いま AI がどこに繋がっているか（GET /api/config の agent）。画面上部に常に出す。
  * ready＝claude が見つかっていて、DeepSeek なら鍵もある（押せば動く状態）
  */
-export type AgentStatus = {provider: AgentProvider; model: string; ready: boolean; problem: string | null; issue: 'no-claude' | 'no-key' | null};
+export type AgentStatus = {provider: AgentProvider; model: string; ready: boolean; problem: string | null; issue: 'no-claude' | 'no-codex' | 'no-codex-login' | 'no-key' | null};
 
-export const agentStatusOf = (provider: AgentProvider, model: string, o: {claude: boolean; deepseekKey: boolean}): AgentStatus => {
-  const issue = !o.claude ? 'no-claude' : provider === 'deepseek' && !o.deepseekKey ? 'no-key' : null;
-  const problem = issue === 'no-claude' ? 'claude 実行ファイルが見つかりません' : issue === 'no-key' ? 'DeepSeek の API キーが未設定です' : null;
+export const agentStatusOf = (provider: AgentProvider, model: string, o: {claude: boolean; codex?: boolean; codexLoggedIn?: boolean; deepseekKey: boolean}): AgentStatus => {
+  const issue = provider === 'codex' ? (!o.codex ? 'no-codex' : o.codexLoggedIn === false ? 'no-codex-login' : null) : !o.claude ? 'no-claude' : provider === 'deepseek' && !o.deepseekKey ? 'no-key' : null;
+  const problem = issue === 'no-claude' ? 'claude 実行ファイルが見つかりません' : issue === 'no-codex' ? 'codex 実行ファイルが見つかりません' : issue === 'no-codex-login' ? 'Codex CLI にログインしていません' : issue === 'no-key' ? 'DeepSeek の API キーが未設定です' : null;
   return {provider, model, ready: !issue, problem, issue};
 };
 
@@ -60,8 +55,14 @@ const AgentSchema = z.object({
   provider: z.enum(AGENT_PROVIDERS).default('claude'),
   /** DeepSeek の API キー（sk-…）。平文で保存する（画面やログには出さない） */
   deepseekApiKey: z.string().min(8).optional(),
-  /** DeepSeek のとき既定で使うモデル（opus 指定もこれに置き換わる。sonnet / haiku は flash） */
+  /** Claude の公式モデル一覧取得用。推論には使わず、Claude Code のログインを維持する */
+  claudeCatalogApiKey: z.string().min(8).optional(),
+  /** DeepSeek のとき既定で使うモデル */
   deepseekModel: z.string().min(1).default(DEFAULT_DEEPSEEK_MODEL),
+  /** Codex CLI のモデル。空なら CLI の既定モデルを使う */
+  codexModel: z.string().default(''),
+  /** codex 実行ファイルの場所。省略＝PATH から探す */
+  codexBin: z.string().min(1).optional(),
   /** claude 実行ファイルの場所。省略＝PATH から探す */
   claudeBin: z.string().min(1).optional(),
   /** --model に渡す値。エイリアス（opus / sonnet / haiku）でも完全な id でもよい */
@@ -168,7 +169,10 @@ export const SettingsPatchSchema = z
         claudeBin: nullable(),
         provider: z.enum(AGENT_PROVIDERS).optional(),
         deepseekApiKey: nullable(),
+        claudeCatalogApiKey: nullable(),
         deepseekModel: nullable(),
+        codexModel: nullable(),
+        codexBin: nullable(),
         model: nullable(),
         tagBatchSize: z.number().int().min(1).max(50).optional(),
         tagConcurrency: z.number().int().min(1).max(8).optional(),
@@ -203,7 +207,7 @@ export type SettingsView = {
   /** 設定ファイルが壊れている等の問題（無ければ null）。壊れていても既定値で動く */
   problem: string | null;
   settings: Omit<Settings, 'tts' | 'cloud' | 'instagram' | 'agent'> & {
-    agent: Omit<Settings['agent'], 'deepseekApiKey'> & {deepseekApiKey: SecretView};
+    agent: Omit<Settings['agent'], 'deepseekApiKey' | 'claudeCatalogApiKey'> & {deepseekApiKey: SecretView; claudeCatalogApiKey: SecretView};
     tts: Omit<Settings['tts'], 'apiKey'> & {apiKey: SecretView};
     cloud: Omit<Settings['cloud'], 'token'> & {token: SecretView};
     instagram: Omit<Settings['instagram'], 'mcpKey'> & {mcpKey: SecretView};
@@ -216,6 +220,8 @@ export type SettingsView = {
     fishApiKey: boolean;
     fishModelId: boolean;
     claudeBin: boolean;
+    codexBin?: boolean;
+    claudeCatalogApiKey?: boolean;
     agentModel: boolean;
     agentProvider: boolean;
     deepseekApiKey: boolean;
@@ -227,7 +233,13 @@ export type SettingsView = {
     instagramAccount: boolean;
   };
   claude: {bin: string; available: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};
+  codex?: {bin: string; available: boolean; loggedIn?: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};
+  /** クラウド画面が使う、PC ワーカーで取得した候補のスナップショット */
+  agentModels?: Partial<Record<AgentProvider, AgentModelsView>>;
 };
+
+export type AgentModelOption = {id: string; label: string};
+export type AgentModelsView = {provider: AgentProvider; models: AgentModelOption[]; source: 'provider' | 'cli'; error?: string};
 
 /** GET /api/settings/mosaic が返す形。deface が使えるかは python を実際に起動して確かめる */
 export type MosaicStatus = {
