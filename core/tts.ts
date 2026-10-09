@@ -358,7 +358,8 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   }
   const empty = targets.find((s) => !s.text.trim());
   if (empty) throw new Error(`${empty.id} の本文が空です。先に文言を入れてください`);
-  const multiline = targets.find((s) => /[\r\n]/.test(s.text));
+  // テロップ由来の改行は画面上のレイアウト。本文を言い換えず、そのまま音声に渡す。
+  const multiline = targets.find((s) => /[\r\n]/.test(s.text) && !s.fromTelop);
   if (multiline) throw new Error(`${multiline.id} の本文に改行があります。1 ブロック 1 文にしてください`);
 
   const totalChars = targets.reduce((n, s) => n + [...s.text].length, 0);

@@ -430,6 +430,10 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       }
       if (j.status === 'done') toast(j.result?.textConfirmation ? '台本は保存済みです。今の並びでテロップとナレーション原稿を生成するか確認してください' : `${j.type} 完了`, j.result?.textConfirmation ? 'info' : 'ok');
       if (j.status === 'failed') toast(`${j.type} 失敗: ${j.error ?? ''}`, 'error');
+      if (j.type === 'telop-tts' && ['done', 'failed', 'cancelled'].includes(j.status) && !filesRef.current.narration.dirty) {
+        // 途中まで生成して失敗・中断した場合も、作成済みの音声と残りの原稿を取り込む。
+        void loadFile('narration', {byJob: j.id});
+      }
       if (j.status === 'done' && (j.type === 'ai-caption' || j.type === 'tts')) {
         // caption.txt / narration.json はジョブが直接書く。編集中でなければ取り込む
         if (j.type === 'ai-caption') void loadCaption();

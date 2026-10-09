@@ -4742,6 +4742,11 @@ a.btn-like:hover {
 
 .locked-text-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); margin: auto; overflow: auto; color: var(--fg); }
 .locked-text-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.telop-narration-list { padding: 0; list-style: none; max-height: 36dvh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.telop-narration-list li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.telop-narration-list li:last-child { border-bottom: 0; }
+.telop-narration-list li > span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; }
+.telop-narration-dialog .row button { min-height: 44px; }
 .locked-text-dialog .row { flex-wrap: wrap; margin-top: 16px; }
 
 .locked-text-reminder { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }

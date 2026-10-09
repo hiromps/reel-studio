@@ -17,6 +17,7 @@ import {realignAliases} from '../shared/alias';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {agentAvailable, agentMissingMessage} from '../core/agent-availability';
 import {generateTts} from '../core/tts';
+import {generateTelopNarration} from '../core/telop-narration';
 import {autoPlaceSfx, scanLibrary} from '../core/sfx';
 import {deliver} from '../core/deliver';
 import {runTrial} from '../core/trial';
@@ -475,6 +476,14 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           signal,
         });
         return {made: r.made.length, skipped: r.skipped.length, chars: r.chars, modelId: r.modelId};
+      }
+      case 'telop-tts': {
+        return generateTelopNarration(dir, {
+          fingerprint: typeof p.fingerprint === 'string' ? p.fingerprint : '',
+          onLine,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
+          signal,
+        });
       }
       // 効果音（効果音ラボ等）。ライブラリの棚卸しと、cuts.json からの自動配置
       case 'sfx-scan': {

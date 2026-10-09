@@ -34,7 +34,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   useEffect(() => updateSelection({selection: null}), [s.active]);
   const [frame, setFrame] = useState(0);
   const history = s.editorHistory;
-  const aiUpdating = s.jobs.some((j) => j.slug === s.active && j.type.startsWith('ai-') && (j.status === 'queued' || j.status === 'running')) || s.files.cuts.loading || s.files.narration.loading;
+  const aiUpdating = s.jobs.some((j) => j.slug === s.active && (j.type.startsWith('ai-') || j.type === 'telop-tts') && (j.status === 'queued' || j.status === 'running')) || s.files.cuts.loading || s.files.narration.loading;
 
   const persona = brief ? findPersona(brief.persona) : undefined;
   const spec = brief ? FORMAT_SPECS[brief.format ?? persona?.defaultFormat ?? 'F0'] : undefined;
@@ -146,8 +146,10 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const narrByJob = s.files.narration.byJob;
   const pushSnap = history.push;
   /** AI 開始時点の状態を閉じ込め、受付後に履歴へ 1 手だけ積む。完了イベントの順序に依存しない。 */
-  const captureAiJob = useCallback(() => {
-    const before = snapRef.current();
+  const captureAiJob = useCallback((emptyNarration?: Narration) => {
+    const source = snapRef.current();
+    // 初めて原稿を作る操作は、取り消すと空の原稿に戻す（restore は未作成ファイルの null を書かない）。
+    const before = {...source, narration: source.narration ?? emptyNarration ?? null};
     return (jobId: string) => {
       if (takenJobs.current.has(jobId)) return;
       takenJobs.current.add(jobId);

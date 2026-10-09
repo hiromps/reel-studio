@@ -35,6 +35,7 @@ import {PreviewReady} from '../components/PreviewReady';
 import {sameSelection, type Selection} from './selection';
 import {readEditorClipboard, writeEditorClipboard} from './clipboard';
 import {NarrationLibrary} from './NarrationLibrary';
+import {TelopNarrationDialog} from './TelopNarrationDialog';
 import {ResizeHandle} from './ResizeHandle';
 import type {NarrationLibraryEntry} from '@shared/narration-library';
 
@@ -77,6 +78,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const audio = useRef<HTMLAudioElement | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [telopNarrationOpen, setTelopNarrationOpen] = useState(false);
 
   // 効果音ライブラリ（S 段の幅と、インスペクタの音源一覧に使う）
   useEffect(() => {
@@ -344,7 +346,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       },
     },
     {key: 'Escape', handler: () => { setSelection(null); setMultiSelection([]); }},
-  ]);
+  ], !telopNarrationOpen);
 
   // ---- 素材ビンからのドラッグ ----
   const binDrag = useBinDrag<string>({
@@ -415,7 +417,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     void a.play().catch(() => s.toast('試聴できませんでした', 'error'));
     if (trimSec && trimSec > 0) setTimeout(() => a.pause(), trimSec * 1000);
   };
-  const ttsBusy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'tts');
+  const ttsBusy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'tts' || j.type === 'telop-tts'));
   const ttsBlockedBy = !s.supportsJob('tts') ? 'サーバーが古いプロセスです。再起動してください' : s.config?.tts === false ? 'FISH_API_KEY が見つかりません' : dirtyNarr ? 'narration.json に未保存の変更があります。保存してから生成してください' : ttsBusy ? '生成中です' : null;
   const needsTts = (narration?.segments ?? []).filter((seg) => (seg as {needsTts?: boolean}).needsTts || !seg.durSec).length;
 
@@ -429,7 +431,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     s.toast('brief に固定順とフックを入れました。Brief で「cuts.json に書き込む」と型どおりの役割・テロップ枠が付きます（尺は型に合わせて組み直されます）', 'ok');
   };
 
-  const aiJob = s.jobs.find((j) => (j.type.startsWith('ai-') || j.type === 'tts' || j.type === 'build') && j.slug === s.active && (j.status === 'running' || j.status === 'queued'));
+  const aiJob = s.jobs.find((j) => (j.type.startsWith('ai-') || j.type === 'tts' || j.type === 'telop-tts' || j.type === 'build') && j.slug === s.active && (j.status === 'running' || j.status === 'queued'));
   const placeholders = m.validation?.summary.placeholders ?? 0;
   const dragClip = binDrag.drag ? catalog?.clips.find((c) => c.id === binDrag.drag!.payload) : undefined;
   const extIndex = binDrag.drag ? (timeline.current?.insertIndexAtPoint(binDrag.drag.x, binDrag.drag.y) ?? null) : null;
@@ -552,6 +554,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           {ttsBusy ? '音声を生成中…' : `音声を生成（${needsTts}）`}
         </button>
         <button className="small" onClick={() => setLibraryOpen(true)} title="保存したナレーション音声を聴いて、再生位置へ追加する">音声ライブラリ</button>
+        <button className="small" disabled={!cuts || ttsBusy} onClick={() => {preview.current?.pause(); setTelopNarrationOpen(true);}} title="テロップの文言をそのまま取り込み、Fish Audio でナレーション音声を作ります">テロップを音声化</button>
         <span className="sep" />
         <label className="sb-inline" title="ナレーション・効果音をドラッグしたときカット境界に吸着する（Alt を押しながらで一時的に無効）">
           <input type="checkbox" checked={prefsSafe.snap} onChange={(e) => setPrefs({...prefsSafe, snap: e.target.checked})} />
@@ -775,6 +778,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         />
         <ResizeHandle axis="y" label="タイムラインの高さ" value={timelineHeight} min={190} max={timelineMax} reset={DEFAULT_LAYOUT.timeline} onChange={(timeline) => setLayout({...layoutSafe, timeline})} className="ed-mobile-timeline-resizer" />
       </div>
+
+      {telopNarrationOpen && <TelopNarrationDialog key={s.active} defaults={{voice: m.persona?.narration.voiceId ?? '', voiceTitle: m.persona?.narration.voiceTitle, speed: m.persona?.narration.speed}} capture={m.captureAiJob} onClose={() => setTelopNarrationOpen(false)} />}
 
       {binDrag.drag && (
         <div className="dnd-ghost" style={{left: binDrag.drag.x, top: binDrag.drag.y}}>

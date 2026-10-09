@@ -30,6 +30,8 @@ export const JOB_TYPES = [
   /** 依頼文（どんな動画にしたいか）から台本（script.md）を書く。assemble なら続けて「台本から組み立てる」まで */
   'ai-script-draft',
   'tts',
+  /** テロップの文言をそのまま原稿に取り込み、Fish Audio で音声まで生成する */
+  'telop-tts',
   'sfx-scan',
   'sfx-auto',
   'deliver',
