@@ -86,7 +86,7 @@ export const fitProject = async (projectDir: string, opt: FitProjectOptions = {}
 
   let written = false;
   if (opt.write !== false) {
-    writeCuts(projectDir, r.cuts);
+    writeCuts(projectDir, r.cuts, {preserveOrder: true});
     writeNarration(projectDir, r.narration);
     written = true;
     log(`cuts.json（${r.after.cutCount} カット / ${r.after.totalSec.toFixed(2)} 秒）と narration.json を書きました（旧版は .studio/backups/ に残っています）`);

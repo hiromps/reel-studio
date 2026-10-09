@@ -168,8 +168,7 @@ export const autoPlaceSfx = async (projectDir: string, opt: SfxPlacementOptions 
   for (const i of issues) log(`  ${i.severity} ${i.code} ${i.message}`);
 
   if (opt.write !== false) {
-    if (!narration) throw new Error('narration.json が無いので効果音を書けません（先にナレーション原稿を作る）');
-    writeNarration(projectDir, {...narration, sfx});
+    writeNarration(projectDir, {...(narration ?? {voice: '', segments: [], videoSec}), sfx});
     log(`narration.json の sfx を ${sfx.length} 件に更新しました`);
   }
   return {sfx, missing, issues, videoSec, candidates: all.length};

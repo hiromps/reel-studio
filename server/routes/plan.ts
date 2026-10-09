@@ -3,7 +3,7 @@ import {Router, type Request} from 'express';
 import {planCuts, PlanError} from '../../shared/plan';
 import {loadCatalog, exportForTagging, importTags} from '../../core/catalog';
 import {currentOrder, exportOrder, importOrder, loadOrderEnv} from '../../core/order';
-import {readBrief, readCuts, resolveProjectDirStrict, writeCuts} from '../../core/project';
+import {assertOrderUnlocked, readBrief, readCuts, resolveProjectDirStrict, writeCuts} from '../../core/project';
 import {validateProject} from '../../core/render';
 import {applyAliases, pendingAliases} from '../../core/alias';
 import {loadSettings} from '../../core/settings';
@@ -34,10 +34,11 @@ planRouter.post('/plan', (req, res) => {
     existing = undefined;
   }
   try {
+    if (req.body?.write) assertOrderUnlocked(dir);
     const r = planCuts({catalog, brief, existing, options: {allowReuse: req.body?.allowReuse !== false, font: loadSettings().telop.font}});
     let applied = 0;
     if (req.body?.write) {
-      writeCuts(dir, r.cuts);
+      writeCuts(dir, r.cuts, {preserveOrder: true});
       if (req.body?.copy !== false) {
         applied = applyAliases(dir, r.cuts).length;
         if (applied) writeCuts(dir, r.cuts);

@@ -187,6 +187,31 @@ const key = (c: {kind: string; mode: string; relPath: string}) => `${c.kind}/${c
 
 export type AssetSyncReport = {uploaded: number; skipped: number; bytes: number};
 
+/** クラウドで保存音声を挿入した場合、PC のレンダー前に WAV を取り込む。 */
+export const pullNarrationAudio = async (client: CloudClient, dir: string): Promise<number> => {
+  const narration = readLocalDoc(dir, 'narration') as {segments?: {id?: string; durSec?: number; needsTts?: boolean}[]} | null;
+  if (!narration?.segments?.length) return 0;
+  const assets = await client.listAssets(projectSlug(dir));
+  const remote = new Map(assets.assets.filter((a) => a.kind === 'narration' && a.mode === 'full').map((a) => [a.relPath, a]));
+  const folder = path.join(dir, 'narration');
+  let count = 0;
+  for (const segment of narration.segments) {
+    if (!segment.id || !/^[a-zA-Z0-9_-]+$/.test(segment.id) || !segment.durSec || segment.needsTts) continue;
+    const file = path.join(folder, `${segment.id}.wav`);
+    if (fs.existsSync(file)) continue;
+    const asset = remote.get(`${segment.id}.wav`);
+    if (!asset?.url) continue;
+    const response = await fetch(asset.url);
+    if (!response.ok) throw new Error(`音声の同期に失敗しました: ${segment.id}（HTTP ${response.status}）`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    fs.mkdirSync(folder, {recursive: true});
+    const temp = path.join(folder, `.${segment.id}.${process.pid}.tmp`);
+    try { fs.writeFileSync(temp, bytes); fs.renameSync(temp, file); } finally { fs.rmSync(temp, {force: true}); }
+    count++;
+  }
+  return count;
+};
+
 /** 変わったものだけ Blob に上げて索引に登録する */
 export const syncAssets = async (client: CloudClient, dir: string, blobToken: string, opt: {limit?: number; onLine?: (l: string) => void} = {}): Promise<AssetSyncReport> => {
   const slug = projectSlug(dir);

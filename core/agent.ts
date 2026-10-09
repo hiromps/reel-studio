@@ -193,6 +193,24 @@ export const providerEnv = (provider: AgentProvider = agentProvider(), apiKey: s
   };
 };
 
+const isCodexCapacityError = (error: unknown): boolean => {
+  const detail = error instanceof AgentError ? `${error.message}\n${error.detail}` : error instanceof Error ? error.message : String(error);
+  return /selected model is at capacity|server_is_overloaded|model.{0,40}(?:at capacity|temporarily overloaded)/i.test(detail);
+};
+
+const waitForCapacity = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+  if (signal?.aborted) return reject(new AgentError('Codex の再試行を中断しました'));
+  const onAbort = () => {
+    clearTimeout(timer);
+    reject(new AgentError('Codex の再試行を中断しました'));
+  };
+  const timer = setTimeout(() => {
+    signal?.removeEventListener('abort', onAbort);
+    resolve();
+  }, ms);
+  signal?.addEventListener('abort', onAbort, {once: true});
+});
+
 /**
  * claude -p を 1 回走らせて構造化出力を受け取る。
  * stdout だけを JSON として読む（stderr が混ざると壊れるため exec の結果を分けて扱う）。
@@ -201,8 +219,21 @@ export async function runAgent<T = unknown>(opt: AgentOptions): Promise<AgentRun
   if (opt.styleRules) opt = {...opt, prompt: `${opt.prompt}\n\n${globalStylePrompt()}`};
   if (agentProvider() === 'codex') {
     const {runCodex} = await import('./codex');
-    const run = await runCodex<T>(opt);
-    return opt.styleRules ? {...run, data: enforceStyleData(run.data)} : run;
+    const retryDelays = [3_000, 10_000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const run = await runCodex<T>(opt);
+        return opt.styleRules ? {...run, data: enforceStyleData(run.data)} : run;
+      } catch (error) {
+        if (!isCodexCapacityError(error) || opt.signal?.aborted) throw error;
+        if (attempt >= retryDelays.length) {
+          const model = opt.model || '選択中のモデル';
+          throw new AgentError(`${model} が混雑しているため、3 回試しても実行できませんでした。時間をおいて再実行するか、設定で別のモデルを選んでください。`, error instanceof AgentError ? error.detail : String(error));
+        }
+        opt.onLine?.(`! モデルが混雑しています。同じモデルで ${retryDelays[attempt] / 1000} 秒後に再試行します（${attempt + 2}/3）`);
+        await waitForCapacity(retryDelays[attempt], opt.signal);
+      }
+    }
   }
   const bin = claudeBin();
   const args = agentArgs(opt);

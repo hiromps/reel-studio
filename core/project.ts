@@ -444,7 +444,27 @@ export const syncFixedOrder = (dir: string, data: ReelData): string[] | null => 
   }
 };
 
-export const writeCuts = (dir: string, data: ReelData) => {
+export class OrderLockedError extends Error {
+  constructor(message = '並び順がロックされています。構成を作り直すには Timeline でロックを解除して保存してください（手動編集はできます）') { super(message); this.name = 'OrderLockedError'; }
+}
+
+/** 自動で構成を作り直す処理の入口。force でも並び順のロックを解除しない。 */
+export const assertOrderUnlocked = (dir: string) => {
+  if (fs.existsSync(path.join(dir, 'cuts.json')) && readCuts(dir).meta?.orderLocked) {
+    throw new OrderLockedError();
+  }
+};
+
+export const writeCuts = (dir: string, data: ReelData, opt: {preserveOrder?: boolean} = {}) => {
+  // プロンプトだけに頼らず、AI の反映直前にもディスク上の最新の並びを守る。
+  // 手動の保存はこのガードを使わないので、ロック中でも自由に並べ替えられる。
+  if (opt.preserveOrder && fs.existsSync(path.join(dir, 'cuts.json'))) {
+    const current = readCuts(dir);
+    if (current.meta?.orderLocked && (current.cuts.length !== data.cuts.length || current.cuts.some((c, i) => c.id !== data.cuts[i]?.id || c.src !== data.cuts[i]?.src))) {
+      throw new OrderLockedError('並び順がロックされているため、AI による並べ替え・カットの追加・削除は反映できません。Timeline でロックを解除して保存してください');
+    }
+    if (current.meta?.orderLocked !== undefined) data = {...data, meta: {...data.meta, orderLocked: current.meta.orderLocked}};
+  }
   const r = writeJsonAtomic(path.join(dir, 'cuts.json'), data, {backupDir: backupsDir(dir)});
   syncFixedOrder(dir, data);
   return r;

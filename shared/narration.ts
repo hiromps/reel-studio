@@ -17,6 +17,14 @@ export const SILENCE_WARN_SEC = 2;
 /** 動画尺をこれ以上はみ出すと警告する */
 export const OVERRUN_TOLERANCE_SEC = 0.05;
 
+/** 元音声を残したまま、先頭から実際に使う長さ。 */
+export const narrationUsedSec = (s: Pick<NarrationSegment, 'durSec' | 'trimSec'>, fallback = 0): number => {
+  const full = s.durSec && s.durSec > 0 ? s.durSec : fallback;
+  return s.trimSec && s.trimSec > 0 ? Math.min(full, s.trimSec) : full;
+};
+
+export const narrationDisplayName = (s: Pick<NarrationSegment, 'id' | 'label'>): string => s.label?.trim() || s.id;
+
 export type NarrationCheckOptions = {
   /** durSec が無いブロックの秒数見積もり（人格の charsPerSec から出す） */
   estimate: (seg: NarrationSegment) => number;
@@ -107,7 +115,7 @@ export const checkNarration = (narration: Narration, opt: NarrationCheckOptions)
     if (hints.length) out.push(`${seg.id}: TTS が誤読しやすい表記 ${hints.map((h) => `「${h.from}」→「${h.to}」`).join('・')}（かなに開いてください）`);
   }
   const sorted = [...narration.segments].sort((a, b) => a.at - b.at);
-  const sec = (s: NarrationSegment) => s.durSec ?? opt.estimate(s);
+  const sec = (s: NarrationSegment) => narrationUsedSec(s, opt.estimate(s));
   sorted.forEach((seg, i) => {
     if (opt.emptyText && !seg.text.trim()) out.push(`${seg.id}: 本文が空です`);
     const prev = sorted[i - 1];
@@ -146,7 +154,7 @@ export type NarrationFix = {
  * - それでも動画尺に収まらないぶんは `overrunSec` で返す。**文を短くするしかない**ので、勝手に消さずに報告する
  */
 export const fixNarrationOverlaps = (narration: Narration, opt: NarrationCheckOptions): NarrationFix => {
-  const sec = (s: NarrationSegment) => s.durSec ?? opt.estimate(s);
+  const sec = (s: NarrationSegment) => narrationUsedSec(s, opt.estimate(s));
   const sorted = [...narration.segments].sort((a, b) => a.at - b.at);
   const moved: NarrationFix['moved'] = [];
   const notes: string[] = [];

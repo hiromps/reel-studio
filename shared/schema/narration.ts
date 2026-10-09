@@ -4,8 +4,10 @@ import {z} from 'zod';
 export const NarrationSegmentSchema = z
   .object({
     id: z.string(), // narration/<id>.wav と一対一
+    label: z.string().max(80).optional(), // 画面に表示する名前。音声ファイルの ID とは独立
     at: z.number(), // 配置秒
     durSec: z.number().optional(), // ffprobe 実測
+    trimSec: z.number().positive().optional(), // 先頭から使う秒数。元の wav は残す
     text: z.string(),
   })
   .passthrough();

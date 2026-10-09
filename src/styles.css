@@ -1372,6 +1372,17 @@ pre.md {
   font-size: 13px;
   color: var(--accent);
 }
+.narration-library { width: min(680px, 100%); }
+.narration-library-save { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.narration-library-save > div { flex: 1 1 100%; }
+.narration-library-save p, .narration-library-item p { margin: 4px 0; }
+.narration-library-save label { flex: 1 1 240px; }
+.narration-library-save input, .narration-library .modal-body > label input { display: block; width: 100%; }
+.narration-library-list { display: grid; gap: 8px; margin-top: 12px; }
+.narration-library-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.narration-library-item > div:first-child { min-width: 0; }
+.narration-library-item .btns { flex: 0 0 auto; }
+@media (max-width: 600px) { .narration-library-item { align-items: stretch; flex-direction: column; } }
 .help-flow {
   margin: 6px 0 0;
   padding-left: 0;
@@ -1890,8 +1901,12 @@ pre.md {
   border-left-color: var(--warn);
 }
 .narr-row .narr-id {
-  width: 110px;
-  font-size: 11px;
+  flex: 0 0 150px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
 }
 .narr-row .narr-text {
   flex: 1;
@@ -2223,17 +2238,13 @@ a.btn-like:hover {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 236px minmax(200px, 1fr) 380px;
-  gap: 10px;
-}
-@media (max-width: 1280px) {
-  .ed-main {
-    grid-template-columns: 200px minmax(160px, 1fr) 330px;
-  }
+  grid-template-columns: var(--ed-bin-w, 236px) 16px minmax(220px, 1fr) 16px var(--ed-inspector-w, 380px);
+  gap: 0;
 }
 .ed-bin,
 .ed-inspector,
 .ed-center {
+  min-width: 0;
   min-height: 0;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -2248,6 +2259,48 @@ a.btn-like:hover {
 .ed-inspector {
   overflow: auto;
   padding: 10px 14px;
+}
+.ed-resizer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  touch-action: none;
+  user-select: none;
+  cursor: col-resize;
+  border-radius: 6px;
+  outline-offset: -2px;
+}
+.ed-resizer::after {
+  content: '';
+  width: 3px;
+  height: 36px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.ed-resizer.horizontal {
+  cursor: row-resize;
+  flex: 0 0 16px;
+}
+.ed-resizer.horizontal::after {
+  width: 52px;
+  height: 3px;
+}
+.ed-resizer:hover::after,
+.ed-resizer.dragging::after,
+.ed-resizer:focus-visible::after {
+  background: var(--accent);
+}
+.ed-resizer:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.ed-preview-resizer,
+.ed-sheet-resizer,
+.ed-mobile-timeline-resizer {
+  display: none;
 }
 /* 選択中にパネル上端へ貼り付く「← 動画全体」。狭い画面ではシートの「閉じる」が同じ役目なので出さない */
 .insp-back {
@@ -2337,11 +2390,24 @@ a.btn-like:hover {
 }
 .ed-timeline {
   flex: 0 0 auto;
+  height: var(--timeline-h, 270px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   padding: 8px 12px 10px;
+}
+.ed-timeline .tl {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ed-timeline .tl-scroll {
+  overflow-y: hidden;
 }
 /* 左：件数　中央：再生　右：拡大と表示 */
 .tl-toolbar {
@@ -2362,6 +2428,15 @@ a.btn-like:hover {
 }
 .tl-toolbar-side.end {
   justify-content: flex-end;
+}
+@media (min-width: 861px) and (max-width: 1100px) {
+  .tl-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .tl-toolbar-side.end {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
 }
 /* 2 本指の案内は指で操作するときだけ出す（下の pointer: coarse で表示に切り替える） */
 .tl-touch-hint {
@@ -3205,15 +3280,28 @@ a.btn-like:hover {
   outline-offset: 1px;
 }
 .tl-narr-id {
-  flex: 0 0 auto;
-  font-family: Consolas, monospace;
-  font-size: 10px;
-  opacity: 0.75;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
 }
 .tl-narr-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.tl-narr-trim {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 3;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.tl-narr-trim:hover, .tl-narr-trim:focus-visible { background: rgba(255, 255, 255, 0.3); outline: 2px solid var(--accent); }
+@media (pointer: coarse) { .tl-narr-trim { width: 24px; } }
 /* S 段：橙のピル */
 .tl-sfx {
   position: absolute;
@@ -3590,6 +3678,45 @@ a.btn-like:hover {
   .ed-main {
     display: contents;
   }
+  .ed-bin-resizer,
+  .ed-inspector-resizer,
+  .ed-timeline-resizer {
+    display: none;
+  }
+  .ed-preview-resizer {
+    display: flex;
+    order: 2;
+    flex: 0 0 44px;
+  }
+  .ed-center {
+    height: var(--mobile-preview-h, 46dvh);
+    min-height: 220px;
+  }
+  .ed-timeline {
+    order: 3;
+    height: var(--timeline-h, 270px);
+  }
+  .ed-mobile-timeline-resizer {
+    display: flex;
+    flex: 0 0 44px;
+    width: 100%;
+  }
+  .ed-storyboard { order: 4; }
+  .ed-inspector { order: 5; }
+  .ed-bin { order: 6; }
+  .ed-inspector.sel {
+    height: min(var(--mobile-sheet-h, 72dvh), calc(100dvh - 80px));
+    max-height: calc(100dvh - 80px);
+  }
+  .ed-sheet-resizer {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 44px;
+    width: 100%;
+    background: var(--panel);
+  }
   /* 折り返して使う。**overflow は付けないこと** —— 中の AI メニューの吹き出しが
      position: absolute なので、スクロール領域にすると切り取られて押せなくなる */
   .ed-toolbar {
@@ -3644,10 +3771,10 @@ a.btn-like:hover {
   }
   .ed-center {
     order: 1;
-    min-height: 46vh;
+    min-height: 220px;
   }
   .ed-timeline {
-    order: 2;
+    order: 3;
     /* 横スクロールは中の .tl-scroll が受け持つ */
     padding: 4px 6px 6px;
   }
@@ -3655,16 +3782,17 @@ a.btn-like:hover {
      左右の負のマージンは上の .ed-timeline の余白（6px）に揃える
      （広い画面用の -12px のままだと、下線がカードの枠の外まで 6px はみ出していた） */
   .tl-toolbar {
+    display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin: 0 -6px 6px;
     padding: 0 6px 8px;
   }
   .ed-storyboard {
-    order: 3;
+    order: 4;
   }
   .ed-inspector {
-    order: 4;
+    order: 5;
     max-height: none;
     overflow: visible;
   }
@@ -3676,7 +3804,7 @@ a.btn-like:hover {
     right: 0;
     bottom: 0;
     z-index: 46;
-    max-height: 72vh;
+    max-height: calc(100dvh - 80px);
     overflow-y: auto;
     overscroll-behavior: contain;
     border-radius: 12px 12px 0 0;
@@ -3709,7 +3837,7 @@ a.btn-like:hover {
     --crop-h: 46vh;
   }
   .ed-bin {
-    order: 5;
+    order: 6;
     max-height: 62vh;
   }
   .bin-grid {
@@ -4596,3 +4724,24 @@ a.btn-like:hover {
   padding: 4px 12px 12px;
   margin-bottom: 12px;
 }
+
+/* 過去案件から育てる動画の型。既存のカード・色・フォームを使う。 */
+.video-style-card { margin-top: 12px; }
+.video-style-card select { max-width: 100%; }
+.video-style-applied { border-left: 3px solid var(--accent); padding: 8px 12px; }
+.video-style-detail { margin: 16px 0; }
+.video-style-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.video-style-rules p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
+.video-style-card label { display: flex; flex-direction: column; gap: 6px; }
+.video-style-card .row label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+.video-style-card textarea { width: 100%; box-sizing: border-box; }
+.video-style-create > summary { cursor: pointer; padding: 12px 0; }
+.video-style-generate { margin-top: 16px; }
+.video-style-generate .row { margin-top: 8px; }
+@media (max-width: 700px) { .video-style-rules { grid-template-columns: 1fr; } .video-style-card .row { align-items: stretch; } }
+
+.locked-text-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); margin: auto; overflow: auto; color: var(--fg); }
+.locked-text-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.locked-text-dialog .row { flex-wrap: wrap; margin-top: 16px; }
+
+.locked-text-reminder { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }

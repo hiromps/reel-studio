@@ -6,15 +6,17 @@ import {AiModelSelect, useAiModel} from '../hooks/useAiModel';
 import {IssueList} from '../components/IssueList';
 
 type Props = {
+  onJobRequest: () => (jobId: string) => void;
   placeholders: number;
   cutCount: number;
   hasCuts: boolean;
   hasOrderCheck: boolean;
+  orderLocked?: boolean;
 };
 
 const RESTART_HINT = 'Reel Studio を再起動してください（画面だけ新しく、サーバーが古いプロセスです）';
 
-export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrderCheck}) => {
+export const AiMenu: React.FC<Props> = ({onJobRequest, placeholders, cutCount, hasCuts, hasOrderCheck, orderLocked = false}) => {
   const s = useStudio();
   const [model, setModel] = useAiModel();
   const [open, setOpen] = useState(false);
@@ -48,15 +50,19 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
 
   const run = async (type: string, params: Record<string, unknown> = {}) => {
     if (unsaved) return s.toast(unsaved, 'error');
+    if (type === 'ai-order' && orderLocked) return s.toast('並び順がロックされています。Timeline でロックを解除して保存してください', 'error');
+    const accepted = onJobRequest();
     const j = await s.addJob(type, {model, ...params});
-    if (j) setOpen(false);
+    if (j) { accepted(j.id); setOpen(false); }
   };
   const sendEdit = async () => {
     const text = instruction.trim();
     if (!text) return;
     if (unsaved) return s.toast(unsaved, 'error');
+    const accepted = onJobRequest();
     const j = await s.addJob('ai-edit', {instruction: text, model});
     if (j) {
+      accepted(j.id);
       setInstruction('');
       setOpen(false);
     }
@@ -106,6 +112,7 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
                   閉じる
                 </button>
               </div>
+              {orderLocked && <p className="hint">並び順ロック中：AI は並べ替え・カットの追加・削除を行いません。テロップ・ナレーション・尺は修正できます。</p>}
               <div className="ai-items">
                 {item(`テロップを書いてもらう（未記入 ${placeholders}）`, 'ai-telop', {}, {disabled: placeholders === 0, title: '各テロップのカット頭の画を見て {{gNN:intent}} を埋めます。記入済みには触りません', primary: placeholders > 0})}
                 {item(`テロップを全部書き直す（${cutCount} カット）`, 'ai-telop', {force: true}, {title: '記入済みも含めて全部書き直します'})}
@@ -113,7 +120,7 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
                   直してもらう（自由指示）…
                 </button>
                 {item('ナレーション原稿を書いてもらう', 'ai-narration', {}, {title: 'テロップと映像に沿った narration.json を書きます（音声はあとで Render の「音声を生成」）'})}
-                {hasOrderCheck && item('並べ替えてもらう（型どおりに再 plan）', 'ai-order', {write: true}, {title: '素材を見て並び順を決め直し、cuts.json まで書きます。記入済みのテロップは作り直しになります'})}
+                {hasOrderCheck && item('並べ替えてもらう（型どおりに再 plan）', 'ai-order', {write: true}, {disabled: orderLocked, title: orderLocked ? '並び順がロックされています。解除して保存すると AI で並べ替えられます' : '素材を見て並び順を決め直し、cuts.json まで書きます。記入済みのテロップは作り直しになります'})}
                 {hasOrderCheck && (
                   <button className="ai-item" onClick={() => void exportOrderForAi()} title="自分で Claude に頼むための素材リストを書き出すだけ（並べ替えは実行しません）">
                     並べ替え用の素材リストを書き出すだけ
@@ -121,7 +128,7 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
                 )}
               </div>
               <div className="hint" style={{marginTop: 6}}>
-                API 課金が発生します。AI の文言は下書き扱いなので必ず読み直してください
+                API 課金が発生します。AI の文言は下書き扱いなので必ず読み直してください。反映後は ↶ / Ctrl+Z で取り消せます（戻したら保存）。
                 {orderExport ? ` ／ 書き出し: ${orderExport}` : ''}
               </div>
               {lastEdit && (
@@ -143,6 +150,7 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
                   閉じる
                 </button>
               </div>
+              {orderLocked && <p className="hint">並び順ロック中：カットの順番と本数を維持して修正します。</p>}
               <textarea
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
@@ -161,7 +169,7 @@ export const AiMenu: React.FC<Props> = ({placeholders, cutCount, hasCuts, hasOrd
                   送信（Ctrl+Enter）
                 </button>
                 <AiModelSelect value={model} onChange={setModel} />
-                <span className="hint">変更前は .studio/backups に残ります。共通の文体修正は次の案件にも引き継ぎます</span>
+                <span className="hint">反映後は ↶ / Ctrl+Z で取り消せます（戻したら保存）。変更前は .studio/backups にも残ります</span>
               </div>
               {lastEdit && <EditResult status={lastEdit.status} error={lastEdit.error} r={editResult} />}
             </>

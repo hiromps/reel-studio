@@ -1,6 +1,7 @@
 // brief.json のスキーマ。edit-pipeline.md Step 0（A 生素材 9 問／B カット済み 6 問）の回答＝ユーザーの意図。
 import {z} from 'zod';
 import {ThemeSchema} from './cuts';
+import {VideoStyleSnapshotSchema} from '../video-style';
 
 /** 人格の id。実体は ~/.reel-studio/personas.json（shared/personas.ts のレジストリ） */
 export const PersonaIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,30}$/, '人格 id は英小文字・数字・ハイフン（先頭は英字）');
@@ -64,5 +65,7 @@ export const BriefSchema = z.object({
     .optional(),
   facts: z.record(z.string(), z.string()).default({}),
   notes: z.string().optional(),
+  /** 使用した版を案件内に固定。ライブラリの改善で制作済み案件を変えない。 */
+  videoStyle: VideoStyleSnapshotSchema.optional(),
 });
 export type Brief = z.infer<typeof BriefSchema>;

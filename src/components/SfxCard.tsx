@@ -12,6 +12,7 @@ const emptyLib: SfxLibrary = {version: 1, sounds: []};
 export const SfxCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) => {
   const s = useStudio();
   const narration = s.files.narration.data;
+  const current: Narration = narration ?? {voice: '', segments: []};
   const [lib, setLib] = useState<SfxLibrary>(emptyLib);
   const [open, setOpen] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -38,12 +39,19 @@ export const SfxCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) => 
     if (!j || j.id === lastJob.current) return;
     lastJob.current = j.id;
     void loadLib();
+    if (j.type === 'sfx-auto' && !s.files.narration.dirty) void s.loadFile('narration');
   }, [s.jobs, loadLib]);
 
   const sfx = narration?.sfx ?? [];
   const videoSec = narration?.videoSec;
   const issues = useMemo(() => checkSfx(sfx, {videoSec, lib, narration: narration?.segments}), [sfx, videoSec, lib, narration]);
   const setNarr = (next: Narration) => s.setFile('narration', next);
+  const outFinal = s.projects.find((p) => p.slug === s.active)?.out?.final;
+  const mixBusy = s.jobs.some((j) => j.slug === s.active && j.type === 'mix' && (j.status === 'queued' || j.status === 'running'));
+  const applyToRenderedVideo = async () => {
+    if (s.files.narration.dirty && !(await s.saveFile('narration'))) return;
+    await s.addJob('mix', {input: 'out/final.mp4', output: 'out/final_narration.mp4'});
+  };
 
   const play = (file: string, trimSec?: number) => {
     audio.current?.pause();
@@ -62,7 +70,6 @@ export const SfxCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) => 
     }
   };
 
-  if (!narration) return null;
   const noRole = lib.sounds.filter((x) => !x.roles.length);
 
   return (
@@ -106,15 +113,15 @@ export const SfxCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) => 
       <div className="row" style={{marginTop: 6}}>
         <label title="効果音がナレーションに被ったとき、声ではなく効果音側を自動で沈ませる（放送のダッキング）">
           <span>声に被ったら効果音を下げる</span>
-          <input type="checkbox" checked={narration.sfxDuck !== false} onChange={(e) => setNarr({...narration, sfxDuck: e.target.checked})} />
+          <input type="checkbox" checked={current.sfxDuck !== false} onChange={(e) => setNarr({...current, sfxDuck: e.target.checked})} />
         </label>
         <label title="効果音の全体音量。個々の音量に足される">
           効果音全体
           <span className="btns">
-            <input type="range" min={-12} max={6} step={0.5} value={narration.sfxGainDb ?? 0} onChange={(e) => setNarr({...narration, sfxGainDb: Number(e.target.value)})} style={{width: 110}} />
+            <input type="range" min={-12} max={6} step={0.5} value={current.sfxGainDb ?? 0} onChange={(e) => setNarr({...current, sfxGainDb: Number(e.target.value)})} style={{width: 110}} />
             <span className="counter">
-              {(narration.sfxGainDb ?? 0) > 0 ? '+' : ''}
-              {(narration.sfxGainDb ?? 0).toFixed(1)} dB
+              {(current.sfxGainDb ?? 0) > 0 ? '+' : ''}
+              {(current.sfxGainDb ?? 0).toFixed(1)} dB
             </span>
           </span>
         </label>
@@ -123,7 +130,13 @@ export const SfxCard: React.FC<{onTab: (t: 'timeline') => void}> = ({onTab}) => 
           narration.json を保存
         </button>
       </div>
-      <span className="hint">変更したら「ナレーション合成（mix）」をやり直すと反映されます（音声の再生成は不要）</span>
+      <span className="hint">効果音を変えたら既存の本番動画へ再合成できます（本番レンダーや音声生成のやり直しは不要）</span>
+      {!!sfx.length && !!outFinal && <div className="row" style={{marginTop: 8}}>
+        <button className="primary" disabled={mixBusy} onClick={() => void applyToRenderedVideo()} title="既存の本番動画に現在の効果音を合成し、完成動画を更新します">
+          {mixBusy ? '効果音を反映中…' : '効果音付きの完成動画を出力'}
+        </button>
+        <span className="hint">本番レンダーと音声生成のやり直しは不要です。保存後に out/final_narration.mp4 を更新します</span>
+      </div>}
 
       <IssueList rows={issues.map((x) => ({severity: x.severity, code: x.code, message: x.message}))} />
 

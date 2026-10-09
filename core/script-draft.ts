@@ -1,3 +1,4 @@
+import {videoStylePrompt} from '../shared/video-style';
 // 依頼文から台本を書く（claude → script.md → 必要なら続けて「台本から組み立てる」）。
 // 「こういう動画にしたい」という依頼文を受け取り、手元の素材（AI が映像を言語化したタグ）と案件の事実から、
 // 区間・映像・カット割り・テロップ・ナレーションの台本を書く。検算と書き出しは shared/script-draft.ts（純粋・テストあり）
@@ -8,7 +9,7 @@ import {backupsDir, readBrief} from './project';
 import {backupFile} from './json-io';
 import {runAgent, type AgentRun} from './agent';
 import {agentProgress} from './ai';
-import {aiScript, readScript, scriptPath, writeScript, type AiScriptResult} from './script';
+import {assembleScriptOrConfirm, readScript, scriptPath, writeScript, type AiScriptResult} from './script';
 import {getPersona, hookRuleLines} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {VARIETY_RULES, shotGroupNote, shotGroups} from '../shared/shot-variety';
@@ -31,8 +32,8 @@ const DRAFT_SCHEMA = {
           toSec: {type: 'number', description: '区間の終了秒'},
           label: {type: 'string', description: '区間名（フック / 証明 / 実食 / 締め …）'},
           video: {type: 'string', description: '映像の指示。手元の素材の id を添えて、どの画をどの順に使うか（例「カニ桶を持ち上げる（id 51）→ 身をつゆに浸ける寄り（id 36）」）'},
-          cutCount: {type: 'integer', description: 'この区間のカット数（区間の長さ ÷ 0.75 くらい）'},
-          cutSec: {type: 'string', description: '1 カットの尺の目安（0.7〜0.8）'},
+          cutCount: {type: 'integer', description: 'この区間のカット数（選んだ動画の型、または依頼のテンポに合わせる）'},
+          cutSec: {type: 'string', description: '1 カットの尺の目安（選んだ動画の型、または依頼のテンポに合わせる）'},
           telop: {type: 'string', description: 'この区間に出すテロップの文言だけ。出さない区間は空'},
           badge: {type: 'string', description: '中央上部のラベル（エリア名など）。無ければ空'},
           orientation: {type: 'string', enum: ['vertical', 'horizontal']},
@@ -68,6 +69,7 @@ export type ScriptDraftResult = {
   scriptFile: string;
   costUsd: number;
   assembled?: AiScriptResult;
+  textConfirmation?: import('../shared/script-text').ScriptTextConfirmation;
 };
 
 /**
@@ -113,12 +115,14 @@ export async function aiScriptDraft(dir: string, opt: ScriptDraftOptions): Promi
     'グルメのショート動画（縦型）の台本を書いてほしい。下の「依頼」が作り手の希望なので、**依頼を最優先**にする。',
     '依頼に無いことは、この案件の素材・事実・人格の文体から決める。',
     '',
+    videoStylePrompt(brief.videoStyle),
     '## 依頼',
     request,
     '',
     '## この案件',
     `店: ${brief.shop.name}（${brief.shop.area}${brief.shop.station ? `・${brief.shop.station}` : ''}・${brief.shop.genre}）${brief.shop.pr ? '／PR 案件' : ''}`,
     brief.core ? `企画の核: ${brief.core}` : '',
+    brief.hook?.text ? '今回の確定フック: ' + brief.hook.text + '（型より優先）' : '',
     `尺の目安: ${targetSec} 秒（依頼に尺の指定があればそちらを優先）`,
     `人格: ${persona.label}／文体: ${persona.tone || '-'}／締めの語族: ${persona.cta.join('／')}／実測話速 ${persona.narration.charsPerSecMeasured} 文字/秒`,
     ...persona.narrationRules.map((r) => `ナレーションの禁則: ${r}`),
@@ -135,14 +139,14 @@ export async function aiScriptDraft(dir: string, opt: ScriptDraftOptions): Promi
     '- 冒頭（フック）は外観・店名紹介・挨拶から入らず、最もインパクトのある料理の画から始める（依頼で指定があればそれに従う）',
     '',
     '## 書くもの（区間ごとに 1 件。頭から順に、隙間なく）',
-    '- fromSec / toSec: 区間の秒。先頭は 0、次の区間は前の区間の toSec から始める。1 区間 2〜4 秒くらい',
+    '- fromSec / toSec: 区間の秒。先頭は 0、次の区間は前の区間の toSec から始める。選んだ動画の型があればその並びと比率に合わせ、無ければ1 区間 2〜4 秒くらい',
     '- video: 映像の指示。**手元の素材の id を添えて**、どの画をどの順に使うか。無い画は近いもので代え、unmatched にも書く',
-    '- cutCount / cutSec: 区間の長さ ÷ 0.75 くらいのカット数、1 カット 0.7〜0.8 秒',
+    brief.videoStyle ? '- cutCount / cutSec: 選んだ動画の型のカット尺と強弱、各区間の役割に合わせる。元のカット順と尺も判断材料にする' : '- cutCount / cutSec: 区間の長さ ÷ 0.75 くらいのカット数、1 カット 0.7〜0.8 秒',
     `- telop: ${spec.telop.maxChars} 文字以内・文末に句点なし・半角括弧と絵文字なし・金額なし・保存やいいねを促さない。三点リーダーは全角 3 文字の「・・・」で書く（「…」は使わない）`,
     '- badge: エリア名など。無ければ空',
     '- orientation: 基本は vertical。人物の顔や看板に重なるときだけ horizontal',
-    '- narration: 人格の文体で 1〜2 文（改行なし・固有名詞と数字の単位はひらがなに開く）。区間の長さ × 話速 の文字数に収める。声を入れない区間は空',
-    `- 締めの区間の telop は ${persona.cta.join('／')} 系で言い切る`,
+    '- narration: 選んだ動画の型の言葉選びを優先し、無ければ人格の文体で 1〜2 文（改行なし・固有名詞と数字の単位はひらがなに開く）。区間の長さ × 話速 の文字数に収める。声を入れない区間は空',
+    brief.videoStyle ? '- 締めの区間の telop は選んだ動画の型の締め方を優先する' : `- 締めの区間の telop は ${persona.cta.join('／')} 系で言い切る`,
     '- why: その区間の狙いを 1 行',
     '',
     'notes に全体の意図を、unmatched に「台本に入れたいが手元の素材に無い画」を書く。',
@@ -174,9 +178,10 @@ export async function aiScriptDraft(dir: string, opt: ScriptDraftOptions): Promi
   log(`script.md を書きました（${plan.sections.length} 区間・${total} 秒・$${run.costUsd.toFixed(3)}）${prev?.trim() ? '。前の台本は .studio/backups/ に残っています' : ''}`);
 
   let assembled: AiScriptResult | undefined;
+  let textConfirmation: import('../shared/script-text').ScriptTextConfirmation | undefined;
   if (opt.assemble) {
     log('続けて「台本から組み立てる」を実行します');
-    assembled = await aiScript(dir, {model, write: opt.write !== false, force: opt.force, onLine: log, onProgress: opt.onProgress, signal: opt.signal});
+    ({assembled, textConfirmation} = await assembleScriptOrConfirm(dir, {model, write: opt.write !== false, force: opt.force, onLine: log, onProgress: opt.onProgress, signal: opt.signal}));
   }
-  return {plan, issues, fixes, script, scriptFile, costUsd: run.costUsd + (assembled?.costUsd ?? 0), assembled};
+  return {plan, issues, fixes, script, scriptFile, costUsd: run.costUsd + (assembled?.costUsd ?? 0), assembled, textConfirmation};
 }

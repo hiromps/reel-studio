@@ -4,6 +4,7 @@ import {ProjectsPage} from './pages/Projects';
 import {MaterialsPage} from './pages/Materials';
 import {BriefPage} from './pages/Brief';
 import {EditorPage} from './editor/EditorPage';
+import {LockedScriptContinuation} from './components/LockedScriptContinuation';
 import {RenderPage} from './pages/Render';
 import {SettingsPage} from './pages/Settings';
 import {Tour, type TourTab} from './components/Tour';
@@ -226,6 +227,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      <LockedScriptContinuation />
       <main className={`main${tab === 'timeline' ? ' main-editor' : ''}`}>
         {/* key に案件を入れて、案件を切り替えたら各画面の状態（選択カット・Undo 履歴・遅延中のプレビュー等）を捨てる。
             残していると、前の案件のカットを新しい案件の URL で読みにいってしまう */}

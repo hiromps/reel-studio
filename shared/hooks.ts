@@ -9,6 +9,7 @@
 import {z} from 'zod';
 import type {ReelData} from './schema/cuts';
 import type {Narration} from './schema/narration';
+import {narrationUsedSec} from './narration';
 import {countChars, normalizeEllipsis} from './telop-text';
 import {cutDurationSec} from './timeline';
 
@@ -156,7 +157,7 @@ export const applyHookVariant = (
 export const firstNarrationId = (narration: Narration): string | null =>
   [...narration.segments].sort((a, b) => a.at - b.at)[0]?.id ?? null;
 
-const segEstSec = (s: Narration['segments'][number], charsPerSec: number): number => s.durSec ?? countChars(s.text) / charsPerSec;
+const segEstSec = (s: Narration['segments'][number], charsPerSec: number): number => narrationUsedSec(s, countChars(s.text) / charsPerSec);
 
 /**
  * フック区間に属するナレーションブロックの id（at 順）。
@@ -189,7 +190,7 @@ export const applyHookNarration = (
   const segs = [...narration.segments].sort((a, b) => a.at - b.at);
   const kept = segs.filter((s) => !replaced.includes(s.id));
   const first = segs.find((s) => s.id === firstId)!;
-  const merged = {...first, id: wavId, text: v.narration.trim(), needsTts: true, durSec: undefined};
+  const merged = {...first, id: wavId, text: v.narration.trim(), needsTts: true, durSec: undefined, trimSec: undefined};
   const nextAt = kept.find((s) => s.at > first.at)?.at ?? null;
   return {
     narration: {...narration, segments: [merged, ...kept].sort((a, b) => a.at - b.at)},

@@ -2,10 +2,10 @@
 // 映像トラックの配置は components/track.ts（layoutBlocks）。ここはそれ以外の段と、段をまたぐ吸着。
 import type {ReelData} from '@shared/schema';
 import type {Narration, NarrationSegment, Sfx} from '@shared/schema';
-import {cutRanges, round3, telopGroupsOf} from '@shared/timeline';
+import {cutRanges, round3, telopGroupsOf, type TelopGroup} from '@shared/timeline';
 import {isPlaceholder} from '@shared/telop-text';
 import {sfxEndSec, type SfxLibrary} from '@shared/sfx';
-import {OVERLAP_TOLERANCE_SEC} from '@shared/narration';
+import {OVERLAP_TOLERANCE_SEC, narrationUsedSec} from '@shared/narration';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -18,11 +18,11 @@ export type TelopBlock =
   | {kind: 'none'; cut: number; left: number; width: number; startSec: number; endSec: number};
 
 /** カット列 → テロップ段。グループの範囲は telopGroupsOf（エンジンと同一判定）、テロップの無いカットは 'none' */
-export const telopBlocks = (cuts: Pick<ReelData, 'fps' | 'cuts'>, pxPerSec: number): TelopBlock[] => {
+export const telopBlocks = (cuts: Pick<ReelData, 'fps' | 'cuts'>, pxPerSec: number, groups: readonly TelopGroup[] = telopGroupsOf(cuts)): TelopBlock[] => {
   const ranges = cutRanges(cuts);
   const out: TelopBlock[] = [];
   const covered = new Set<number>();
-  telopGroupsOf(cuts).forEach((g, gi) => {
+  groups.forEach((g, gi) => {
     const startSec = g.from / cuts.fps;
     const endSec = (g.from + g.dur) / cuts.fps;
     const head = cuts.cuts[g.cutIndices[0]];
@@ -76,7 +76,7 @@ export type NarrBlock = {
  */
 export const narrationBlocks = (narration: Narration | null, estimate: (s: NarrationSegment) => number, pxPerSec: number, videoSec?: number): NarrBlock[] => {
   if (!narration) return [];
-  const sec = (s: NarrationSegment) => (s.durSec && s.durSec > 0 ? s.durSec : Math.max(0.3, estimate(s)));
+  const sec = (s: NarrationSegment) => narrationUsedSec(s, Math.max(0.3, estimate(s)));
   const sorted = narration.segments.map((s, index) => ({s, index})).sort((a, b) => a.s.at - b.s.at);
   const out: NarrBlock[] = [];
   let prevEnd = -Infinity;

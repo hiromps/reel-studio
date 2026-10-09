@@ -30,6 +30,18 @@ describe('mix-narration.cjs', () => {
     expect(r.stderr).toContain('効果音の置き場');
     fs.rmSync(dir, {recursive: true, force: true});
   });
+
+  it('ナレーションなしでも効果音だけの構成を受け付ける', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-mix-sfx-'));
+    const spec = path.join(dir, 'narration.json');
+    fs.writeFileSync(spec, JSON.stringify({segments: [], sfx: [{id: 's1', at: 0, file: 'effect.mp3'}]}));
+    fs.writeFileSync(path.join(dir, 'effect.mp3'), '');
+    const r = run([spec, path.join(dir, 'narration'), path.join(dir, 'missing.mp4'), path.join(dir, 'out.mp4')], {REEL_SFX_DIR: dir});
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('入力動画が無い');
+    expect(r.stderr).not.toContain('segments が空');
+    fs.rmSync(dir, {recursive: true, force: true});
+  });
 });
 
 describe('missingMixAssets（レンダー前に mix の材料を確かめる）', () => {

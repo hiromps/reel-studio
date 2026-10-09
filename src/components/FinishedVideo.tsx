@@ -4,7 +4,7 @@
 //   - ダウンロード … URL に `?download=1` を付ける。サーバー（ローカル）と Blob（クラウド）が
 //                    添付として返すので、再生ではなく保存になる
 //   - 共有・保存   … Web Share。iOS なら写真アプリや Instagram にそのまま渡せる
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {useStudio} from '../state/store';
 
 /** 完成品の案件内パス（mix の既定の出力先） */
@@ -15,11 +15,17 @@ export const FinishedVideo: React.FC = () => {
   /** 一度取り込んだ完成品。共有をやり直すときに取り直さないために持つ */
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
-  if (!s.active || !s.mediaBase) return null;
-
   const name = `${s.active}_final_narration.mp4`;
-  const src = `${s.mediaBase}/${FINISHED_REL}`;
+  const latestMix = s.jobs.find((job) => job.slug === s.active && job.type === 'mix' && job.status === 'done');
+  const version = latestMix?.endedAt ?? latestMix?.id ?? '';
+  const src = `${s.mediaBase}/${FINISHED_REL}${version ? `?v=${encodeURIComponent(version)}` : ''}`;
   const canShare = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function';
+
+  useEffect(() => {
+    setFile(null);
+  }, [s.active, version]);
+
+  if (!s.active || !s.mediaBase) return null;
 
   /**
    * iOS Safari は「指を離した直後」でないと共有を許さない（NotAllowedError）。
@@ -54,7 +60,7 @@ export const FinishedVideo: React.FC = () => {
     <div className="finished">
       <video src={src} controls playsInline preload="metadata" />
       <div className="finished-actions">
-        <a className="btn-like primary" href={`${src}?download=1`} download={name}>
+        <a className="btn-like primary" href={`${src}${version ? '&' : '?'}download=1`} download={name}>
           ⬇ ダウンロード
         </a>
         {canShare && (

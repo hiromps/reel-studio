@@ -533,13 +533,31 @@ export type MimicPlan = z.infer<typeof MimicPlanSchema>;
  * AI が返した区間の秒数を、参考動画の区間に**強制的に**合わせる（区間数が同じとき）。
  * 「徹底的に写す」が要件なので、AI の丸め・ずれで秒数が動かないようにする。カット数も 0 なら参考のもの。
  */
-export const fitMimicToReference = (plan: MimicPlan, ref: Reference): {plan: MimicPlan; fitted: boolean} => {
+export const fitMimicToReference = (plan: MimicPlan, ref: Reference, opt: {maxTelopChars?: number} = {}): {plan: MimicPlan; fitted: boolean} => {
   const segs = [...ref.segments].sort((a, b) => a.fromSec - b.fromSec);
-  if (!segs.length || plan.sections.length !== segs.length) return {plan, fitted: false};
-  const sections = [...plan.sections]
+  const extra = plan.sections.length - segs.length;
+  const isZeroPlaceholder = (s: MimicSection) => s.fromSec === 0 && s.toSec === 0;
+  const placeholders = plan.sections.filter(isZeroPlaceholder);
+  const removed = extra > 0 && placeholders.length === extra ? placeholders : [];
+  const source = removed.length
+    ? plan.sections.filter((s) => !isZeroPlaceholder(s))
+    : plan.sections;
+  if (!segs.length || source.length !== segs.length) return {plan, fitted: false};
+  const maxTelopChars = opt.maxTelopChars ?? 13;
+  const sections = [...source]
     .sort((a, b) => a.fromSec - b.fromSec)
-    .map((s, i) => ({...s, fromSec: segs[i].fromSec, toSec: segs[i].toSec, cutCount: s.cutCount || segs[i].cutCount, label: s.label || segs[i].label}));
-  return {plan: {...plan, sections}, fitted: true};
+    .map((s, i) => {
+      const phrases = s.telop.split(/[｜|]/).map((part) => part.trim()).filter(Boolean);
+      const telop = countChars(s.telop) > maxTelopChars && phrases.length > 1
+        ? (phrases.find((part) => countChars(part) <= maxTelopChars) ?? s.telop)
+        : s.telop;
+      return {...s, fromSec: segs[i].fromSec, toSec: segs[i].toSec, cutCount: s.cutCount || segs[i].cutCount, label: s.label || segs[i].label, telop};
+    });
+  const extraNotes = removed
+    .map((s) => [s.label, s.video, s.telop, s.narration].map((text) => text.trim()).filter(Boolean).join(' / '))
+    .filter(Boolean);
+  const notes = extraNotes.length ? [plan.notes, `参考外の 0 秒区間: ${extraNotes.join(' / ')}`].filter(Boolean).join('。') : plan.notes;
+  return {plan: {...plan, sections, notes}, fitted: true};
 };
 
 export type MimicIssue = {severity: 'E' | 'W'; code: string; message: string};

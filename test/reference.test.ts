@@ -188,6 +188,29 @@ describe('mergeAnalysis', () => {
 });
 
 describe('fitMimicToReference / checkMimicPlan', () => {
+  it('余分な 0〜0 秒の空区間を除き、区切りで詰め込まれたテロップを短い文言にする', () => {
+    const base = plan();
+    const p = plan({sections: [
+      {...base.sections[0], telop: '串かつが並ぶ｜まとめて持てる｜ソースをかける'},
+      ...base.sections.slice(1),
+      {...base.sections[0], fromSec: 0, toSec: 0, label: '', video: '', telop: '', narration: ''},
+    ]});
+    const result = fitMimicToReference(p, analyzed(), {maxTelopChars: 13});
+    expect(result.fitted).toBe(true);
+    expect(result.plan.sections).toHaveLength(3);
+    expect(result.plan.sections[0].telop).toBe('串かつが並ぶ');
+    expect(checkMimicPlan(result.plan, analyzed()).filter((issue) => issue.severity === 'E')).toEqual([]);
+  });
+
+  it('0秒の余分な区間に内容があれば注記として残す', () => {
+    const base = plan();
+    const p = plan({sections: [...base.sections, {...base.sections[0], fromSec: 0, toSec: 0, video: '追加の料理'}]});
+    const result = fitMimicToReference(p, analyzed());
+    expect(result.fitted).toBe(true);
+    expect(result.plan.sections).toHaveLength(3);
+    expect(result.plan.notes).toContain('追加の料理');
+  });
+
   it('区間数が同じなら秒数を参考に強制し、カット数が 0 なら参考のものを入れる', () => {
     const p = plan({sections: plan().sections.map((s, i) => ({...s, fromSec: s.fromSec + 0.3, toSec: s.toSec + 0.3, cutCount: i === 0 ? 0 : s.cutCount}))});
     const r = fitMimicToReference(p, analyzed());

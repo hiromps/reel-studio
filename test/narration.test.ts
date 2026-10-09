@@ -1,10 +1,19 @@
 import {describe, expect, it} from 'vitest';
-import {applyReadingHints, checkNarration, fixNarrationOverlaps, OVERLAP_TOLERANCE_SEC, ttsReadingHints} from '../shared/narration';
+import {applyReadingHints, checkNarration, fixNarrationOverlaps, narrationDisplayName, OVERLAP_TOLERANCE_SEC, ttsReadingHints} from '../shared/narration';
 import {ttsBody} from '../core/tts';
-import type {Narration, NarrationSegment} from '../shared/schema/narration';
+import {NarrationSegmentSchema, type Narration, type NarrationSegment} from '../shared/schema/narration';
 
 const narr = (segments: NarrationSegment[], videoSec?: number): Narration => ({voice: 'v', videoSec, segments});
 const est = (s: NarrationSegment) => [...s.text].length / 11;
+
+describe('ナレーションの表示名', () => {
+  it('日本語の名前を保存でき、WAV 用の内部IDは変わらない', () => {
+    const seg = NarrationSegmentSchema.parse({id: 'saved_abdb28b516c2457194ca0c52564b6df8', label: '美味すぎるぅ', at: 0, text: '美味すぎるぅ', durSec: 1});
+    expect(narrationDisplayName(seg)).toBe('美味すぎるぅ');
+    expect(seg.id).toBe('saved_abdb28b516c2457194ca0c52564b6df8');
+    expect(narrationDisplayName({...seg, label: '  '})).toBe(seg.id);
+  });
+});
 
 describe('checkNarration', () => {
   it('前後の無音ぶんの重なりは警告しない', () => {
@@ -36,6 +45,10 @@ describe('checkNarration', () => {
   it('動画尺をはみ出したら指摘する', () => {
     const n = narr([{id: 'a', at: 9, durSec: 2, text: 'あ'}], 10);
     expect(checkNarration(n, {estimate: est})[0]).toContain('はみ出します');
+  });
+  it('トリミング後の使用尺で重なりとはみ出しを判定する', () => {
+    const n = narr([{id: 'a', at: 0, durSec: 4, trimSec: 1, text: 'あ'}, {id: 'b', at: 1.2, durSec: 1, text: 'い'}], 2.3);
+    expect(checkNarration(n, {estimate: est})).toEqual([]);
   });
 
   it('durSec が無いブロックは文字数から見積もる', () => {

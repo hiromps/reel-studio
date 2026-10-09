@@ -33,12 +33,13 @@ import {SettingsPatchSchema} from '../shared/schema/settings';
 import {canStartJob, PROJECTLESS_JOBS, type JobType} from '../shared/jobs';
 import {runJobBody, type JobRunCtx} from '../server/jobs';
 import {libraryIndex} from '../core/reference';
+import {listVideoStyles} from '../core/video-style';
 import type {CloudJob} from '../cloud/store';
 import type {WorkerStatus} from '../cloud/worker-status';
 import {CloudClient, CloudError, cloudConfig} from './client';
 import {ensurePreviewProxies, runCatalogImport, runCreateProject, runFontJob, runIngest} from './cloud-jobs';
 import {acquireWorkerLock, releaseWorkerLock, touchWorkerLock} from './lock';
-import {pushProjectState, syncAssets, syncDocs, syncFonts} from './sync';
+import {pullNarrationAudio, pushProjectState, syncAssets, syncDocs, syncFonts} from './sync';
 
 /** ショートカットからの自動起動（手で叩いたときと違い、やることが無ければ静かに終わる） */
 const AUTO = process.argv.slice(2).includes('--auto');
@@ -270,6 +271,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
       // ジョブ（sync-engine など）があり、原因が分からなくなる
       if (!fs.existsSync(dir)) throw new Error(`この PC に案件フォルダがありません: ${dir}\n  （案件名が合っているか、データフォルダの設定が合っているかを確認してください）`);
       const r = await syncDocs(client, dir);
+      await pullNarrationAudio(client, dir);
       if (r.pulled.length) ctx.onLine(`クラウドから取り込み: ${r.pulled.join(', ')}`);
       if (r.conflicted.length) ctx.onLine(`※ 衝突（PC 側は .studio/conflicts/ に退避）: ${r.conflicted.join(', ')}`);
     }
@@ -294,6 +296,10 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
       } catch (e) {
         ctx.onLine(`※ 人格の反映に失敗: ${(e as Error).message}（次の同期で入ります）`);
       }
+    }
+    if (job.type === 'video-style-save' && !abort.signal.aborted) {
+      try { await client.pushVideoStyles(listVideoStyles()); }
+      catch (e) { ctx.onLine('※ 型の一覧の反映に失敗: ' + (e as Error).message + '（次の同期で入ります）'); }
     }
     // 参考動画のライブラリ（分析の追加・名前の変更・使っている案件）も、その場でスマホの一覧に出す
     if ((job.type === 'ai-reference' || job.type === 'ai-persona' || job.type === 'reference-library') && !abort.signal.aborted) {
@@ -354,6 +360,7 @@ const pushAfterJob = async (client: CloudClient, job: CloudJob, blobToken: strin
   const dir = resolveProjectDir(job.slug);
   if (!fs.existsSync(dir)) return;
   const r = await syncDocs(client, dir);
+  await pullNarrationAudio(client, dir);
   if (r.pushed.length) onLine(`クラウドへ反映: ${r.pushed.join(', ')}`);
   await pushProjectState(client, dir);
   if (blobToken) {
@@ -383,6 +390,7 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
     }
     try {
       await syncDocs(client, p.dir);
+      await pullNarrationAudio(client, p.dir);
       await pushProjectState(client, p.dir);
       if (blobToken) await syncAssets(client, p.dir, blobToken, {limit: 120});
       done++;
@@ -396,6 +404,7 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
     writePersonasSync(personas);
     await client.pushSfx(readLibrary());
     await client.pushReferenceLibrary(libraryIndex());
+    await client.pushVideoStyles(listVideoStyles());
     await client.pushSettings(await currentSettingsView());
     // 自前フォント（スマホのプレビューで PC と同じ絵を出すため）
     if (blobToken) {

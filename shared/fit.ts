@@ -22,9 +22,11 @@
 // - 窓をまたぐカットは**取り分の大きい側のブロックがそのテロップとクリップを担う**（端切れの側では使わない）
 // - テロップは 1 つも落とさない。1 カットしか無いテロップとフック（先頭）は 0.8 秒（読める長さ）を守る
 // - 会話（subs）とロック済みのカットは刻まない（尺も倍速もそのまま）
+// - 並び順ロック中は構成を作り直さず、元の全カットの IN/OUT と音声配置だけを合わせる
 import {ReelDataSchema, type Cut, type ReelData, type Slot} from './schema/cuts';
 import type {Clip} from './schema/catalog';
 import type {Narration, NarrationSegment} from './schema/narration';
+import {narrationUsedSec} from './narration';
 import {cutFrames, cutRanges, round3, totalSec} from './timeline';
 import {HOOK_TOO_SHORT_SEC, TELOP_UNREADABLE_SEC} from './validate';
 import {SIMILAR_WINDOW, clipSeq, isSimilarShot, nextStage, pickSupplement, sharperFirst, shotStage, usableSpan} from './shot-variety';
@@ -153,6 +155,87 @@ export const fitBlockedBy = (cuts: ReelData | null | undefined, narration: Narra
 
 const telopKey = (c: Cut): string | null => (c.main?.text?.trim() ? `${c.main.text}\u0000${c.main.orientation ?? 'vertical'}` : null);
 
+
+/** 並び順ロック中は、各カットを1回ずつ同じ位置で使い、IN/OUTだけを調整する。 */
+const fitLockedCuts = (cuts: ReelData, narration: Narration, opt: FitOptions, segs: NarrationSegment[], audioOf: (s: NarrationSegment) => number, minCut: number): FitResult => {
+  const fps = cuts.fps;
+  const before = statsOf(cuts);
+  const stop = (message: string): FitResult => ({ok: false, blockers: [message], cuts, narration, blocks: [], before, after: before, merged: [], supplemented: [], notes: []});
+  if (!cuts.cuts.length) return stop('映像のカットがありません');
+  const ranges = cutRanges(cuts);
+  const windows = segs.map((s, i) => ({from: i === 0 ? 0 : Math.max(0, s.at), to: i === segs.length - 1 ? Infinity : Math.max(0, segs[i + 1].at)}));
+  const assigned = windows.map(() => [] as number[]);
+  ranges.forEach((r, index) => {
+    let owner = 0, overlap = -1;
+    windows.forEach((w, bi) => {
+      const length = Math.max(0, Math.min(r.endSec, w.to) - Math.max(r.startSec, w.from));
+      if (length > overlap) {owner = bi;overlap = length;}
+    });
+    assigned[owner].push(index);
+  });
+  const slots = new Map((cuts.meta?.slots ?? []).map(s => [s.cutId, s]));
+  const sourceDuration = (c: Cut) => {
+    const clip = opt.clipOf?.(c.src) ?? opt.clips?.find(k => k.src === c.src || k.proxyOf === c.src);
+    const known = opt.clipDurationOf?.(c.src) ?? clip?.probe.durationSec;
+    return known !== undefined && Number.isFinite(known) && known > 0 ? known : c.outSec;
+  };
+  const nextCuts = cuts.cuts.map(c => ({...c}));
+  const blocks: FitBlock[] = [];
+  const blockStarts: number[] = [];
+  let cursor = 0;
+  for (let bi = 0; bi < segs.length; bi++) {
+    const indices = assigned[bi];
+    if (!indices.length) return stop('並び順ロック中のため ' + segs[bi].id + ' に映像を追加できません。ナレーションの開始位置かカットの区切りを手動で調整してください（並び順は変更していません）');
+    const offset = bi === 0 ? Math.max(0, Math.round((opt.leadSec ?? 0) * fps)) : 0;
+    const target = Math.ceil(audioOf(segs[bi]) * fps - 1e-6) + offset + (bi === segs.length - 1 ? Math.max(0, Math.round((opt.tailSec ?? 0) * fps)) : 0);
+    const fixed = indices.filter(i => isFixedCut(cuts.cuts[i], slots.get(cuts.cuts[i].id ?? '')));
+    const free = indices.filter(i => !fixed.includes(i));
+    const fixedFrames = fixed.reduce((n, i) => n + cutFrames(cuts.cuts[i], fps), 0);
+    const caps = free.map(i => Math.floor(sourceDuration(cuts.cuts[i]) * fps / (cuts.cuts[i].playbackRate ?? 1) + 1e-6));
+    if (caps.some(n => n < 1) || fixedFrames + caps.reduce((a, b) => a + b, 0) < target) return stop('並び順ロック中のため ' + segs[bi].id + ' の映像尺が足りません。素材の追加・入れ替えはせず、変更を見送りました。音声を短くするかカットを手動で調整してください');
+    const mins = free.map((i, j) => Math.min(caps[j], Math.max(1, Math.ceil((i === 0 ? Math.max(minCut, HOOK_TOO_SHORT_SEC) : minCut) * fps - 1e-6))));
+    const frames = [...mins];
+    let left = Math.max(0, target - fixedFrames - frames.reduce((a, b) => a + b, 0));
+    // 上限に達した素材へ配りすぎず、元の尺の比率で残りを配る。
+    while (left > 0) {
+      const available = free.map((_, j) => j).filter(j => frames[j] < caps[j]);
+      const shares = allocateByWeight(available.map(j => ranges[free[j]].dur), left);
+      let used = 0;
+      available.forEach((j, k) => {const add = Math.min(shares[k], caps[j] - frames[j]);frames[j] += add;used += add;});
+      if (!used) return stop('現在の素材では並び順を保ったまま音声の尺に合わせられません');
+      left -= used;
+    }
+    free.forEach((i, j) => {
+      const c = cuts.cuts[i];
+      const rate = c.playbackRate ?? 1;
+      const inSec = round3(Math.max(0, Math.min(c.inSec, sourceDuration(c) - frames[j] / fps * rate)));
+      nextCuts[i] = {...c, inSec, outSec: Math.min(sourceDuration(c), outFor(inSec, frames[j], fps / rate))};
+    });
+    const videoFrames = indices.reduce((n, i) => n + cutFrames(nextCuts[i], fps), 0);
+    if (videoFrames < target) return stop('素材の残りが足りないため、並び順を保った尺合わせを見送りました（変更していません）');
+    blockStarts.push(cursor / fps);
+    blocks.push({id: segs[bi].id, audioSec: round3(audioOf(segs[bi])), at: round3((cursor + offset) / fps), videoSec: round3(videoFrames / fps), cutCount: indices.length, shortSec: 0});
+    cursor += videoFrames;
+  }
+  const resultCuts = ReelDataSchema.parse({...cuts, cuts: nextCuts});
+  const after = statsOf(resultCuts);
+  const atOf = new Map(segs.map((s, i) => [s, blocks[i].at]));
+  const oldTotal = totalSec(cuts);
+  const sfx = narration.sfx?.map(x => {
+    const bi = Math.max(0, windows.findIndex(w => x.at >= w.from && x.at < w.to));
+    const w = windows[bi], b = blocks[bi];
+    const oldLen = (Number.isFinite(w.to) ? w.to : oldTotal) - w.from;
+    const start = blockStarts[bi];
+    return {...x, at: round3(clamp(start + (x.at - w.from) * (oldLen > 0 ? b.videoSec / oldLen : 1), start, start + b.videoSec))};
+  });
+  const resultNarration = {...narration, videoSec: after.totalSec, segments: narration.segments.map(s => ({...s, at: atOf.get(s)!})), ...(sfx ? {sfx} : {})};
+  return {ok: true, blockers: [], cuts: resultCuts, narration: resultNarration, blocks, before, after, merged: [], supplemented: [], notes: [
+    '並び順ロックを保持して ' + before.cutCount + ' カットの尺だけを音声に合わせました（' + before.totalSec.toFixed(2) + ' 秒 → ' + after.totalSec.toFixed(2) + ' 秒）。順番・素材・本数・倍速は変えていません',
+    '  似た構図の整理、撮影順への並べ替え、素材の追加・削除は行っていません。カットの長さは現在の本数を優先します',
+    '  ナレーションと効果音の配置を調整しました。音声は作り直していません',
+  ]};
+};
+
 export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: FitOptions = {}): FitResult => {
   const minCut = opt.minCutSec ?? FIT_DEFAULTS.minCutSec;
   const maxCut = opt.maxCutSec ?? FIT_DEFAULTS.maxCutSec;
@@ -166,8 +249,9 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
   const noAudio = missingAudioIds(narration);
   if (noAudio.length && !opt.estimate) blockers.push(`音声が無いブロックがあります: ${noAudio.join(', ')}（先に「音声を生成」してください。音声が正なので見積もりでは合わせません）`);
   if (blockers.length) return {ok: false, blockers, cuts, narration, blocks: [], before, after: before, ...empty, notes: []};
-  const audioOf = (s: NarrationSegment): number => (s.durSec && s.durSec > 0 ? s.durSec : Math.max(0.1, opt.estimate!(s)));
+  const audioOf = (s: NarrationSegment): number => narrationUsedSec(s, s.durSec && s.durSec > 0 ? 0 : Math.max(0.1, opt.estimate!(s)));
   const audioFramesOf = (s: NarrationSegment): number => Math.ceil(audioOf(s) * fps - 1e-6);
+  if (cuts.meta?.orderLocked) return fitLockedCuts(cuts, narration, opt, segs, audioOf, minCut);
 
   // ── 素材（catalog）の引き当て ──
   const bySrc = new Map<string, Clip>();

@@ -1,3 +1,4 @@
+import {videoStylePrompt} from '../shared/video-style';
 // 自然言語の台本 → cuts.json + narration.json。
 //
 // これまでの組み立て（planCuts）は「型（F0/F7…）に素材を流し込む」やり方で、尺も構成も型が決める。
@@ -9,7 +10,7 @@
 // 「黒毛和牛大満足盛りをテーブルに置くシーン」のような台本の指示には十分に当たるため。
 import fs from 'node:fs';
 import path from 'node:path';
-import {readBrief, readNarration, writeCuts, writeNarration} from './project';
+import {assertOrderUnlocked, OrderLockedError, readBrief, readCuts, readNarration, writeCuts, writeNarration} from './project';
 import {loadCatalog, studioDir} from './catalog';
 import {runAgent} from './agent';
 import {readJsonFile, writeJsonAtomic} from './json-io';
@@ -17,6 +18,7 @@ import {agentProvider, loadSettings} from './settings';
 import {activitySummary, createAgentTracker, progressView} from '../shared/agent-progress';
 import {studioConfig} from '../studio.config';
 import {type ReelData} from '../shared/schema/cuts';
+import {scriptTextConfirmation, type ScriptTextConfirmation} from '../shared/script-text';
 import {
   ScriptPlanSchema,
   ScriptProposalSchema,
@@ -137,7 +139,8 @@ const loadScriptEnv = (projectDir: string) => {
 
 /** cuts.json と narration.json を書く（「台本から組み立てる」と「承認して書き込む」の共通部分）。旧版は .studio/backups/ に残る */
 const writeScriptOutputs = (projectDir: string, plan: ScriptPlan, cuts: ReelData, persona: ReturnType<typeof getPersona>, log: (l: string) => void) => {
-  writeCuts(projectDir, cuts);
+  assertOrderUnlocked(projectDir);
+  writeCuts(projectDir, cuts, {preserveOrder: true});
   const narration = scriptPlanToNarration(plan, persona.narration);
   if (narration) writeNarration(projectDir, narration);
   log(`cuts.json（${cuts.cuts.length} カット / ${scriptPlanTotalSec(plan).toFixed(2)} 秒）と narration.json（${plan.narration.length} ブロック）を書きました`);
@@ -223,6 +226,7 @@ export const applyScriptProposal = (
   opt: {onLine?: (l: string) => void} = {},
 ): {cuts: number; narration: number; totalSec: number; issues: ScriptIssue[]; fixes: string[]} => {
   const log = opt.onLine ?? (() => {});
+  assertOrderUnlocked(projectDir);
   const proposal = readScriptProposal(projectDir);
   if (!proposal) throw new Error('書き込む割り当ての案がありません（先に「割り当てを見るだけ」を実行してください）');
   const env = loadScriptEnv(projectDir);
@@ -233,6 +237,34 @@ export const applyScriptProposal = (
   writeScriptOutputs(projectDir, review.plan, cuts, env.persona, log);
   writeScriptProposal(projectDir, {...proposal, plan: review.plan, autoFixes: [...proposal.autoFixes, ...review.fixes], appliedAt: new Date().toISOString()});
   return {cuts: cuts.cuts.length, narration: review.plan.narration.length, totalSec: review.totalSec, issues: review.issues, fixes: review.fixes};
+};
+
+/** 台本まで保存できたら、構成を保持した文言生成の確認へ進める。 */
+export const lockedScriptTextConfirmation = (dir: string): ScriptTextConfirmation | undefined => {
+  if (!fs.existsSync(path.join(dir, 'cuts.json'))) return undefined;
+  const cuts = readCuts(dir);
+  const script = readScript(dir);
+  if (!cuts.meta?.orderLocked || !script?.trim()) return undefined;
+  return scriptTextConfirmation(script, cuts, readNarration(dir));
+};
+
+/** ロックは正常な確認待ち。AI 実行中にロックされた場合も同じ導線へ返す。 */
+export const assembleScriptOrConfirm = async (dir: string, opt: Parameters<typeof aiScript>[1]) => {
+  if (opt?.write !== false) {
+    const textConfirmation = lockedScriptTextConfirmation(dir);
+    if (textConfirmation) {
+      opt?.onLine?.('並び順を保持したまま、テロップとナレーション原稿を生成するか確認してください。台本は保存済みです');
+      return {textConfirmation};
+    }
+  }
+  try { return {assembled: await aiScript(dir, opt)}; }
+  catch (e) {
+    if (!(e instanceof OrderLockedError)) throw e;
+    const textConfirmation = lockedScriptTextConfirmation(dir);
+    if (!textConfirmation) throw e;
+    opt?.onLine?.('並び順がロックされました。今の並びでテロップとナレーション原稿を生成するか確認してください');
+    return {textConfirmation};
+  }
 };
 
 export type AiScriptResult = {
@@ -256,6 +288,7 @@ export async function aiScript(
   opt: {model?: string; write?: boolean; force?: boolean; onLine?: (l: string) => void; onProgress?: (d: number, t: number, p: string) => void; signal?: AbortSignal} = {},
 ): Promise<AiScriptResult> {
   const log = opt.onLine ?? (() => {});
+  if (opt.write) assertOrderUnlocked(projectDir);
   await ensureLooks(projectDir, {onLine: log}).catch(() => 0); // 似た構図のまとまりを素材一覧に添えるため
   const env = loadScriptEnv(projectDir);
   const {script, catalog, brief, persona, spec, sections} = env;
@@ -290,6 +323,7 @@ export async function aiScript(
   const prompt = [
     '人が書いた台本があります。**台本が正**なので、それに合うように手元の素材を並べて動画の構成を作ってください。',
     '',
+    videoStylePrompt(brief.videoStyle),
     '## 台本',
     script.trim(),
     '',
@@ -307,7 +341,7 @@ export async function aiScript(
     `- テロップは ${spec.telop.maxChars} 文字まで。文末に句点（。）を付けない。長い指示は意味を保って縮める。三点リーダーは全角 3 文字の「・・・」で書く（「…」は使わない）`,
     `- **エリア名（${brief.shop.area || '—'}）は縦書き本文ではなく badge に出す。** 本文はエリア名が無くても通る言い回しに`,
     ...VARIETY_RULES.map((r) => `- ${r}`),
-    '- 台本の「カット割り」の秒数は目安。1 カット 0.7〜0.8 秒に収め、区間の長さに足りない分は上の規則で別の素材を足す',
+    brief.videoStyle ? '- 台本のカット割りと選んだ動画の型のカット尺・強弱に合わせる。既定の均一テンポに戻さない。区間の長さに足りない分は別の素材を足す' : '- 台本の「カット割り」の秒数は目安。1 カット 0.7〜0.8 秒に収め、区間の長さに足りない分は上の規則で別の素材を足す',
     '- 台本に無いテロップを足さない。台本に無い情報をナレーションに足さない',
     '- **合う素材が無い区間は、無理に別の素材を当てずに `unmatched` に書く**（撮り足しの指示になる）',
     `- ナレーションの \`at\` は、その文が指す映像が出ている間に置く。実測話速は ${persona.narration.charsPerSecMeasured} 文字/秒`,

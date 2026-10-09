@@ -45,7 +45,7 @@ export const missingMixAssets = (dir: string, narration: Narration, opt: {ignore
 /** 足りないものは ffmpeg の生エラーではなく日本語で止める */
 export const mixPreconditions = (dir: string, inputRel = 'out/final.mp4'): string | null => {
   const n = readNarration(dir);
-  if (!n) return 'narration.json が無い（先に「AI にナレーションを書いてもらう」）';
+  if (!n || (!n.segments.length && !n.sfx?.length)) return 'ナレーションと効果音がありません。先に音声または効果音を配置してください';
   if (!fs.existsSync(path.join(dir, inputRel))) return `${inputRel} が無いので合成できません。先に「本番レンダー」を実行してください`;
   const problems = missingMixAssets(dir, n);
   return problems.length ? problems.join('\n') : null;

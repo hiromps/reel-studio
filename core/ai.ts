@@ -1,3 +1,4 @@
+import {videoStylePrompt} from '../shared/video-style';
 // タグ付けと並べ替えを、裏で走らせた Claude Code に代行させる。
 // エージェントは「サムネイルを見て JSON を返す」だけ。catalog.json / brief.json / cuts.json への
 // 反映は必ずこちら側が zod 検証を通してから行う（importTags / importOrder）。
@@ -17,7 +18,7 @@ import {countChars, isPlaceholder, minDisplaySec, normalizeEllipsis} from '../sh
 import {importTags, loadCatalog, saveCatalog, studioDir, type TagImport} from './catalog';
 import {buildOrderExport, exportOrder, importOrder, loadOrderEnv, type OrderEnv, type OrderImportResult} from './order';
 import {ensureCutFrame} from './cut-frames';
-import {readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaption, writeCuts, writeNarration} from './project';
+import {assertOrderUnlocked, readBrief, readCaption, readCuts, readNarration, writeBrief, writeCaption, writeCuts, writeNarration} from './project';
 import {validateProject} from './render';
 import {runAgent, type AgentEvent, type AgentRun} from './agent';
 import {agentProvider} from './settings';
@@ -238,6 +239,7 @@ export async function aiOrder(
   opt: {write?: boolean; copy?: boolean; force?: boolean; model?: string; onLine?: (l: string) => void; onProgress?: AiProgress; signal?: AbortSignal} = {},
 ): Promise<AiOrderResult> {
   const log = opt.onLine ?? (() => {});
+  assertOrderUnlocked(projectDir);
   await ensureLooks(projectDir, {onLine: log}).catch(() => 0); // 似た構図のまとまりを export に入れるため
   const env: OrderEnv = loadOrderEnv(projectDir);
   const {file} = exportOrder(env);
@@ -254,6 +256,7 @@ export async function aiOrder(
     `店: ${env.brief.shop.name}（${env.brief.shop.area}・${env.brief.shop.genre}）`,
     '',
     '守ること:',
+    videoStylePrompt(env.brief.videoStyle),
     ...orderPrinciples(env.spec, env.brief, env.persona).map((p) => `- ${p}`),
     `- ng が true のクリップは使わない（使えるのは ${usable.length} 本）`,
     '- 迷ったら clips[].sheet を Read で 1 枚ずつ見て中身を確かめる。1 枚ずつ見ること',
@@ -428,6 +431,7 @@ export async function aiTelop(
     `店: ${brief.shop.name}（${brief.shop.area}・${brief.shop.genre}）${brief.shop.pr ? '／PR案件' : ''}`,
     brief.core ? `企画の核: ${brief.core}` : '',
     '',
+    videoStylePrompt(brief.videoStyle),
     '書くグループ（各グループは複数カットにまたがることがある。1 グループ＝1 文言）:',
     ...lines,
     '',
@@ -530,7 +534,7 @@ export async function aiTelop(
     const filledCutIds = new Set(filled.flatMap((f) => byIdTarget.get(f.id)!.cuts.map((i) => next.cuts[i].id)));
     next.meta = {...next.meta, slots: next.meta.slots.map((s) => (filledCutIds.has(s.cutId) ? {...s, textStatus: 'draft' as const} : s))};
   }
-  writeCuts(projectDir, next);
+  writeCuts(projectDir, next, {preserveOrder: true});
   const validation = validateProject(projectDir);
   log(`AI テロップ完了: ${filled.length} グループ / $${run.costUsd.toFixed(3)}`);
   if (run.data.notes) log(`意図: ${run.data.notes}`);
@@ -609,6 +613,7 @@ export async function aiNarration(
     `店: ${brief.shop.name}（${brief.shop.area}・${brief.shop.genre}）／人格 ${persona.label}／ボイス ${persona.narration.voiceTitle}・speed ${persona.narration.speed}`,
     brief.core ? `企画の核: ${brief.core}` : '',
     '',
+    videoStylePrompt(brief.videoStyle),
     'カットとテロップ（先頭からの秒数）:',
     ...rows,
     '',
@@ -1233,7 +1238,12 @@ export function applyPatch(
   const idOf = (key: string) => refs.get(key) ?? key;
   const indexOfCut = (key: string) => next.cuts.findIndex((c) => c.id === idOf(key));
 
+  const orderLocked = cuts.meta?.orderLocked === true;
   for (const a of patch.add ?? []) {
+    if (orderLocked) {
+      unapplied.push('add: 並び順がロックされているためカットは追加していません');
+      continue;
+    }
     const clip = catalog.clips.find((x) => x.id === a.clipId) ?? catalog.clips.find((x) => x.src === a.clipId);
     if (!clip) {
       unapplied.push(`add: 素材 ${a.clipId} が無い`);
@@ -1273,6 +1283,10 @@ export function applyPatch(
       continue;
     }
     if (e.remove) {
+      if (orderLocked) {
+        unapplied.push(`cuts: ${e.cutId} は並び順がロックされているため削除していません`);
+        continue;
+      }
       if (next.cuts.length <= 1) {
         unapplied.push(`cuts: ${e.cutId} は最後の 1 カットなので消せない`);
         continue;
@@ -1296,7 +1310,9 @@ export function applyPatch(
     applied.push(`カット ${c.id} を ${before} → ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`);
   }
 
-  if (patch.order?.length) {
+  if (patch.order?.length && orderLocked) {
+    if (JSON.stringify(patch.order) !== JSON.stringify(next.cuts.map((c) => c.id))) unapplied.push('order: 並び順がロックされているため並べ替えは反映していません');
+  } else if (patch.order?.length) {
     const byId = new Map(next.cuts.map((c) => [c.id, c]));
     const ids = patch.order.map(idOf);
     const unknown = ids.filter((id) => !byId.has(id));
@@ -1475,6 +1491,8 @@ export async function aiEdit(
     '',
     `店: ${brief.shop.name}（${brief.shop.area}・${brief.shop.genre}）／型 ${spec.id}「${spec.name}」／人格 ${persona.label}／theme ${cuts.theme ?? spec.theme}／全体 ${totalSec(cuts).toFixed(2)}秒 ${cuts.cuts.length}カット`,
     '',
+    videoStylePrompt(brief.videoStyle),
+    cuts.meta?.orderLocked ? '【並び順ロック中】カットの順番・本数を維持する。order・add・cuts.remove は使わない。並べ替えの指示があっても実行せず unapplied にロックのためと書く。テロップ・区間・倍速・ナレーション等の修正はできる。' : '',
     'いまのカット:',
     ...cutLines,
     '',
@@ -1534,7 +1552,7 @@ export async function aiEdit(
     if (!parsedCuts.success) {
       unapplied.push(`cuts.json の形が壊れるので書いていない: ${parsedCuts.error.issues[0]?.message ?? ''}`);
     } else {
-      writeCuts(projectDir, parsedCuts.data);
+      writeCuts(projectDir, parsedCuts.data, {preserveOrder: true});
       validation = validateProject(projectDir);
     }
   }

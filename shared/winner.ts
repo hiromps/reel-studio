@@ -63,7 +63,7 @@ export const applyTailNarration = (narration: Narration, text: string, suffix: s
   const wavId = `${lastId}__W${suffix}`;
   const last = narration.segments.find((s) => s.id === lastId)!;
   return {
-    narration: {...narration, segments: narration.segments.map((s) => (s.id === lastId ? {...s, id: wavId, text: t, needsTts: true, durSec: undefined} : s))},
+    narration: {...narration, segments: narration.segments.map((s) => (s.id === lastId ? {...s, id: wavId, text: t, needsTts: true, durSec: undefined, trimSec: undefined} : s))},
     wavId,
     before: last.text,
     at: last.at,

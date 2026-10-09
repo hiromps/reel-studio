@@ -41,7 +41,7 @@ export const mixClipsOf = (narration: Narration | null, mediaBase: string | null
   const narrGain = NARR_BASE_GAIN * dbToGain(narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT);
   for (const s of narration.segments) {
     if (!wavReady(s)) continue;
-    out.push({key: `narr:${s.id}:${s.durSec}`, url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`, kind: 'narr', id: s.id, at: s.at, gain: narrGain});
+    out.push({key: `narr:${s.id}:${s.durSec}`, url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`, kind: 'narr', id: s.id, at: s.at, gain: narrGain, trimSec: s.trimSec});
   }
   const sfxGain = dbToGain(narration.sfxGainDb ?? 0);
   for (const x of narration.sfx ?? []) {

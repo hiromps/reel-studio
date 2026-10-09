@@ -25,6 +25,8 @@ export const JOB_TYPES = [
   'ai-caption',
   'ai-facts',
   'ai-script',
+  /** 並び順ロック中、確認を受けて保存済み台本から文言とナレーション原稿だけ生成する */
+  'ai-script-text',
   /** 依頼文（どんな動画にしたいか）から台本（script.md）を書く。assemble なら続けて「台本から組み立てる」まで */
   'ai-script-draft',
   'tts',
@@ -43,6 +45,10 @@ export const JOB_TYPES = [
   'ai-persona',
   /** 既存の人格を利用者の指示どおりに AI で磨く（案を返すだけで保存しない。案件に属さない） */
   'ai-persona-refine',
+  /** 過去案件から動画の型を抽出、または既存の型の改善案を作る */
+  'ai-video-style',
+  /** 型の案を確定し、版履歴と SKILL.md を保存する（案件に属さない） */
+  'video-style-save',
   /** 参考動画のライブラリの操作（名前を付ける）。案件に属さない。クラウドから頼まれたときだけ出る（PC では直接ルートで行う） */
   'reference-library',
   'trial',
@@ -99,7 +105,7 @@ export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
 ]);
 
 /** 案件に属さないジョブ（案件を開いていなくても投げられる） */
-export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts', 'ai-persona', 'ai-persona-refine', 'reference-library']);
+export const PROJECTLESS_JOBS: ReadonlySet<JobType> = new Set<JobType>(['mosaic-setup', 'fonts', 'ai-persona', 'ai-persona-refine', 'reference-library', 'video-style-save']);
 
 export const isHeavyJob = (type: string): boolean => HEAVY_JOBS.has(type as JobType);
 

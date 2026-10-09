@@ -37,7 +37,15 @@ import {
 } from '../store';
 import type {WorkerStatus} from '../worker-status';
 
+import {VideoStyleEntrySchema} from '../../shared/video-style';
+
 export const workerRouter = Router();
+workerRouter.post('/video-styles', async (req, res) => {
+  const parsed = VideoStyleEntrySchema.array().safeParse(req.body?.entries);
+  if (!parsed.success) return res.status(400).json({error: '動画の型の形式が不正です'});
+  await kvSet('video-styles', {entries: parsed.data, updatedAt: new Date().toISOString()});
+  res.json({ok: true, count: parsed.data.length});
+});
 
 // ───────────────────────── 死活と「PC に反映すべき変更」 ─────────────────────────
 
@@ -200,7 +208,7 @@ workerRouter.delete('/project/:slug', async (req, res) => {
 
 /** 既に上がっているもの（hash 付き）。ワーカーはこれと突き合わせて差分だけ上げる */
 workerRouter.get('/assets/:slug', async (req, res) => {
-  res.json({assets: await listAssets(normalizeSlug(req.params.slug))});
+  res.json({assets: await listAssets(req.params.slug === '_global' ? '_global' : normalizeSlug(req.params.slug))});
 });
 
 workerRouter.post('/assets/:slug', async (req, res) => {

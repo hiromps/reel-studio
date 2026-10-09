@@ -97,7 +97,7 @@ export const ScriptCard: React.FC<{
     onState?.({hasText: !!saved.trim(), sections: sectionCount});
   }, [saved, sectionCount, onState]);
   // 「バズ動画の型を写す」（ai-mimic）も script.md を書いて組み立てるので、同じく待つ
-  const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'ai-script' || j.type === 'ai-mimic' || j.type === 'ai-script-draft'));
+  const busy = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && (j.type === 'ai-script' || j.type === 'ai-script-text' || j.type === 'ai-mimic' || j.type === 'ai-script-draft'));
   const drafting = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'ai-script-draft' && j.slug === slug);
   const unsupported = !s.supportsJob('ai-script');
   const draftUnsupported = !s.supportsJob('ai-script-draft');

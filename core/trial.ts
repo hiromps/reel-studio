@@ -172,7 +172,7 @@ export const runTrial = async (projectDir: string, opt: TrialOptions = {}): Prom
           const over = head.at + dur - nextAt;
           warnings.push(`${v.id}: フックのナレーションが次のブロック（${nextAt.toFixed(2)} 秒）に ${over.toFixed(2)} 秒食い込みます。文を短くするか、Timeline で引き直してください`);
         }
-        vn.segments = vn.segments.map((s) => (s.id === wavId ? {...s, durSec: dur, needsTts: undefined} : s));
+        vn.segments = vn.segments.map((s) => (s.id === wavId ? {...s, durSec: dur, trimSec: undefined, needsTts: undefined} : s));
       }
       const narrFile = path.join(trialDir(projectDir), `${v.id}.narration.json`);
       writeJsonAtomic(narrFile, vn);

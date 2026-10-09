@@ -26,6 +26,7 @@ planRouter.post('/plan', async (req, res) => {
   if (!ctx.catalog) return res.status(400).json({error: 'catalog.json が無い（先にカタログ化）'});
   if (!brief) return res.status(400).json({error: 'brief.json が無い'});
   try {
+    if (req.body?.write && ctx.cuts?.meta?.orderLocked) return res.status(409).json({error: '並び順がロックされています。Timeline でロックを解除して保存してください（手動編集はできます）'});
     const r = planCuts({catalog: ctx.catalog, brief, existing: ctx.cuts, options: {allowReuse: req.body?.allowReuse !== false}});
     if (req.body?.write) await writeDoc(slug, 'cuts', r.cuts, {by: 'cloud'});
     // alias（同一素材の再参照を別名ファイルにコピーする回避策）は実ファイルの操作なので PC 側で行う。

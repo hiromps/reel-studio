@@ -46,7 +46,7 @@ export const narrationReady = (projectDir: string): {ok: boolean; reason?: strin
   const mixed = path.join(projectDir, 'out', 'final_narration.mp4');
   if (!fs.existsSync(mixed)) return {ok: false, reason: 'out/final_narration.mp4 が無い（「ナレーション合成（mix）」がまだ）'};
   const narration = readNarration(projectDir);
-  if (!narration?.segments.length) return {ok: false, reason: 'narration.json が無い（ナレーション原稿がまだ）'};
+  if (!narration || (!narration.segments.length && !narration.sfx?.length)) return {ok: false, reason: 'narration.json にナレーションも効果音も無い'};
   const pending = narration.segments.filter((s) => (s as {needsTts?: boolean}).needsTts).map((s) => s.id);
   if (pending.length) return {ok: false, reason: `音声が未生成のブロックがある: ${pending.join(', ')}`};
   const mixedAt = fs.statSync(mixed).mtimeMs;
@@ -94,7 +94,7 @@ export const deliver = async (projectDir: string, opt: DeliverOptions = {}): Pro
     kinds.push('silent');
     warnings.push(`ナレーション付きを出せないので音声なしで納品します（${ready.reason}）`);
   } else {
-    throw new Error(`完成品（ナレーション付き）が用意できていません: ${ready.reason}\n  ナレーションを使わない案件なら --allow-silent を付けてください`);
+    throw new Error(`完成品（音声・効果音入り）が用意できていません: ${ready.reason}\n  ナレーションも効果音も使わない案件なら --allow-silent を付けてください`);
   }
   if (readCaption(projectDir)?.trim()) kinds.push('caption');
   else warnings.push('caption.txt が無いのでキャプションは納品していません');

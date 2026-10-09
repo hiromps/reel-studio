@@ -2,8 +2,9 @@
 // Player（ブラウザ再生）とレンダーの両方で同じファイルを使う。
 import fs from 'node:fs';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {execOk} from './exec';
-import {effectiveSize} from './ffprobe';
+import {effectiveSize, ffprobe} from './ffprobe';
 import type {Probe} from '../shared/schema/catalog';
 
 export const needsProxy = (p: Probe): {needed: boolean; reason?: string} => {
@@ -21,13 +22,21 @@ export const needsProxy = (p: Probe): {needed: boolean; reason?: string} => {
  */
 export const makeProxy = async (input: string, output: string, probe: Probe, opt: {preset?: string; crf?: number; onLine?: (l: string) => void} = {}): Promise<void> => {
   fs.mkdirSync(path.dirname(output), {recursive: true});
+  const temp = path.join(path.dirname(output), `.${path.basename(output, path.extname(output))}.${randomUUID()}.mp4`);
   const {width, height} = effectiveSize(probe);
   const vf = width > height ? 'crop=ih*9/16:ih,scale=1080:1920:flags=lanczos' : 'scale=1080:1920:flags=lanczos';
   const args = ['-y', '-nostdin', '-v', 'error', '-stats', '-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', opt.preset ?? 'medium', '-crf', String(opt.crf ?? 16), '-g', '30', '-keyint_min', '30', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
   if (probe.hasAudio) args.push('-c:a', 'aac', '-b:a', '192k');
   else args.push('-an');
-  args.push(output);
-  await execOk('ffmpeg', args, {onLine: opt.onLine ? (l) => opt.onLine!(l) : undefined});
+  args.push(temp);
+  try {
+    await execOk('ffmpeg', args, {onLine: opt.onLine ? (l) => opt.onLine!(l) : undefined});
+    const converted = await ffprobe(temp);
+    if (converted.durationSec <= 0) throw new Error(`変換した動画の長さを確認できません: ${output}`);
+    fs.renameSync(temp, output);
+  } finally {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+  }
 };
 
 /** プレビュー用の軽量プロキシ（540x960）。URL は変えずサーバー側で差し替える */

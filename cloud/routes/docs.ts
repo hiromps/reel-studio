@@ -22,6 +22,14 @@ const isContract = (v: string): v is ContractName => v in schemas;
 
 const noCache = (res: import('express').Response) => res.setHeader('Cache-Control', 'no-cache');
 
+docsRouter.post('/clipboard/import-clips', (_req, res) => {
+  res.status(501).json({error: '別案件へのクリップ素材の取り込みは PC 版の Reel Studio で行ってください'});
+});
+
+docsRouter.post('/clipboard/copy-narration-audio', (_req, res) => {
+  res.status(501).json({error: '生成済み音声の複製は PC 版の Reel Studio で行ってください'});
+});
+
 // ───────────────────────── 契約ファイル 4 つ ─────────────────────────
 
 docsRouter.get('/files/:name', async (req, res) => {

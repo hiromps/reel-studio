@@ -16,7 +16,7 @@ import type {Job} from '../api';
 import type {Narration, NarrationSegment} from '@shared/schema';
 import {NARRATION_GAIN_DB_DEFAULT} from '@shared/schema';
 import {findPersona} from '@shared/personas';
-import {checkNarration} from '@shared/narration';
+import {checkNarration, narrationDisplayName, narrationUsedSec} from '@shared/narration';
 import {localTime} from '@shared/time';
 import {api} from '../api';
 import {RenderTerms, RenderTermsToggle, termHint} from '../components/RenderTerms';
@@ -89,6 +89,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
       segments: narration.segments.map((sg) => {
         const n: NarrationSegment = {...sg, needsTts: true};
         delete (n as {durSec?: number}).durSec;
+        delete n.trimSec;
         return n;
       }),
     });
@@ -152,8 +153,8 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
   });
 
   const outFiles = s.projects.find((p) => p.slug === s.active)?.out;
-  const mixBlockedBy = !narration ? 'ナレーション原稿がまだありません' : needsTts > 0 ? `${needsTts} ブロックの音声がまだありません` : outFiles && !outFiles.final ? 'out/final.mp4 がありません。先に「本番レンダー」を実行してください' : null;
-  const deliverBlockedBy = !s.supportsJob('deliver') ? 'サーバーが古いプロセスです。再起動してください' : outFiles && !outFiles.narration ? 'out/final_narration.mp4 がありません。本番レンダー →「ナレーション合成（mix）」の順で作ってください' : null;
+  const mixBlockedBy = !narration || (!narration.segments.length && !narration.sfx?.length) ? 'ナレーションまたは効果音を配置してください' : needsTts > 0 ? `${needsTts} ブロックの音声がまだありません` : s.files.narration.dirty ? 'narration.json を保存してください' : outFiles && !outFiles.final ? 'out/final.mp4 がありません。先に「本番レンダー」を実行してください' : null;
+  const deliverBlockedBy = !s.supportsJob('deliver') ? 'サーバーが古いプロセスです。再起動してください' : outFiles && !outFiles.narration ? 'out/final_narration.mp4 がありません。本番レンダー →「音声・効果音を反映（mix）」の順で作ってください' : null;
   const lastPreflightFail = s.jobs.find((j) => (j.type === 'render' || j.type === 'draft' || j.type === 'build') && j.slug === s.active && j.status === 'failed' && /preflight に失敗/.test(j.error ?? ''));
   const preflightErrors = (lastPreflightFail?.error ?? '')
     .split('\n')
@@ -489,11 +490,11 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
               {[...narration.segments]
                 .sort((a, b) => a.at - b.at)
                 .map((seg) => (
-                  <div key={seg.id} className={`narr-row compact${seg.needsTts ? ' needs-tts' : ''}`} title={seg.needsTts ? '要再生成' : `実測 ${seg.durSec?.toFixed(2)}s`}>
-                    <span className="narr-id mono">{seg.id}</span>
+                  <div key={seg.id} className={`narr-row compact${seg.needsTts ? ' needs-tts' : ''}`} title={seg.needsTts ? '要再生成' : `使用 ${narrationUsedSec(seg).toFixed(2)}s / 元音声 ${seg.durSec?.toFixed(2)}s`}>
+                    <span className="narr-id" title={`内部ID: ${seg.id}`}>{narrationDisplayName(seg)}</span>
                     <span className="counter">{seg.at.toFixed(2)}s</span>
                     <span className="narr-text-ro">{seg.text}</span>
-                    <span className="counter">{seg.needsTts ? '要再生成' : `${seg.durSec?.toFixed(1)}s`}</span>
+                    <span className="counter">{seg.needsTts ? '要再生成' : `${narrationUsedSec(seg).toFixed(1)}s`}</span>
                   </div>
                 ))}
             </div>
@@ -514,20 +515,20 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
         {/* できあがっていれば、まずここで確認して端末に持ち出せるようにする */}
         {outFiles?.narration && (
           <>
-            <h3>完成品（ナレーション入り）</h3>
+            <h3>完成品（音声・効果音入り）</h3>
             <FinishedVideo />
           </>
         )}
-        {(mixBlockedBy || deliverBlockedBy) && (
+        {(mixBlockedBy || (!s.supportsJob('deliver') && deliverBlockedBy)) && (
           <p className="hint" style={{color: 'var(--warn)'}}>
             {mixBlockedBy ?? deliverBlockedBy}
           </p>
         )}
         <div className="row">
-          <button onClick={() => s.addJob('mix', {input: 'out/final.mp4', output: 'out/final_narration.mp4'})} disabled={!!mixBlockedBy} title={mixBlockedBy ?? 'narration.json と narration/*.wav を out/final.mp4 に混ぜます'}>
-            ナレーション合成（mix）
+          <button onClick={() => s.addJob('mix', {input: 'out/final.mp4', output: 'out/final_narration.mp4'})} disabled={!!mixBlockedBy} title={mixBlockedBy ?? 'レンダー済みの out/final.mp4 に現在のナレーションと効果音を合成します。再レンダーは不要です'}>
+            音声・効果音を反映（mix）
           </button>
-          <button className="primary" onClick={() => s.addJob('deliver', {label: deliverLabel.trim() || undefined})} disabled={!!deliverBlockedBy} title={deliverBlockedBy ?? '完成品（ナレーション付き mp4 とキャプション）を outputs/ に書き出します。draft と音声なしは出しません'}>
+          <button className="primary" onClick={() => s.addJob('deliver', {label: deliverLabel.trim() || undefined})} disabled={!!deliverBlockedBy} title={deliverBlockedBy ?? '完成品（音声・効果音入り mp4 とキャプション）を outputs/ に書き出します'}>
             納品（outputs/ へ）
           </button>
           <input value={deliverLabel} onChange={(e) => setDeliverLabel(e.target.value)} placeholder="名前に足す語（任意）：修正版 など" style={{width: 190}} />

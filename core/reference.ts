@@ -27,7 +27,7 @@ import {runAgent, type AgentRun} from './agent';
 import {instagramMcpEnv} from './instagram-mcp';
 import {fetchInstagramVideoInfo, parseInstagramPostUrl} from '../shared/instagram-mcp';
 import {agentProgress} from './ai';
-import {aiScript, readScript, scriptPath, writeScript, type AiScriptResult} from './script';
+import {assembleScriptOrConfirm, readScript, scriptPath, writeScript, type AiScriptResult} from './script';
 import {getPersona, hookRuleLines} from '../shared/personas';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {DOC_FILES} from '../shared/project';
@@ -842,6 +842,7 @@ export type AiMimicResult = {
   costUsd: number;
   /** 組み立て（aiScript）の結果。assemble=false なら undefined */
   assembled?: AiScriptResult;
+  textConfirmation?: import('../shared/script-text').ScriptTextConfirmation;
 };
 
 /**
@@ -879,6 +880,7 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
   const segLines = ref.segments.map((s, i) => `- [${i + 1}] ${segmentLine(ref, s)}`);
 
   const prompt = [
+    `sections は参考動画と同じ ${ref.segments.length} 件ちょうど返してください。余分な空区間や 0〜0 秒の区間を追加しないでください。各区間の telop は 1 文だけにし、複数の文言を「｜」で連結しないでください。`,
     '参考動画（他の人が投稿して伸びたグルメのショート動画）の型を写して、この案件（自分の店）の台本を書いてほしい。',
     '**構成・テンポ・テロップの型・フックの掛け方・店名の明かし方・締め方は参考動画と同じにし、中身（店・料理・数字・地名・体験）はこの案件のものに置き換える。**',
     '参考動画の映像・音声・文言そのものは使わない（店名・料理名・地名・数字が残っていたら流用になる）。',
@@ -946,7 +948,9 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
 
   const parsed = MimicPlanSchema.safeParse(run.data);
   if (!parsed.success) throw new Error(`台本の返答が読めませんでした: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}`);
-  const {plan, fitted} = fitMimicToReference(parsed.data, ref);
+  const {plan, fitted} = fitMimicToReference(parsed.data, ref, {maxTelopChars: spec.telop.maxChars});
+  if (plan.sections.length < parsed.data.sections.length)
+    log(`! AI が追加した空の区間 ${parsed.data.sections.length - plan.sections.length} 件を除き、参考動画の ${ref.segments.length} 区間に合わせました`);
   if (!fitted) log(`! 区間の数が参考（${ref.segments.length}）と違う（${plan.sections.length}）ので、秒数を参考に合わせられません`);
   const issues = checkMimicPlan(plan, ref, {maxTelopChars: spec.telop.maxChars});
   for (const i of issues) log(`  ${i.severity} ${i.code} ${i.message}`);
@@ -962,9 +966,10 @@ export async function aiMimic(dir: string, opt: MimicOptions = {}): Promise<AiMi
   log(`script.md を書きました（${plan.sections.length} 区間・${plan.sections.reduce((n, s) => n + s.cutCount, 0)} カット・$${run.costUsd.toFixed(3)}）${prev?.trim() ? '。前の台本は .studio/backups/ に残っています' : ''}`);
 
   let assembled: AiScriptResult | undefined;
+  let textConfirmation: import('../shared/script-text').ScriptTextConfirmation | undefined;
   if (opt.assemble !== false) {
     log('続けて「台本から組み立てる」を実行します');
-    assembled = await aiScript(dir, {model, write: opt.write !== false, force: opt.force, onLine: log, onProgress: opt.onProgress, signal: opt.signal});
+    ({assembled, textConfirmation} = await assembleScriptOrConfirm(dir, {model, write: opt.write !== false, force: opt.force, onLine: log, onProgress: opt.onProgress, signal: opt.signal}));
   }
-  return {plan, issues, script, scriptFile, costUsd: run.costUsd + (assembled?.costUsd ?? 0), assembled};
+  return {plan, issues, script, scriptFile, costUsd: run.costUsd + (assembled?.costUsd ?? 0), assembled, textConfirmation};
 }

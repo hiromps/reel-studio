@@ -325,17 +325,17 @@ export const failStaleJobs = async (staleMs = 5 * 60_000): Promise<number> => {
 
 // ───────────────────────── メディア索引 ─────────────────────────
 
-export const findAsset = async (slug: string, kind: string, mode: string, relPath: string): Promise<{url: string} | null> => {
+export const findAsset = async (slug: string, kind: string, mode: string, relPath: string): Promise<{url: string; hash: string; bytes: number} | null> => {
   const [row] = await db()
-    .select({url: assets.url})
+    .select({url: assets.url, hash: assets.hash, bytes: assets.bytes})
     .from(assets)
     .where(and(eq(assets.slug, slug), eq(assets.kind, kind), eq(assets.mode, mode), eq(assets.relPath, relPath)))
     .limit(1);
   return row ?? null;
 };
 
-export const listAssets = async (slug: string): Promise<{kind: string; mode: string; relPath: string; hash: string; bytes: number}[]> =>
-  db().select({kind: assets.kind, mode: assets.mode, relPath: assets.relPath, hash: assets.hash, bytes: assets.bytes}).from(assets).where(eq(assets.slug, slug));
+export const listAssets = async (slug: string): Promise<{kind: string; mode: string; relPath: string; hash: string; bytes: number; url: string}[]> =>
+  db().select({kind: assets.kind, mode: assets.mode, relPath: assets.relPath, hash: assets.hash, bytes: assets.bytes, url: assets.url}).from(assets).where(eq(assets.slug, slug));
 
 export const putAsset = async (a: {slug: string; kind: string; mode: string; relPath: string; url: string; bytes: number; hash: string; contentType: string}): Promise<{replacedUrl: string | null}> => {
   const prev = await findAsset(a.slug, a.kind, a.mode, a.relPath);

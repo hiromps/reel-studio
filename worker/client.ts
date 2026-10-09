@@ -37,7 +37,7 @@ export type HelloReply = {
 
 export type DocPull = {name: DocName; data: unknown; rev: number; hash: string; updatedBy: string; updatedAt: string};
 export type DocPushResult = {name: string; ok: boolean; rev?: number; hash?: string; conflict?: {rev: number; hash: string; data: unknown}};
-export type AssetRow = {kind: string; mode: string; relPath: string; hash: string; bytes: number};
+export type AssetRow = {kind: string; mode: string; relPath: string; hash: string; bytes: number; url: string};
 
 export class CloudClient {
   constructor(private cfg: CloudConfig) {}
@@ -85,5 +85,6 @@ export class CloudClient {
   pushPersonas = (personas: unknown[]) => this.call<{ok: true; count: number}>('POST', '/personas', {personas});
   pushSfx = (lib: SfxLibrary) => this.call<{ok: true}>('POST', '/sfx', {lib});
   /** 参考動画のライブラリの一覧（名前・区間数・使っている案件）。スマホの「ライブラリから使う」用 */
+  pushVideoStyles = (entries: unknown[]) => this.call<{ok: true; count: number}>('POST', '/video-styles', {entries});
   pushReferenceLibrary = (entries: unknown[]) => this.call<{ok: true; count: number}>('POST', '/reference-library', {entries});
 }

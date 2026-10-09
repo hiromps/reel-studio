@@ -9,6 +9,7 @@ import {api} from '../api';
 import {useStudio} from '../state/store';
 import {ScriptCard, type ScriptCardState} from '../components/ScriptCard';
 import {ReferenceCard, type ReferenceCardState} from '../components/ReferenceCard';
+import {VideoStyleCard} from '../components/VideoStyleCard';
 import {EmptyState} from '../components/EmptyState';
 import {BriefFlow} from '../components/BriefFlow';
 import {briefFlowOf, isBriefRoute, recommendRoute, ROUTE_INFO, ROUTE_ORDER, type BriefRoute} from '../components/briefSteps';
@@ -529,6 +530,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
         3 枚とも**同じ details で包んだまま**並び替える（key で入れ替わるだけ）。包み方を変えると React がカードを作り直し、
         カードが読んだ台本・参考動画の状態が消えて「おすすめ」が行ったり来たりする
       */}
+      <VideoStyleCard aiModel={aiModel} onModel={changeAiModel} onScript={() => chooseRoute('script')} />
       {ordered.map((id) => {
         const primary = id === route;
         return (

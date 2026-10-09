@@ -64,6 +64,14 @@ describe('narrationBlocks', () => {
   it('narration が無ければ空', () => {
     expect(narrationBlocks(null, () => 1, 100)).toEqual([]);
   });
+  it('末尾を切った音声は使用尺だけ表示し、重なり判定にも反映する', () => {
+    const n: Narration = {voice: 'v', segments: [{id: 'long', at: 0, text: '長い音声', durSec: 4, trimSec: 1}, {id: 'next', at: 1.2, text: '次', durSec: 1}]};
+    const blocks = narrationBlocks(n, () => 5, 100, 3);
+    expect(blocks[0].width).toBe(100);
+    expect(blocks[0].endSec).toBe(1);
+    expect(blocks[1].overlap).toBe(false);
+    expect(blocks[0].overrun).toBe(false);
+  });
 });
 
 describe('sfxMarkers', () => {

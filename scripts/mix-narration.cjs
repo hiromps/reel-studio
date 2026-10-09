@@ -57,6 +57,7 @@ const SN_COMPRESSION = 2;    // 一部が飛び抜けて大きいブロックを
 const SN_RMS = 0.15;         // 体感音量の目安（RMSターゲット。ピークだけでなく音量そのものを揃える）
 
 const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
+fs.mkdirSync(narrDir, {recursive: true});
 // narration.json で上書きできる（GUI の Render 画面のスライダー）。指定が無ければ従来値
 const AMBIENT_GAIN = typeof spec.ambientGain === 'number' ? spec.ambientGain : 0.22; // 元音声のダッキング量
 // ナレーション帯域に足すゲイン。既定は shared/schema/narration.ts の NARRATION_GAIN_DB_DEFAULT と同じ値
@@ -87,7 +88,7 @@ for (const s of sfxList) {
 }
 if (sfxList.length) console.log(`■ 効果音 ${sfxList.length} 個（全体 ${SFX_GAIN_DB >= 0 ? '+' : ''}${SFX_GAIN_DB}dB）`);
 
-if (!segs || !segs.length) { console.error('segments が空です'); process.exit(1); }
+if (!Array.isArray(segs) || (!segs.length && !sfxList.length)) { console.error('ナレーションと効果音がありません'); process.exit(1); }
 
 const q = (p) => `"${path.resolve(p).replace(/\\/g, '/')}"`;
 // 実行シェルはOSに合わせる（Windows=cmd.exe / mac・Linux=sh）
@@ -112,21 +113,22 @@ if (missing.length) {
 }
 
 // ---- Step 1: 全ブロックを at 秒に配置して1本のナレーション帯域にまとめる ----
-console.log('■ Step 1: ナレーション帯域を作成（全ブロックをatの位置に配置）');
-const rawInputs = segs.map((s) => `-i ${q(path.join(narrDir, s.id + '.wav'))}`).join(' ');
-const delayChains = segs.map((s, i) => {
-  const ms = Math.round(s.at * 1000);
-  return `[${i}:a]aformat=sample_fmts=fltp:channel_layouts=stereo,adelay=${ms}|${ms}[d${i}]`;
-});
-const mixChain = `${segs.map((_, i) => `[d${i}]`).join('')}amix=inputs=${segs.length}:duration=longest:normalize=0[narrRaw]`;
-const rawTimeline = path.join(narrDir, '_narration_raw.wav');
-run(`ffmpeg -hide_banner -loglevel error -y ${rawInputs} -filter_complex "${[...delayChains, mixChain].join(';')}" -map "[narrRaw]" ${q(rawTimeline)}`);
-
-// ---- Step 2: speechnormでナレーション帯域全体の音量ムラを均一化 ----
-console.log('■ Step 2: speechnormでブロック間の音量ムラを平準化');
 const leveledTimeline = path.join(narrDir, '_narration_leveled.wav');
-const snFilter = `speechnorm=peak=${SN_PEAK}:expansion=${SN_EXPANSION}:compression=${SN_COMPRESSION}:rms=${SN_RMS}:link=1`;
-run(`ffmpeg -hide_banner -loglevel error -y -i ${q(rawTimeline)} -af ${snFilter},aresample=48000:resampler=soxr -ar 48000 ${q(leveledTimeline)}`);
+if (segs.length) {
+  console.log('■ Step 1: ナレーション帯域を作成（全ブロックをatの位置に配置）');
+  const rawInputs = segs.map((s) => `-i ${q(path.join(narrDir, s.id + '.wav'))}`).join(' ');
+  const delayChains = segs.map((s, i) => {
+    const ms = Math.round(s.at * 1000);
+    const trim = typeof s.trimSec === 'number' && s.trimSec > 0 ? `,atrim=0:${Math.min(s.trimSec, s.durSec || s.trimSec)},asetpts=N/SR/TB` : '';
+    return `[${i}:a]aformat=sample_fmts=fltp:channel_layouts=stereo${trim},adelay=${ms}|${ms}[d${i}]`;
+  });
+  const mixChain = `${segs.map((_, i) => `[d${i}]`).join('')}amix=inputs=${segs.length}:duration=longest:normalize=0[narrRaw]`;
+  const rawTimeline = path.join(narrDir, '_narration_raw.wav');
+  run(`ffmpeg -hide_banner -loglevel error -y ${rawInputs} -filter_complex "${[...delayChains, mixChain].join(';')}" -map "[narrRaw]" ${q(rawTimeline)}`);
+  console.log('■ Step 2: speechnormでブロック間の音量ムラを平準化');
+  const snFilter = `speechnorm=peak=${SN_PEAK}:expansion=${SN_EXPANSION}:compression=${SN_COMPRESSION}:rms=${SN_RMS}:link=1`;
+  run(`ffmpeg -hide_banner -loglevel error -y -i ${q(rawTimeline)} -af ${snFilter},aresample=48000:resampler=soxr -ar 48000 ${q(leveledTimeline)}`);
+}
 
 // ---- Step 3: 環境音 + 均一化済みナレーション + 効果音を中間ミックスへ（loudnormなし） ----
 console.log('■ Step 3: 中間ミックス作成（loudnormなし）');
@@ -134,7 +136,7 @@ const intermediateWav = path.join(narrDir, '_intermediate_mix.wav');
 // 効果音は 1 個 1 入力。頭から trimSec だけ使い、切り口が目立たないよう末尾をフェードして at 秒へ置く
 const sfxInputs = sfxList.map((s) => `-i ${q(s._abs)}`).join(' ');
 const sfxChains = sfxList.map((s, i) => {
-  const idx = 2 + i; // 0=元動画 / 1=ナレーション帯域
+  const idx = (segs.length ? 2 : 1) + i; // 0=元動画 / 1=ナレーション帯域（ある場合）
   const ms = Math.round(s.at * 1000);
   const parts = ['aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000'];
   if (typeof s.trimSec === 'number' && s.trimSec > 0) parts.push(`atrim=0:${s.trimSec}`, 'asetpts=N/SR/TB');
@@ -147,10 +149,10 @@ const sfxChains = sfxList.map((s, i) => {
 
 const chains = [
   `[0:a]volume=${AMBIENT_GAIN},aresample=48000:resampler=soxr[amb]`,
-  `[1:a]volume=${NARR_GAIN_DB}dB,aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000[narrRawLvl]`,
+  ...(segs.length ? [`[1:a]volume=${NARR_GAIN_DB}dB,aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000[narrRawLvl]`] : []),
   ...sfxChains,
 ];
-let narrLabel = '[narrRawLvl]';
+let narrLabel = segs.length ? '[narrRawLvl]' : null;
 let sfxLabel = null;
 
 if (sfxList.length === 1) sfxLabel = '[sfx0]';
@@ -162,17 +164,17 @@ else if (sfxList.length > 1) {
 // 効果音がナレーションに被ったときは**効果音側を自動で沈ませる**（声を下げない）。
 // sidechaincompress は「サイドチェイン入力が鳴っている間だけ本線を圧縮する」フィルタで、
 // 放送でいうダッキングそのもの。これがあると、置く位置を声に気を使わず決められる。
-if (sfxLabel && SFX_DUCK) {
+if (sfxLabel && narrLabel && SFX_DUCK) {
   chains.push(`${narrLabel}asplit=2[narrMix][narrSc]`);
   chains.push(`${sfxLabel}[narrSc]sidechaincompress=threshold=${SFX_DUCK_THRESHOLD}:ratio=${SFX_DUCK_RATIO}:attack=20:release=250:level_sc=1[sfxDucked]`);
   narrLabel = '[narrMix]';
   sfxLabel = '[sfxDucked]';
 }
 
-const mixLabels = ['[amb]', narrLabel, ...(sfxLabel ? [sfxLabel] : [])].join('');
-const mixInputs = 2 + (sfxLabel ? 1 : 0);
+const mixLabels = ['[amb]', ...(narrLabel ? [narrLabel] : []), ...(sfxLabel ? [sfxLabel] : [])].join('');
+const mixInputs = 1 + (narrLabel ? 1 : 0) + (sfxLabel ? 1 : 0);
 chains.push(`${mixLabels}amix=inputs=${mixInputs}:duration=first:normalize=0[mix]`);
-run(`ffmpeg -hide_banner -loglevel error -y -i ${q(srcVideo)} -i ${q(leveledTimeline)} ${sfxInputs} ` +
+run(`ffmpeg -hide_banner -loglevel error -y -i ${q(srcVideo)} ${segs.length ? `-i ${q(leveledTimeline)}` : ''} ${sfxInputs} ` +
   `-filter_complex "${chains.join(';')}" -map "[mix]" ${q(intermediateWav)}`);
 
 // ---- Step 4: 中間ミックスの統合ラウドネスを計測 ----
@@ -221,7 +223,8 @@ for (const s of segs) {
     const g = capture(`ffmpeg -hide_banner -nostats -ss ${prevEnd.toFixed(2)} -t ${Math.min(gap, 0.5).toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
     console.log(`   谷 ${prevEnd.toFixed(2)}-${s.at.toFixed(2)}s: ${(g.match(/mean_volume: .*/) || ['?'])[0]}`);
   }
-  const v = capture(`ffmpeg -hide_banner -nostats -ss ${s.at.toFixed(2)} -t ${(s.durSec || 1).toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
+  const usedSec = s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || 1);
+  const v = capture(`ffmpeg -hide_banner -nostats -ss ${s.at.toFixed(2)} -t ${usedSec.toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
   const mean = (v.match(/mean_volume: .*/) || ['?'])[0];
   const max = (v.match(/max_volume: .*/) || ['?'])[0];
   const meanDb = parseFloat((mean.match(/-?[\d.]+/) || [NaN])[0]);
@@ -231,7 +234,7 @@ for (const s of segs) {
   // -0.1〜-0.9dB程度は正常（安全に保護されている状態）なので警告しない
   const clipFlag = Number.isFinite(maxDb) && maxDb >= -0.05 ? '  ⚠ クリップ疑い（0dBFS到達）' : '';
   console.log(`   ${s.id} ${s.at.toFixed(2)}s: ${mean} / ${max}${clipFlag}`);
-  prevEnd = s.at + (s.durSec || 0);
+  prevEnd = s.at + usedSec;
 }
 if (segMeans.length > 1) {
   const spread = Math.max(...segMeans) - Math.min(...segMeans);

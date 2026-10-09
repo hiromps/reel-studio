@@ -4,6 +4,7 @@
 // ワーカーが kv に置いたスナップショットを返す。PC でしかできない操作（フォルダ選択ダイアログ）は
 // 501 を返し、画面はクラウドではそのボタンを出さない。
 import {Router} from 'express';
+import {createHash, randomUUID} from 'node:crypto';
 import {generateClientTokenFromReadWriteToken} from '@vercel/blob/client';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
@@ -16,13 +17,71 @@ import {SfxSoundSchema, type SfxLibrary} from '../../shared/sfx';
 import type {LibraryIndexEntry} from '../../shared/reference';
 import {JOB_TYPES} from '../../shared/jobs';
 import {normalizeSlug} from '../../shared/project';
-import {blobPath} from '../blob';
+import {NarrationLibraryEntrySchema, type NarrationLibraryEntry} from '../../shared/narration-library';
+import {NarrationSegmentSchema} from '../../shared/schema';
+import {blobPath, putBlob} from '../blob';
 import {fishEnv, listVoices, probeFishKey, synthPreview} from '../fish';
 import {countSubscriptions, publicKey, pushAvailable, removeSubscription, saveSubscription, sendToAll} from '../push';
-import {addJob, findAsset, kvGet, kvSet, listJobs, listProjects, replacePersonas} from '../store';
+import {addJob, findAsset, kvGet, kvSet, listJobs, listProjects, putAsset, replacePersonas} from '../store';
 import {WORKER_ONLINE_MS, type WorkerStatus} from '../worker-status';
 
 export const miscRouter = Router();
+
+const narrationLibrary = async (): Promise<NarrationLibraryEntry[]> => (await kvGet<{entries: NarrationLibraryEntry[]}>('narration-library'))?.entries ?? [];
+
+miscRouter.get('/narration-library', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({entries: (await narrationLibrary()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))});
+});
+
+miscRouter.post('/narration-library', async (req, res) => {
+  const project = typeof req.body?.project === 'string' ? normalizeSlug(req.body.project) : '';
+  const segment = NarrationSegmentSchema.safeParse(req.body?.segment);
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+  if (!project || !segment.success || !/^[a-zA-Z0-9_-]+$/.test(segment.data.id) || !segment.data.durSec || (segment.data as {needsTts?: boolean}).needsTts || !segment.data.text.trim() || !title || title.length > 80) return res.status(400).json({error: '生成済みの音声と保存名を指定してください'});
+  const source = await findAsset(project, 'narration', 'full', `${segment.data.id}.wav`);
+  if (!source) return res.status(409).json({error: '音声がまだクラウドに同期されていません。PC で「最新に」を実行してから保存してください'});
+  const response = await fetch(source.url);
+  if (!response.ok) return res.status(502).json({error: '生成済みの音声を取得できません'});
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const entry = NarrationLibraryEntrySchema.parse({
+    id: randomUUID(), title, text: segment.data.text, voice: String(req.body?.narration?.voice ?? ''),
+    voiceTitle: req.body?.narration?.voiceTitle, speed: req.body?.narration?.speed,
+    latency: req.body?.narration?.latency, durSec: segment.data.durSec, trimSec: segment.data.trimSec, createdAt: new Date().toISOString(),
+  });
+  const relPath = `${entry.id}.wav`;
+  const blob = await putBlob(blobPath('_global', 'narration', 'full', relPath), bytes, 'audio/wav');
+  await putAsset({slug: '_global', kind: 'narration', mode: 'full', relPath, url: blob.url, bytes: bytes.length, hash: createHash('sha1').update(bytes).digest('hex').slice(0, 20), contentType: 'audio/wav'});
+  await kvSet('narration-library', {entries: [entry, ...await narrationLibrary()]});
+  res.json({entry});
+});
+
+miscRouter.get('/narration-library/:id/audio', async (req, res) => {
+  const entry = (await narrationLibrary()).find((x) => x.id === req.params.id);
+  if (!entry) return res.status(404).json({error: '音声が見つかりません'});
+  const asset = await findAsset('_global', 'narration', 'full', `${entry.id}.wav`);
+  if (!asset) return res.status(404).json({error: '音声ファイルが見つかりません'});
+  res.redirect(307, asset.url);
+});
+
+miscRouter.post('/narration-library/:id/use', async (req, res) => {
+  const entry = (await narrationLibrary()).find((x) => x.id === req.params.id);
+  const project = typeof req.body?.project === 'string' ? normalizeSlug(req.body.project) : '';
+  const segmentId = req.body?.segmentId;
+  if (!entry) return res.status(404).json({error: '保存した音声が見つかりません'});
+  if (!project || typeof segmentId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(segmentId)) return res.status(400).json({error: '案件と音声 ID が必要です'});
+  const asset = await findAsset('_global', 'narration', 'full', `${entry.id}.wav`);
+  if (!asset) return res.status(404).json({error: '保存した音声ファイルが見つかりません'});
+  await putAsset({slug: project, kind: 'narration', mode: 'full', relPath: `${segmentId}.wav`, url: asset.url, bytes: asset.bytes, hash: asset.hash, contentType: 'audio/wav'});
+  res.json({entry});
+});
+
+miscRouter.delete('/narration-library/:id', async (req, res) => {
+  const entries = await narrationLibrary();
+  if (!entries.some((x) => x.id === req.params.id)) return res.json({removed: false});
+  await kvSet('narration-library', {entries: entries.filter((x) => x.id !== req.params.id)});
+  res.json({removed: true});
+});
 
 // ───────────────────────── config ─────────────────────────
 
@@ -305,6 +364,11 @@ miscRouter.delete('/fonts/:file', async (req, res) => {
 const EMPTY_SFX: SfxLibrary = {version: 1, sounds: []};
 
 // ───────────────────────── 参考動画のライブラリ（PC が一覧を送ってくる） ─────────────────────────
+
+miscRouter.get('/video-styles', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({entries: (await kvGet<{entries: unknown[]}>('video-styles'))?.entries ?? []});
+});
 
 miscRouter.get('/reference-library', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache');

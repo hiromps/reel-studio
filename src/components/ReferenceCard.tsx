@@ -76,7 +76,7 @@ export const ReferenceCard: React.FC<{
   const analyzing = jobOf('ai-reference');
   const mimicking = jobOf('ai-mimic');
   const naming = s.jobs.some((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'reference-library');
-  const scripting = jobOf('ai-script');
+  const scripting = jobOf('ai-script') ?? jobOf('ai-script-text');
   const busy = !!(analyzing || mimicking || scripting);
   const unsupported = !s.supportsJob('ai-reference') || !s.supportsJob('ai-mimic');
   const catalog = s.files.catalog.data;

@@ -6,9 +6,11 @@ import type {CaptionIssue} from '@shared/caption';
 import type {FontEntry} from '@shared/schema/fonts';
 import type {AgentStatus} from '@shared/schema/settings';
 import {listPersonas, setPersonas, type Persona} from '@shared/personas';
+import {useUndo} from '../hooks/useUndo';
 
 export type ContractName = 'catalog' | 'brief' | 'cuts' | 'narration';
 type ContractMap = {catalog: Catalog; brief: Brief; cuts: ReelData; narration: Narration};
+export type EditorSnapshot = {cuts: ReelData | null; narration: Narration | null};
 
 export type FileState<T> = {data: T | null; etag: string | null; dirty: boolean; loading: boolean; error?: string; external?: string | null;
   /** AI のジョブが書き換えたのを読み直したとき、そのジョブの id。編集画面がこれを見て、AI の変更も取り消せるよう直前の状態を履歴に積む */
@@ -23,6 +25,8 @@ export type Toast = {id: number; kind: 'info' | 'error' | 'ok'; text: string};
 export type CaptionState = {text: string | null; etag: string | null; issues: CaptionIssue[]};
 
 type Store = {
+  /** タイムラインから別画面へ移っても、このタブのアンドゥ履歴を保持する */
+  editorHistory: ReturnType<typeof useUndo<EditorSnapshot>>;
   projects: ProjectInfo[];
   active: string | null;
   files: Files;
@@ -124,6 +128,7 @@ const emptyCaption = (): CaptionState => ({text: null, etag: null, issues: []});
 export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}) => {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [active, setActiveState] = useState<string | null>(null);
+  const editorHistory = useUndo<EditorSnapshot>({resetKey: active});
   const [files, setFiles] = useState<Files>({catalog: emptyFile(), brief: emptyFile(), cuts: emptyFile(), narration: emptyFile()});
   const [caption, setCaption] = useState<CaptionState>(emptyCaption());
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -149,6 +154,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   activeRef.current = active;
   const captionRef = useRef(caption);
   captionRef.current = caption;
+  const projectsRequest = useRef(0);
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = ++toastId.current;
@@ -166,8 +172,10 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   }, []);
 
   const refreshProjects = useCallback(async () => {
+    const request = ++projectsRequest.current;
     const r = await api.get<ProjectInfo[]>('/api/projects');
-    setProjects(r.data);
+    // 起動時や画面遷移中の古い応答で、ジョブ完了後の out 状態を巻き戻さない。
+    if (request === projectsRequest.current) setProjects(r.data);
   }, []);
 
   const loadPersonas = useCallback(async () => {
@@ -420,7 +428,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
         void refreshProjects();
         return;
       }
-      if (j.status === 'done') toast(`${j.type} 完了`, 'ok');
+      if (j.status === 'done') toast(j.result?.textConfirmation ? '台本は保存済みです。今の並びでテロップとナレーション原稿を生成するか確認してください' : `${j.type} 完了`, j.result?.textConfirmation ? 'info' : 'ok');
       if (j.status === 'failed') toast(`${j.type} 失敗: ${j.error ?? ''}`, 'error');
       if (j.status === 'done' && (j.type === 'ai-caption' || j.type === 'tts')) {
         // caption.txt / narration.json はジョブが直接書く。編集中でなければ取り込む
@@ -429,7 +437,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       }
       // out/ の中身が変わるジョブ。ボタンの活性（mix を押せるか等）が projects の out を見ているので取り直す
       if (j.status === 'done' && ['render', 'draft', 'mix', 'deliver'].includes(j.type)) void refreshProjects();
-      if (j.status === 'done' && ['catalog', 'thumbs', 'proxy', 'aliases', 'sync-engine', 'ai-tag', 'ai-order', 'ai-telop', 'ai-edit', 'ai-narration', 'mosaic', 'mosaic-revert'].includes(j.type)) {
+      if (j.status === 'done' && ['catalog', 'thumbs', 'proxy', 'aliases', 'sync-engine', 'ai-tag', 'ai-order', 'ai-telop', 'ai-edit', 'ai-script-text', 'ai-narration', 'mosaic', 'mosaic-revert'].includes(j.type)) {
         // 未保存の編集があるときは黙って上書きしない（file:changed と同じ扱いにする）
         const reload = (name: ContractName) => {
           if (!filesRef.current[name].dirty) return void loadFile(name, j.type.startsWith('ai-') ? {byJob: j.id} : {});
@@ -439,7 +447,7 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
         if (['catalog', 'thumbs', 'proxy', 'ai-tag', 'mosaic', 'mosaic-revert'].includes(j.type)) reload('catalog');
         if (j.type === 'aliases' || j.type === 'ai-telop') reload('cuts');
         if (j.type === 'ai-narration') reload('narration');
-        if (j.type === 'ai-edit') {
+        if (j.type === 'ai-edit' || j.type === 'ai-script-text') {
           reload('cuts');
           reload('narration');
         }
@@ -472,8 +480,8 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
   }, [loadFile, loadCaption, refreshProjects, reloadActive, toast]);
 
   const value = useMemo<Store>(
-    () => ({projects, active, files, caption, jobs, logs, toasts, config, isCloud: config?.mode === 'cloud', personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, setArchived, reloadActive, pullLatest, pulling, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
-    [projects, active, files, caption, jobs, logs, toasts, config, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, supportsJob, refreshProjects, setActive, setArchived, reloadActive, pullLatest, pulling, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
+    () => ({projects, active, files, caption, jobs, logs, toasts, config, isCloud: config?.mode === 'cloud', editorHistory, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, mediaBase: mediaBaseOf(active, light), supportsJob, refreshProjects, setActive, setArchived, reloadActive, pullLatest, pulling, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast}),
+    [projects, active, files, caption, jobs, logs, toasts, config, editorHistory, personas, personasLoaded, loadPersonas, reloadConfig, light, setLight, supportsJob, refreshProjects, setActive, setArchived, reloadActive, pullLatest, pulling, loadFile, setFile, saveFile, loadCaption, saveCaption, addJob, cancelJob, fetchJobLog, toast],
   );
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;
 };

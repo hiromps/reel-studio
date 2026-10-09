@@ -3,7 +3,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import type {Cut, ReelData} from '@shared/schema';
 import {cutDurationSec} from '@shared/timeline';
 import {countChars, isPlaceholder} from '@shared/telop-text';
-import {applyReadingHints, ttsReadingHints} from '@shared/narration';
+import {applyReadingHints, narrationDisplayName, ttsReadingHints} from '@shared/narration';
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
@@ -12,10 +12,10 @@ import {fallbackDuration, fixedTrimRange, trimZoomView, type TrimRange} from '..
 import {CutThumb} from '../components/CutThumb';
 import {IssueList} from '../components/IssueList';
 import {FIT_DEFAULTS} from '@shared/fit';
-import {useStudio} from '../state/store';
 import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
 import {ThumbnailSection} from './ThumbnailSection';
+import {TelopFontSelect} from './TelopFontSelect';
 
 type Common = {m: EditorModel; onSeekCut: (i: number) => void};
 
@@ -43,8 +43,6 @@ const Counter: React.FC<{text: string; max?: number}> = ({text, max = 13}) => {
 // ───────────────────────── 動画全体 ─────────────────────────
 export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
   const {cuts, validation, patchReel, fitBlockedBy, fitToNarration} = m;
-  // 取り込み済みの自前フォント（Settings で取り込んだもの）
-  const fonts = useStudio().config?.fonts ?? [];
   // 「ナレーション音声に尺を合わせる」の結果（何をどう刻んだか）。次に押すまで残す
   const [fitNotes, setFitNotes] = useState<string[]>([]);
   useEffect(() => setFitNotes([]), [m.s.active]);
@@ -88,19 +86,7 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
               ))}
             </select>
           </label>
-          <label title="テロップのフォント。Settings の「テロップのフォント」で取り込んだものから選べます">
-            フォント
-            <select value={cuts.font ?? ''} onChange={(e) => patchReel({font: e.target.value || undefined})}>
-              <option value="">同梱の明朝（Noto Serif JP）</option>
-              {fonts.map((f) => (
-                <option key={f.file} value={f.file}>
-                  {f.label}
-                </option>
-              ))}
-              {/* 置き場から消したあとでも、いま指定されているものは選択肢に残す */}
-              {cuts.font && !fonts.some((f) => f.file === cuts.font) && <option value={cuts.font}>{cuts.font}（置き場に無い）</option>}
-            </select>
-          </label>
+          <TelopFontSelect font={cuts.font} onChange={(font) => patchReel({font})} />
           <label title="バッジ（エリア名・順位）の下地の濃さ。0 で下地なし、1 でベタ塗り。文字の濃さは変わりません">
             バッジの濃さ {Math.round((cuts.badgeOpacity ?? BADGE_OPACITY_DEFAULT) * 100)}%
             <input type="range" min={0} max={1} step={0.05} value={cuts.badgeOpacity ?? BADGE_OPACITY_DEFAULT} onChange={(e) => patchReel({badgeOpacity: Number(e.target.value)})} />
@@ -112,15 +98,15 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
             onClick={runFit}
             disabled={!!fitBlockedBy}
             title={
-              fitBlockedBy ??
-              `各ナレーションの音声の長さ（実測）に映像を合わせ、${FIT_DEFAULTS.minCutSec}〜${FIT_DEFAULTS.maxCutSec} 秒のカットに刻み直します。テロップ・バッジは元のカットから引き継ぎ、会話（字幕つき）とロック済みのカットは触りません。音声は作り直しません（Ctrl+Z で戻せます）`
+              fitBlockedBy ?? (cuts.meta?.orderLocked ? '並び順・素材・本数・倍速を保持し、IN/OUT の尺だけを音声に合わせます。会話字幕や個別に固定したカットの尺は保持します。素材が足りない場合は変更せず理由を表示します（Ctrl+Z で戻せます）' :
+              `各ナレーションの音声の長さ（実測）に映像を合わせ、${FIT_DEFAULTS.minCutSec}〜${FIT_DEFAULTS.maxCutSec} 秒のカットに刻み直します。テロップ・バッジは元のカットから引き継ぎ、会話（字幕つき）とロック済みのカットは触りません。音声は作り直しません（Ctrl+Z で戻せます）`)
             }
             data-tour="fit"
           >
             ナレーション音声に尺を合わせる
           </button>
           <span className="hint">
-            {FIT_DEFAULTS.minCutSec}〜{FIT_DEFAULTS.maxCutSec} 秒刻み・取り消し可
+            {cuts.meta?.orderLocked ? 'ロック中：並び順を保持して尺だけ調整・取り消し可' : FIT_DEFAULTS.minCutSec + '〜' + FIT_DEFAULTS.maxCutSec + ' 秒刻み・取り消し可'}
           </span>
         </div>
         {fitNotes.length > 0 && (
@@ -442,6 +428,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
           ) : null
         }
       >
+        <TelopFontSelect font={cuts!.font} onChange={(font) => m.patchReel({font})} />
         {!c.subs?.length && (
           <>
             <div className="row">
@@ -454,7 +441,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
                     style={{flex: 1}}
                     value={text}
                     placeholder="（無し）"
-                    onChange={(e) => patchCut(index, (x) => (e.target.value === '' ? {...x, main: undefined} : {...x, main: {...(x.main ?? {}), text: e.target.value}}), {history: false})}
+                    onChange={(e) => patchCut(index, (x) => ({...x, main: {...(x.main ?? {}), text: e.target.value}}), {history: false})}
                     onFocus={pushHistory}
                   />
                   <Counter text={text} />
@@ -568,6 +555,7 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
         </button>
       }
     >
+      <TelopFontSelect font={cuts.font} onChange={(font) => m.patchReel({font})} />
       <label style={{width: '100%'}}>
         文言（グループ内の {g.cutIndices.length} カットにまとめて入ります）
         <span className="btns" style={{width: '100%'}}>
@@ -578,7 +566,8 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
             onFocus={pushHistory}
             onChange={(e) => {
               const idx = new Set(g.cutIndices);
-              setCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) ? (e.target.value === '' ? {...c, main: undefined} : {...c, main: {...(c.main ?? {}), text: e.target.value}}) : c))});
+              // 入力途中の空文字は削除ではない。枠と向きを残し、同じグループで入力を続ける。
+              setCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) ? {...c, main: {...(c.main ?? {}), text: e.target.value}} : c))});
             }}
           />
           <Counter text={text} />
@@ -623,8 +612,8 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
 
 // ───────────────────────── ナレーション ─────────────────────────
 export const NarrationInspector: React.FC<
-  Common & {index: number; onPlay: (id: string, text: string, needsTts: boolean) => void; playing: string | null; onRegenerate: (id: string) => void; ttsBlockedBy: string | null}
-> = ({m, index, onPlay, playing, onRegenerate, ttsBlockedBy}) => {
+  Common & {index: number; onPlay: (id: string, text: string, needsTts: boolean, trimSec?: number) => void; playing: string | null; onRegenerate: (id: string) => void; onSaveToLibrary: () => void; ttsBlockedBy: string | null}
+> = ({m, index, onPlay, playing, onRegenerate, onSaveToLibrary, ttsBlockedBy}) => {
   const {narration, patchSeg, removeSeg, pushHistory, setNarr, estimateSec, ranges} = m;
   const [draft, setDraft] = useState<string | null>(null);
   const seg = narration?.segments[index];
@@ -632,6 +621,13 @@ export const NarrationInspector: React.FC<
   if (!narration || !seg) return null;
   const hints = ttsReadingHints(seg.text);
   const needsTts = !!(seg as {needsTts?: boolean}).needsTts || !seg.durSec;
+  const fullSec = seg.durSec ?? 0;
+  const usedSec = Math.min(fullSec, seg.trimSec ?? fullSec);
+  const setTrim = (seconds: number) => {
+    if (!fullSec || !Number.isFinite(seconds)) return;
+    const next = Math.round(Math.max(Math.min(0.1, fullSec), Math.min(fullSec, seconds)) * 1000) / 1000;
+    patchSeg(index, {trimSec: next >= fullSec ? undefined : next});
+  };
   const cutAt = ranges.findIndex((r) => seg.at >= r.startSec && seg.at < r.endSec);
   const text = draft ?? seg.text;
   const commitText = () => {
@@ -643,7 +639,7 @@ export const NarrationInspector: React.FC<
     <Section
       title={
         <>
-          ナレーション <span className="mono">{seg.id}</span>
+          ナレーション <span>{narrationDisplayName(seg)}</span>
           {cutAt >= 0 ? <span className="hint"> ／ カット {cutAt + 1} の上</span> : null}
         </>
       }
@@ -665,8 +661,12 @@ export const NarrationInspector: React.FC<
       </div>
       <div className="row">
         <label>
-          id
-          <input className="narr-id" value={seg.id} onFocus={pushHistory} onChange={(e) => setNarr({...narration, segments: narration.segments.map((x, k) => (k === index ? {...x, id: e.target.value} : x))})} />
+          表示名
+          <input value={seg.label ?? ''} maxLength={80} placeholder="例: 美味すぎるぅ" onFocus={pushHistory} onChange={(e) => patchSeg(index, {label: e.target.value}, false)} aria-label="ナレーションの表示名" />
+        </label>
+        <label title="音声ファイルと結び付く内部ID。音声がある場合は変更できません">
+          内部ID
+          <input className="narr-id" value={seg.id} readOnly={!needsTts} onFocus={pushHistory} onChange={(e) => setNarr({...narration, segments: narration.segments.map((x, k) => (k === index ? {...x, id: e.target.value} : x))})} />
         </label>
         <label>
           配置秒
@@ -685,11 +685,24 @@ export const NarrationInspector: React.FC<
         </button>
       </div>
       <div className="row">
-        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts)} disabled={playing === seg.id || !seg.text.trim()} title={needsTts ? 'まだ音声が無いので、いまの速度で作って鳴らします（保存しません）' : '生成済みの音声を鳴らします'}>
+        <label title="生成済み音声の先頭から使う長さ。元の音声は残ります">
+          使用する長さ（秒）
+          <input type="number" min={Math.min(0.1, fullSec)} max={fullSec} step={0.05} value={fullSec ? usedSec : ''} disabled={needsTts} onChange={(e) => setTrim(Number(e.target.value))} style={{width: 82}} />
+        </label>
+        <span className="hint">元音声 {fullSec.toFixed(2)} 秒</span>
+        <button className="small" onClick={() => patchSeg(index, {trimSec: undefined})} disabled={needsTts || !seg.trimSec}>全体を使う</button>
+      </div>
+      {fullSec > 0 && !needsTts && <input type="range" aria-label="ナレーションの使用する長さ" min={Math.min(0.1, fullSec)} max={fullSec} step={0.01} value={usedSec} onChange={(e) => setTrim(Number(e.target.value))} style={{width: '100%'}} />}
+      {seg.trimSec && <span className="hint">出力に反映するには保存後、ナレーション合成を再実行してください。</span>}
+      <div className="row">
+        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec)} disabled={playing === seg.id || !seg.text.trim()} title={needsTts ? 'まだ音声が無いので、いまの速度で作って鳴らします（保存しません）' : '使用する長さだけ試聴します'}>
           {playing === seg.id ? '再生中…' : '▶ 聴く'}
         </button>
         <button className="small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim()} title={ttsBlockedBy ?? 'このブロックだけ作り直す（同じ文でも長さがばらつくので、納得いく読みが出るまで引き直せます）'}>
           この 1 本だけ生成
+        </button>
+        <button className="small" onClick={onSaveToLibrary} disabled={needsTts} title={needsTts ? '先に音声を生成してください' : 'この音声を名前付きで保存して別案件でも使う'}>
+          音声を保存
         </button>
         <span style={{flex: 1}} />
         <button className="small danger" onClick={() => removeSeg(index)}>

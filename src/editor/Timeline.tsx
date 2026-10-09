@@ -7,8 +7,9 @@
 // 秒 ⇄ px や cuts.json の書き換えは components/track.ts、段の配置は editor/tracks.ts（どちらも純粋・テストあり）。
 import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
 import type {Clip, Cut, Narration, NarrationSegment, ReelData} from '@shared/schema';
-import {cutDurationSec} from '@shared/timeline';
+import {cutDurationSec, type TelopGroup} from '@shared/timeline';
 import type {SfxLibrary} from '@shared/sfx';
+import {narrationDisplayName} from '@shared/narration';
 import {useDragReorder} from '../components/useDragReorder';
 import {caretRectFor, destIndexOf, insertIndexAt, type Caret, type Rect} from '../components/reorder';
 import {applyTrim, fallbackDuration, type TrimHandle, type TrimRange} from '../components/trim';
@@ -37,6 +38,8 @@ type Props = {
   mediaBase: string | null;
   cuts: ReelData | null;
   fps: number;
+  /** インスペクタと同じ、選択中の編集範囲を保持したテロップ一覧 */
+  telopGroups?: readonly TelopGroup[];
   narration: Narration | null;
   sfxLib: SfxLibrary | null;
   /** durSec が無いナレーションの秒数見積もり */
@@ -45,7 +48,8 @@ type Props = {
   slotRole: (c: Cut) => string | undefined;
   selection: Selection;
   /** クリック（＝そこへシークもする） */
-  onSelect: (sel: Selection) => void;
+  onSelect: (sel: Selection, modifiers?: {toggle: boolean; range: boolean}) => void;
+  multiSelection?: Selection[];
   /** ドラッグ開始など、選ぶだけでシークしない */
   onSelectQuiet: (sel: Selection) => void;
   currentFrame: number;
@@ -77,6 +81,7 @@ type Props = {
 
 type Drag =
   | {kind: 'trim'; index: number; handle: TrimHandle; startX: number; base: TrimRange; durationSec: number; rate: number; last: TrimRange; pushed: boolean}
+  | {kind: 'narr-trim'; index: number; startX: number; baseSec: number; fullSec: number; last: number; pushed: boolean}
   | {kind: 'scrub'}
   | {kind: 'narr' | 'sfx'; index: number; startX: number; baseAt: number; last: number; pushed: boolean};
 
@@ -95,7 +100,7 @@ const descOf = (clip: Clip | undefined, c: Cut): string => clip?.tags?.descripti
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
-  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, onSelect, onSelectQuiet, currentFrame, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
+  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, multiSelection = [], onSelect, onSelectQuiet, currentFrame, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
   const videoRowRef = useRef<HTMLDivElement | null>(null);
@@ -113,7 +118,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
   const width = Math.max(trackWidth(blocks, pxPerSec), 200);
   const ticks = useMemo(() => rulerTicks(totalSec, pxPerSec), [totalSec, pxPerSec]);
   const currentCut = blocks.findIndex((b) => currentFrame / data.fps >= b.startSec && currentFrame / data.fps < b.endSec);
-  const tBlocks = useMemo(() => (tracks.telop ? telopBlocks(data, pxPerSec) : []), [data, pxPerSec, tracks.telop]);
+  const tBlocks = useMemo(() => (tracks.telop ? telopBlocks(data, pxPerSec, props.telopGroups) : []), [data, pxPerSec, tracks.telop, props.telopGroups]);
   const nBlocks = useMemo(() => (tracks.narr ? narrationBlocks(narration, estimateSec, pxPerSec, totalSec) : []), [narration, estimateSec, pxPerSec, totalSec, tracks.narr]);
   const sMarkers = useMemo(() => (tracks.sfx ? sfxMarkers(narration?.sfx, pxPerSec, sfxLib ?? undefined) : []), [narration, pxPerSec, sfxLib, tracks.sfx]);
   const boundaries = useMemo(() => cutBoundaries(data), [data]);
@@ -297,12 +302,21 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     onSelectQuiet({kind: 'cut', index: i});
   };
   const beginAtDrag = (kind: 'narr' | 'sfx', index: number, baseAt: number) => (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
     e.preventDefault();
     e.stopPropagation();
     dragRef.current = {kind, index, startX: e.clientX, baseAt, last: baseAt, pushed: false};
     capture(e);
     onSelectQuiet({kind, index});
+  };
+  const beginNarrTrim = (index: number) => (e: React.PointerEvent) => {
+    const seg = narration?.segments[index];
+    if (!seg?.durSec || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {kind: 'narr-trim', index, startX: e.clientX, baseSec: Math.min(seg.trimSec ?? seg.durSec, seg.durSec), fullSec: seg.durSec, last: Math.min(seg.trimSec ?? seg.durSec, seg.durSec), pushed: false};
+    capture(e);
+    onSelectQuiet({kind: 'narr', index});
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -318,6 +332,15 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
       d.last = next;
       onCutsChange(setCutRange(cuts, d.index, next));
       onScrub?.(cuts.cuts[d.index].src, d.handle === 'out' ? next.outSec : next.inSec);
+      return;
+    }
+    if (d.kind === 'narr-trim' && narration) {
+      const min = Math.min(0.1, d.fullSec);
+      const next = Math.round(Math.max(min, Math.min(d.fullSec, d.baseSec + (e.clientX - d.startX) / pxPerSec)) * 1000) / 1000;
+      if (next === d.last) return;
+      if (!d.pushed) { onStart(); d.pushed = true; }
+      d.last = next;
+      onNarrationChange({...narration, segments: narration.segments.map((s, i) => i === d.index ? {...s, trimSec: next >= d.fullSec ? undefined : next} : s)});
       return;
     }
     if ((d.kind === 'narr' || d.kind === 'sfx') && narration) {
@@ -349,7 +372,12 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
   const seekAtPointer = (clientX: number) => {
     const inner = innerRef.current;
     if (!inner) return;
-    onSeek(frameAtX(clientX - inner.getBoundingClientRect().left, pxPerSec, data.fps));
+    const frame = Math.min(frameAtX(clientX - inner.getBoundingClientRect().left, pxPerSec, data.fps), Math.max(0, Math.round(totalSec * data.fps) - 1));
+    onSeek(frame);
+    const sec = frame / data.fps;
+    const block = blocks.find((b) => sec >= b.startSec && sec < b.endSec);
+    // 再生位置を保ったまま、再生バーの下にある映像クリップを選ぶ。
+    if (block && !sameSelection(selection, {kind: 'cut', index: block.index})) onSelectQuiet({kind: 'cut', index: block.index});
   };
   const beginScrub = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -442,7 +470,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     else onSelect({kind: 'thumbnail'});
   };
   const shownPinSec = pinSec ?? thumbnailSec ?? null;
-  const isSel = (s: Selection) => sameSelection(selection, s);
+  const isSel = (s: Selection) => sameSelection(selection, s) || multiSelection.some((x) => sameSelection(x, s));
+  const selectClick = (s: Selection, e: React.MouseEvent) => onSelect(s, {toggle: e.ctrlKey || e.metaKey, range: e.shiftKey});
   const rowsShown = 1 + (tracks.telop ? 1 : 0) + (tracks.narr ? 1 : 0) + (tracks.sfx ? 1 : 0);
 
   return (
@@ -542,9 +571,9 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                   {...dnd.itemProps(i)}
                   onPointerDown={(e) => {
                     if (e.altKey) beginTrim(i, 'move')(e);
-                    else dnd.handleProps(i).onPointerDown(e);
+                    else if (!e.ctrlKey && !e.metaKey && !e.shiftKey) dnd.handleProps(i).onPointerDown(e);
                   }}
-                  onClick={() => onSelect({kind: 'cut', index: i})}
+                  onClick={(e) => selectClick({kind: 'cut', index: i}, e)}
                   onKeyDown={(e) => onKeyDown(e, i)}
                 >
                   <div className="ctl-film" aria-hidden>
@@ -589,8 +618,18 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                       className={`tl-telop${sel ? ' selected' : ''}${b.placeholder ? ' placeholder' : ''}${b.orientation === 'horizontal' ? ' horizontal' : ''}`}
                       style={{left: b.left + shifted, width: b.width, borderColor: color, ['--gcolor' as string]: color}}
                       title={`${b.text || '（無し）'}\n${b.startSec.toFixed(2)}〜${b.endSec.toFixed(2)}s（カット ${b.cutIndices.map((x) => x + 1).join('・')}）${b.badge ? `\nバッジ: ${b.badge}` : ''}\nクリックで文言を直す`}
+                      tabIndex={0}
+                      role="button"
+                      aria-pressed={sel}
                       onPointerDown={stop}
-                      onClick={() => onSelect({kind: 'telop', group: b.group})}
+                      onClick={(e) => selectClick({kind: 'telop', group: b.group}, e)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSelect({kind: 'telop', group: b.group}, {toggle: e.ctrlKey || e.metaKey, range: e.shiftKey});
+                        }
+                      }}
                     >
                       {b.badge && <span className="tl-badge">{b.badge}</span>}
                       <span className="tl-telop-text">{b.text || '（無し）'}</span>
@@ -629,12 +668,34 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                   key={b.id + b.index}
                   className={['tl-narr', isSel({kind: 'narr', index: b.index}) ? 'selected' : '', b.needsTts ? 'needs-tts' : '', b.estimated ? 'estimated' : '', b.overlap ? 'overlap' : '', b.overrun ? 'overrun' : ''].filter(Boolean).join(' ')}
                   style={{left: b.left, width: b.width}}
-                  title={`${b.id}  ${b.at.toFixed(2)}s〜${b.endSec.toFixed(2)}s${b.estimated ? '（見積）' : ''}${b.needsTts ? '・要再生成' : ''}${b.overlap ? '・前と重なる' : ''}${b.overrun ? '・尺をはみ出す' : ''}\n${b.text}\nドラッグで配置秒を動かす（Alt で吸着なし）`}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={isSel({kind: 'narr', index: b.index})}
+                  title={`${narration?.segments[b.index] ? narrationDisplayName(narration.segments[b.index]) : b.id}（ID: ${b.id}）  ${b.at.toFixed(2)}s〜${b.endSec.toFixed(2)}s${b.estimated ? '（見積）' : ''}${b.needsTts ? '・要再生成' : ''}${b.overlap ? '・前と重なる' : ''}${b.overrun ? '・尺をはみ出す' : ''}\n${b.text}\nドラッグで配置秒を動かす（Alt で吸着なし）`}
                   onPointerDown={beginAtDrag('narr', b.index, b.at)}
-                  onClick={() => onSelect({kind: 'narr', index: b.index})}
+                  onClick={(e) => selectClick({kind: 'narr', index: b.index}, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSelect({kind: 'narr', index: b.index}, {toggle: e.ctrlKey || e.metaKey, range: e.shiftKey});
+                    }
+                  }}
                 >
-                  <span className="tl-narr-id">{b.id}</span>
+                  <span className="tl-narr-id">{narration?.segments[b.index] ? narrationDisplayName(narration.segments[b.index]) : b.id}</span>
                   <span className="tl-narr-text">{b.text}</span>
+                  {!b.estimated && !b.needsTts && <span className="tl-narr-trim" role="slider" tabIndex={0} aria-label={`${b.id} の音声を使う長さ`} aria-valuemin={Math.min(0.1, narration?.segments[b.index]?.durSec ?? 0)} aria-valuemax={narration?.segments[b.index]?.durSec ?? 0} aria-valuenow={Math.round((b.endSec - b.at) * 100) / 100} title="ドラッグでナレーションの末尾をトリミング" onPointerDown={beginNarrTrim(b.index)} onClick={stop} onKeyDown={(e) => {
+                    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                    e.preventDefault(); e.stopPropagation();
+                    const currentNarration = narration;
+                    const seg = currentNarration?.segments[b.index];
+                    if (!currentNarration || !seg?.durSec) return;
+                    const full = seg.durSec;
+                    const step = e.shiftKey ? 0.5 : 0.1;
+                    const next = Math.round(Math.max(Math.min(0.1, full), Math.min(full, (seg.trimSec ?? full) + (e.key === 'ArrowRight' ? step : -step))) * 1000) / 1000;
+                    onStart();
+                    onNarrationChange({...currentNarration, segments: currentNarration.segments.map((s, i) => i === b.index ? {...s, trimSec: next >= full ? undefined : next} : s)});
+                  }} />}
                 </div>
               ))}
             </div>
@@ -653,9 +714,19 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                   key={m.id + m.index}
                   className={`tl-sfx${isSel({kind: 'sfx', index: m.index}) ? ' selected' : ''}${m.missing ? ' missing' : ''}`}
                   style={{left: m.left, width: m.width}}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={isSel({kind: 'sfx', index: m.index})}
                   title={`${m.id}${m.role ? `（${m.role}）` : ''}  ${m.at.toFixed(2)}s\n${m.label}${m.missing ? '\n音源がライブラリにありません' : ''}\nドラッグで配置秒を動かす`}
                   onPointerDown={beginAtDrag('sfx', m.index, m.at)}
-                  onClick={() => onSelect({kind: 'sfx', index: m.index})}
+                  onClick={(e) => selectClick({kind: 'sfx', index: m.index}, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSelect({kind: 'sfx', index: m.index}, {toggle: e.ctrlKey || e.metaKey, range: e.shiftKey});
+                    }
+                  }}
                 >
                   <span className="tl-sfx-text">{m.role ?? m.id}</span>
                 </div>

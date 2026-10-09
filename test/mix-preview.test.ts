@@ -35,6 +35,14 @@ describe('mixClipsOf', () => {
     expect(mixClipsOf(narr(), null, lib)).toEqual([]);
     expect(mixClipsOf(narr(), '/p/x/full', null).filter((c) => c.kind === 'sfx')).toHaveLength(2);
   });
+  it('ナレーションの末尾トリムをプレビュー再生に反映する', () => {
+    const n = narr();
+    n.segments[0].trimSec = 0.6;
+    const clips = mixClipsOf(n, '/p/x/full', lib);
+    expect(clips.find((c) => c.kind === 'narr')?.trimSec).toBe(0.6);
+    expect(planPlayback(clips, () => 1.5, 0).find((c) => c.key.includes('01_hook'))?.durationSec).toBe(0.6);
+    expect(planPlayback(clips, () => 1.5, 0.8).some((c) => c.key.includes('01_hook'))).toBe(false);
+  });
   it('pendingNarration は本文があるのに wav が無いブロックを数える', () => {
     expect(pendingNarration(narr())).toBe(2);
     expect(pendingNarration(null)).toBe(0);

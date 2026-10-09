@@ -203,7 +203,7 @@ export const runWinner = async (projectDir: string, opt: WinnerOptions = {}): Pr
     if (hookWavId && hookText && !fs.existsSync(path.join(narrDir, `${hookWavId}.wav`))) {
       opt.onProgress?.(2, 5, 'フックの音声生成');
       const dur = await synthOne(hookText, {voice: narration.voice, speed: narration.speed ?? persona.narration.speed, latency: narration.latency, out: path.join(narrDir, `${hookWavId}.wav`), signal: opt.signal});
-      narration = {...narration, segments: narration.segments.map((s) => (s.id === hookWavId ? {...s, durSec: dur, needsTts: undefined} : s))};
+      narration = {...narration, segments: narration.segments.map((s) => (s.id === hookWavId ? {...s, durSec: dur, trimSec: undefined, needsTts: undefined} : s))};
       log(`  フックの音声を作りました: ${hookWavId}.wav ${dur.toFixed(2)}s`);
     } else if (hookWavId) {
       // トライアルで作った wav をそのまま使う（durSec も引き継ぐ）
@@ -211,7 +211,7 @@ export const runWinner = async (projectDir: string, opt: WinnerOptions = {}): Pr
       if (fs.existsSync(trialNarr)) {
         const prev = JSON.parse(fs.readFileSync(trialNarr, 'utf8')) as Narration;
         const seg = prev.segments.find((s) => s.id === hookWavId);
-        if (seg?.durSec) narration = {...narration, segments: narration.segments.map((s) => (s.id === hookWavId ? {...s, durSec: seg.durSec, needsTts: undefined} : s))};
+        if (seg?.durSec) narration = {...narration, segments: narration.segments.map((s) => (s.id === hookWavId ? {...s, durSec: seg.durSec, trimSec: undefined, needsTts: undefined} : s))};
       }
     }
     if (tailNarration) {
@@ -219,7 +219,7 @@ export const runWinner = async (projectDir: string, opt: WinnerOptions = {}): Pr
       if (t.wavId) {
         opt.onProgress?.(2, 5, '締めの音声生成');
         const dur = await synthOne(tailNarration, {voice: narration.voice, speed: narration.speed ?? persona.narration.speed, latency: narration.latency, out: path.join(narrDir, `${t.wavId}.wav`), signal: opt.signal});
-        narration = {...t.narration, segments: t.narration.segments.map((s) => (s.id === t.wavId ? {...s, durSec: dur, needsTts: undefined} : s))};
+        narration = {...t.narration, segments: t.narration.segments.map((s) => (s.id === t.wavId ? {...s, durSec: dur, trimSec: undefined, needsTts: undefined} : s))};
         log(`  締めのナレーション: 「${t.before}」→「${tailNarration}」 ${dur.toFixed(2)}s`);
         if (t.at !== null && t.at + dur > videoSec + 0.05) log(`  ! 締めのナレーションが動画の終わり（${videoSec.toFixed(2)} 秒）を ${(t.at + dur - videoSec).toFixed(2)} 秒はみ出します`);
       }

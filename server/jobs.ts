@@ -10,6 +10,7 @@ import {makeProxy, makePreviewProxy, needsProxy} from '../core/proxy';
 import {makeThumbnails, makeQcTile} from '../core/thumbnails';
 import {ffprobe} from '../core/ffprobe';
 import {renderProject, renderStill, renderThumbnail} from '../core/render';
+import {aiScriptText} from '../core/script-text';
 import {npmInstall, resolveProjectDir, resolveProjectDirStrict, syncEngine, readCuts, writeCuts} from '../core/project';
 import {applyAliases} from '../core/alias';
 import {realignAliases} from '../shared/alias';
@@ -21,12 +22,13 @@ import {deliver} from '../core/deliver';
 import {runTrial} from '../core/trial';
 import {aiHooks} from '../core/ai-trial';
 import {runWinner} from '../core/winner';
-import {aiScript} from '../core/script';
+import {assembleScriptOrConfirm} from '../core/script';
 import {aiScriptDraft} from '../core/script-draft';
 import {aiMimic, analyzeReference, copyReferenceFrom, deleteLibraryEntry, fetchReferenceToInbox, findLibraryEntry, importReferenceFromInstagram, importReferenceVideo, nameLibraryEntries, readReference, registerReferenceToLibrary, reuseFromLibrary, setLibraryTitle} from '../core/reference';
 import {describeReference, isReferenceAnalyzed} from '../shared/reference';
 import {generatePersona} from '../core/persona-study';
 import {refinePersona} from '../core/persona-refine';
+import {draftVideoStyle, saveVideoStyle} from '../core/video-style';
 import {mixNarration} from '../core/mix';
 import {runBuild} from '../core/build';
 import {applyMosaic, revertMosaic, setupMosaic} from '../core/mosaic';
@@ -240,10 +242,14 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {blocks: r.blocks.length, findings: r.findings, costUsd: r.costUsd, notes: r.notes};
       }
       // 自然言語の台本 → cuts.json + narration.json（型ではなく台本が正）
+      case 'ai-script-text': {
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
+        return aiScriptText(dir, {confirmed: p.confirmed === true, fingerprint: typeof p.fingerprint === 'string' ? p.fingerprint : '', model: typeof p.model === 'string' ? p.model : undefined, onLine, onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}), signal});
+      }
       case 'ai-script': {
         if (!agentAvailable()) throw new Error(agentMissingMessage());
         const write = p.write !== false;
-        const r = await aiScript(dir, {
+        const continuation = await assembleScriptOrConfirm(dir, {
           model: typeof p.model === 'string' ? p.model : undefined,
           write,
           force: !!p.force,
@@ -251,6 +257,8 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}),
           signal,
         });
+        if (continuation.textConfirmation) return {textConfirmation: continuation.textConfirmation};
+        const r = continuation.assembled!;
         // 「割り当てを見るだけ」（write: false）は書かないのが正常。以前はここで失敗扱いにしていて、
         // E が 0 件でも「検算で E が出たので書いていません:」で終わり、結果も捨てていた
         if (write && !r.written)
@@ -283,6 +291,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           fixes: r.fixes,
           unmatched: r.plan.unmatched,
           costUsd: r.costUsd,
+          textConfirmation: r.textConfirmation ?? null,
           assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec, fixes: r.assembled.fixes} : null,
         };
       }
@@ -367,6 +376,7 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
           issues: r.issues,
           unmatched: r.plan.unmatched,
           costUsd: r.costUsd,
+          textConfirmation: r.textConfirmation ?? null,
           assembled: r.assembled ? {written: r.assembled.written, cuts: r.assembled.plan.cuts.length, narration: r.assembled.plan.narration.length, totalSec: r.assembled.totalSec, fixes: r.assembled.fixes} : null,
         };
       }
@@ -392,6 +402,22 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {persona: r.persona, summary: r.draft.summary, evidence: r.draft.evidence, sources: r.sources, analyzed: r.analyzed, costUsd: r.costUsd, replaced: r.replaced, lines: r.lines};
       }
       // 既存の人格を指示どおりに磨く。案を返すだけ（保存は画面の「人格を保存」）
+      case 'ai-video-style': {
+        if (!agentAvailable()) throw new Error(agentMissingMessage());
+        return await draftVideoStyle(job.slug, {
+          base: p.base, instruction: typeof p.instruction === 'string' ? p.instruction : '',
+          learnFromProject: p.learnFromProject === true, model: typeof p.model === 'string' ? p.model : undefined,
+          onLine, onProgress: (done, total, phase) => ctx.onProgress({phase, done, total}), signal,
+        });
+      }
+      case 'video-style-save': {
+        const snapshot = saveVideoStyle(p.draft, {
+          id: typeof p.id === 'string' ? p.id : undefined,
+          expectedRevision: typeof p.expectedRevision === 'number' ? p.expectedRevision : undefined,
+        });
+        onLine('動画の型「' + snapshot.label + '」v' + snapshot.revision + ' を保存しました');
+        return {snapshot};
+      }
       case 'ai-persona-refine': {
         if (!agentAvailable()) throw new Error(agentMissingMessage());
         return await refinePersona({

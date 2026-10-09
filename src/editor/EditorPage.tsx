@@ -21,13 +21,22 @@ import {Timeline, type TimelineHandle, type TrackVisibility} from './Timeline';
 import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
 import {ValidationPanel} from './ValidationPanel';
 import {AiMenu} from './AiMenu';
+import {OrderLockToggle} from './OrderLockToggle';
 import {ThumbnailSection, patchThumbnail} from './ThumbnailSection';
 import {useEditorModel} from './useEditorModel';
 import {useMixPreview} from './useMixPreview';
 import {pendingNarration} from './mixPreview';
+import {sfxEndSec} from '@shared/sfx';
+import {round3} from '@shared/timeline';
+import type {Narration} from '@shared/schema';
 import {GROUP_COLORS} from './labels';
+import {newCutId} from '../components/track';
 import {PreviewReady} from '../components/PreviewReady';
-import type {Selection} from './selection';
+import {sameSelection, type Selection} from './selection';
+import {readEditorClipboard, writeEditorClipboard} from './clipboard';
+import {NarrationLibrary} from './NarrationLibrary';
+import {ResizeHandle} from './ResizeHandle';
+import type {NarrationLibraryEntry} from '@shared/narration-library';
 
 /** 狭い画面のシートの見出し（いま何を触っているか） */
 const selectionLabel = (sel: NonNullable<Selection>): string =>
@@ -35,6 +44,8 @@ const selectionLabel = (sel: NonNullable<Selection>): string =>
 
 type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean};
 const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true};
+type LayoutPrefs = {bin: number; inspector: number; timeline: number; previewMobile: number; sheet: number};
+const DEFAULT_LAYOUT: LayoutPrefs = {bin: 236, inspector: 380, timeline: 270, previewMobile: 46, sheet: 72};
 
 const emptyLib: SfxLibrary = {version: 1, sounds: []};
 
@@ -43,7 +54,14 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const [lib, setLib] = useState<SfxLibrary | null>(null);
   const m = useEditorModel(lib);
   const {cuts, narration, catalog, brief, selection, setSelection, frame, setFrame} = m;
+  const [multiSelection, setMultiSelection] = useState<Selection[]>([]);
+  useEffect(() => { setMultiSelection([]); setSelection(null); }, [s.active, setSelection]);
+  useEffect(() => {
+    if (multiSelection.length && !multiSelection.some((item) => sameSelection(item, selection))) setMultiSelection([]);
+  }, [selection, multiSelection]);
   const [prefs, setPrefs] = usePref<Prefs>('reel-studio.editor', DEFAULT_PREFS);
+  const [layout, setLayout] = usePref<LayoutPrefs>('reel-studio.editor.layout', DEFAULT_LAYOUT);
+  const layoutSafe = {...DEFAULT_LAYOUT, ...layout};
   const prefsSafe: Prefs = {...DEFAULT_PREFS, ...prefs, tracks: {...DEFAULT_PREFS.tracks, ...(prefs.tracks ?? {})}, zoom: clampZoom(prefs.zoom ?? PX_PER_SEC_DEFAULT)};
   const [loop, setLoop] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -54,9 +72,11 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const rootRef = useRef<HTMLDivElement>(null);
   const [previewW, setPreviewW] = useState(300);
   const [rootTop, setRootTop] = useState(0);
+  const [editorWidth, setEditorWidth] = useState(window.innerWidth);
   const debouncedCuts = useDebounced(cuts, 150);
   const audio = useRef<HTMLAudioElement | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   // 効果音ライブラリ（S 段の幅と、インスペクタの音源一覧に使う）
   useEffect(() => {
@@ -71,6 +91,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     const measure = () => {
       const top = rootRef.current?.getBoundingClientRect().top ?? 0;
       setRootTop(Math.max(0, Math.round(top + (window.scrollY || 0))));
+      setEditorWidth(rootRef.current?.clientWidth ?? window.innerWidth);
     };
     measure();
     window.addEventListener('resize', measure);
@@ -88,8 +109,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       // 狭い画面（縦積み）では中央列の高さがプレビュー自身で決まる。そこから測ると
       // 「広げる → 列が伸びる → また広げる」を数 px ずつ繰り返し、開くたびに映像がじわじわ出てきた。
       // 縦積みのときは高さを画面から取って、最初から最終の大きさで出す
-      const stacked = window.matchMedia('(max-width: 860px)').matches;
-      const h = (stacked ? window.innerHeight : el.clientHeight) - 40; // 上下の余白（キャンバスの縁と左下の切り替えピル）
+      const h = el.clientHeight - 40; // 上下の余白（キャンバスの縁と左下の切り替えピル）
       const w = el.clientWidth - 40;
       setPreviewW(Math.max(120, Math.floor(Math.min(w, (h * 9) / 16))));
     });
@@ -126,6 +146,19 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const toggle = useCallback(() => preview.current?.toggle(), []);
   const step = useCallback((n: number) => seek((preview.current?.getCurrentFrame() ?? frame) + n), [seek, frame]);
 
+  // 再生・シーク・コマ送りで位置が変わったら、映像クリップの選択をその位置へ追従させる。
+  const selectionFrame = useRef(frame);
+  useEffect(() => {
+    const moved = selectionFrame.current !== frame;
+    selectionFrame.current = frame;
+    if (!moved || m.currentCut < 0) return;
+    setSelection((sel) => {
+      if (sel && sel.kind !== 'cut') return sel;
+      return sel?.index === m.currentCut ? sel : {kind: 'cut', index: m.currentCut};
+    });
+    setFocusTelop(false);
+  }, [frame, m.currentCut, setSelection]);
+
   // レンダー中はプレビューを止める（メモリを取り合うため）
   useEffect(() => {
     if (s.jobs.some((j) => j.status === 'running' && (j.type === 'render' || j.type === 'draft' || j.type === 'build'))) preview.current?.pause();
@@ -135,9 +168,134 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const dirtyCuts = s.files.cuts.dirty;
   const dirtyNarr = s.files.narration.dirty;
   const saveAll = useCallback(async () => {
+    if (s.files.catalog.dirty) await s.saveFile('catalog');
     if (s.files.cuts.dirty) await s.saveFile('cuts');
     if (s.files.narration.dirty) await s.saveFile('narration');
   }, [s]);
+
+  const selectedItems = multiSelection.length ? multiSelection : selection ? [selection] : [];
+  const copyableItems = selectedItems.filter((item): item is NonNullable<Selection> => !!item && item.kind !== 'thumbnail');
+  const copySelected = () => {
+    if (!s.active || !copyableItems.length) return;
+    const kind = copyableItems[0].kind;
+    const items = copyableItems.filter((item) => item.kind === kind);
+    if (kind === 'cut') {
+      if (!cuts) return;
+      const chosen = items.filter((item): item is {kind: 'cut'; index: number} => item.kind === 'cut').sort((a, b) => a.index - b.index);
+      const copied = chosen.map((item) => cuts.cuts[item.index]).filter((c) => !!c).map((c) => ({...c, src: m.clipOf(c.src)?.src ?? c.src}));
+      const clips = [...new Set(copied.map((c) => c.src))].map((src) => m.clipOf(src)).filter((c) => !!c);
+      writeEditorClipboard({version: 1, kind: 'cuts', project: s.active, cuts: copied, clips});
+      s.toast(`${copied.length} カットをコピーしました`, 'ok');
+    } else if (kind === 'telop') {
+      const chosen = items.filter((item): item is {kind: 'telop'; group: number} => item.kind === 'telop').sort((a, b) => a.group - b.group);
+      const telops = chosen.map((item) => m.groups[item.group]?.def).filter((def) => !!def);
+      writeEditorClipboard({version: 1, kind: 'telops', telops});
+      s.toast(`${telops.length} テロップをコピーしました`, 'ok');
+    } else if (kind === 'narr' && narration) {
+      const segments = items.filter((item): item is {kind: 'narr'; index: number} => item.kind === 'narr').map((item) => narration.segments[item.index]).filter((segment) => !!segment).sort((a, b) => a.at - b.at);
+      writeEditorClipboard({version: 1, kind: 'narr', project: s.active, segments, settings: narration});
+      s.toast(`${segments.length} ナレーションをコピーしました`, 'ok');
+    } else if (kind === 'sfx' && narration) {
+      const sounds = items.filter((item): item is {kind: 'sfx'; index: number} => item.kind === 'sfx').map((item) => narration.sfx?.[item.index]).filter((sound) => !!sound).sort((a, b) => a.at - b.at);
+      writeEditorClipboard({version: 1, kind: 'sfx', sounds});
+      s.toast(`${sounds.length} 効果音をコピーしました`, 'ok');
+    }
+  };
+  const pasteSelected = async () => {
+    const copied = readEditorClipboard();
+    if (!copied || !s.active) return;
+    try {
+      if (copied.kind === 'telops') {
+        if (!cuts) throw new Error('貼り付け先のカットがありません');
+        const targets = selectedItems.filter((x): x is {kind: 'cut'; index: number} | {kind: 'telop'; group: number} => !!x && (x.kind === 'cut' || x.kind === 'telop'));
+        const targetGroups = targets.length ? targets.map((x) => x.kind === 'cut' ? [x.index] : m.groups[x.group]?.cutIndices ?? []) : [[m.currentCut]];
+        if (!targetGroups.length || targetGroups[0][0] < 0) throw new Error('貼り付け先のカットまたはテロップを選択してください');
+        const assignments = new Map<number, typeof copied.telops[number]>();
+        targetGroups.forEach((indices, pos) => indices.forEach((i) => assignments.set(i, copied.telops[Math.min(pos, copied.telops.length - 1)])));
+        const next = cuts.cuts.map((c, i) => {
+          const telop = assignments.get(i);
+          return !telop ? c : {...c, main: structuredClone(telop)};
+        });
+        m.commitCuts({...cuts, cuts: next});
+        s.toast(`${assignments.size} カットにテロップを貼り付けました`, 'ok');
+      } else if (copied.kind === 'narr' || copied.kind === 'sfx') {
+        const sourceItems = copied.kind === 'narr' ? copied.segments : copied.sounds;
+        const selectedNarr = selection?.kind === 'narr' ? narration?.segments[selection.index] : undefined;
+        const selectedSfx = selection?.kind === 'sfx' ? narration?.sfx?.[selection.index] : undefined;
+        const at = selectedNarr ? selectedNarr.at + m.estimateSec(selectedNarr) : selectedSfx ? sfxEndSec(selectedSfx, lib ?? undefined) : frame / m.fps;
+        const offset = Math.max(0, at);
+        const firstAt = sourceItems[0].at;
+        const base: Narration = narration ?? (copied.kind === 'narr' ? {...copied.settings, videoSec: m.total, segments: [], sfx: []} : {voice: m.persona?.narration.voiceId ?? '', segments: [], sfx: []});
+        if (copied.kind === 'narr') {
+          const segments = copied.segments.map((segment) => ({...structuredClone(segment), id: `copy_${crypto.randomUUID().replace(/-/g, '')}`, at: round3(offset + segment.at - firstAt)}));
+          const eligible = segments.map((segment, i) => !!copied.segments[i].durSec && !(copied.segments[i] as {needsTts?: boolean}).needsTts ? {from: copied.segments[i].id, to: segment.id} : null).filter((pair) => !!pair);
+          let copiedAudio: boolean[] = [];
+          if (eligible.length) {
+            try {
+              const response = await api.post<{copied: boolean[]}>(`/api/projects/${encodeURIComponent(s.active)}/clipboard/copy-narration-audio`, {from: copied.project, pairs: eligible});
+              copiedAudio = response.data.copied;
+            } catch (error) {
+              if ((error as {status?: number}).status !== 501) throw error;
+            }
+          }
+          const ready = new Set(eligible.filter((_, i) => copiedAudio[i]).map((pair) => pair.to));
+          const inserted = segments.map((segment) => ready.has(segment.id) ? segment : {...segment, needsTts: true, durSec: undefined, trimSec: undefined});
+          const start = base.segments.length;
+          m.commitNarr({...base, segments: [...base.segments, ...inserted]});
+          setSelection({kind: 'narr', index: start});
+          setMultiSelection(inserted.map((_, i) => ({kind: 'narr', index: start + i})));
+          s.toast(`${inserted.length} ナレーションを貼り付けました${inserted.some((segment) => (segment as {needsTts?: boolean}).needsTts) ? '（音声は要再生成）' : ''}`, 'ok');
+        } else {
+          const sounds = copied.sounds.map((sound) => ({...structuredClone(sound), id: `sfx_${crypto.randomUUID().replace(/-/g, '')}`, at: round3(offset + sound.at - firstAt)}));
+          const start = base.sfx?.length ?? 0;
+          m.commitNarr({...base, sfx: [...(base.sfx ?? []), ...sounds]});
+          setSelection({kind: 'sfx', index: start});
+          setMultiSelection(sounds.map((_, i) => ({kind: 'sfx', index: start + i})));
+          const missing = sounds.filter((sound) => !lib?.sounds.some((x) => x.file === sound.file)).length;
+          s.toast(`${sounds.length} 効果音を貼り付けました${missing ? `（音源なし ${missing} 件）` : ''}`, 'ok');
+        }
+      } else {
+        if (!catalog) throw new Error('貼り付け先の素材カタログがありません');
+        let sourceMap = new Map(copied.clips.map((c) => [c.src, c.src]));
+        if (copied.project !== s.active) {
+          if (s.files.catalog.dirty) await s.saveFile('catalog');
+          const imported = await api.post<{clips: Record<string, typeof copied.clips[number]>}>(`/api/projects/${encodeURIComponent(s.active)}/clipboard/import-clips`, {from: copied.project, ids: copied.clips.map((c) => c.id)});
+          sourceMap = new Map(copied.clips.map((c) => [c.src, imported.data.clips[c.id]?.src]));
+          await s.loadFile('catalog');
+        }
+        const base = cuts ?? {fps: catalog.dominantFps, cuts: []};
+        const at = selection?.kind === 'cut' ? selection.index + 1 : m.currentCut >= 0 ? m.currentCut + 1 : base.cuts.length;
+        const used = [...base.cuts];
+        const inserted = copied.cuts.map((c) => {
+          const src = sourceMap.get(c.src);
+          if (!src) throw new Error(`素材が見つかりません: ${c.src}`);
+          const id = newCutId(used);
+          const next = {...structuredClone(c), id, src};
+          used.push(next);
+          return next;
+        });
+        const next = {...base, cuts: [...base.cuts.slice(0, at), ...inserted, ...base.cuts.slice(at)]};
+        if (cuts) m.commitCuts(next);
+        else m.setCuts(next);
+        setSelection({kind: 'cut', index: at});
+        setMultiSelection(inserted.map((_, i) => ({kind: 'cut', index: at + i})));
+        s.toast(`${inserted.length} カットを貼り付けました`, 'ok');
+      }
+    } catch (error) {
+      s.toast(`貼り付けできません: ${(error as Error).message}`, 'error');
+    }
+  };
+  const useSavedNarration = async (entry: NarrationLibraryEntry) => {
+    if (!s.active) return;
+    const id = `saved_${crypto.randomUUID().replace(/-/g, '')}`;
+    await api.post(`/api/narration-library/${encodeURIComponent(entry.id)}/use`, {project: s.active, segmentId: id});
+    const base: Narration = narration ?? {voice: entry.voice, voiceTitle: entry.voiceTitle, speed: entry.speed, latency: entry.latency, segments: []};
+    const index = base.segments.length;
+    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(frame / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec}]});
+    setSelection({kind: 'narr', index});
+    setMultiSelection([]);
+    s.toast(`「${entry.title}」を再生位置に追加しました`, 'ok');
+  };
 
   // ---- ショートカット ----
   const removeSelected = () => {
@@ -153,6 +311,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     {key: 'z', ctrl: true, shift: true, handler: () => m.redo()},
     {key: 'y', ctrl: true, handler: () => m.redo()},
     {key: 'd', ctrl: true, handler: () => selection?.kind === 'cut' && m.duplicateCut(selection.index)},
+    {key: 'c', ctrl: true, handler: copySelected},
+    {key: 'v', ctrl: true, handler: () => void pasteSelected()},
     {key: 'Space', handler: toggle},
     {key: 'ArrowLeft', handler: () => step(-1)},
     {key: 'ArrowRight', handler: () => step(1)},
@@ -171,7 +331,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         if (err) s.toast(err, 'error');
       },
     },
-    {key: 'Escape', handler: () => setSelection(null)},
+    {key: 'Escape', handler: () => { setSelection(null); setMultiSelection([]); }},
   ]);
 
   // ---- 素材ビンからのドラッグ ----
@@ -195,13 +355,19 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     audio.current = null;
     setPreviewingId(null);
   };
-  const playNarr = async (id: string, text: string, needsTts: boolean) => {
+  const playNarr = async (id: string, text: string, needsTts: boolean, trimSec?: number) => {
     stopAudio();
     if (!needsTts && s.mediaBase) {
       const a = new Audio(`${s.mediaBase}/narration/${encodeURIComponent(id)}.wav?t=${Date.now()}`);
       audio.current = a;
       setPreviewingId(id);
       a.onended = () => setPreviewingId(null);
+      if (trimSec && trimSec > 0) a.ontimeupdate = () => {
+        if (a.currentTime >= trimSec) {
+          a.pause();
+          setPreviewingId(null);
+        }
+      };
       void a.play().catch(() => {
         s.toast('音声が見つかりません（まだ生成していないかもしれません）', 'error');
         setPreviewingId(null);
@@ -259,14 +425,33 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   // タイムラインで何かをクリックしたら、選ぶと同時にそこへシークする（NLE の慣習）。ドラッグ中は Timeline 側が選択だけ更新する
   // サムネイルの背景にしているコマ（動画の秒）。目盛りのピンの位置
   const thumbnailSec = cuts ? bgTimelineSec(cuts, cuts.thumbnail?.bg ?? defaultBgOf(cuts)) : null;
-  const selectFromTimeline = (sel: typeof selection, opt: {seek?: boolean} = {}) => {
+  const selectFromTimeline = (sel: typeof selection, opt: {seek?: boolean; toggle?: boolean; range?: boolean} = {}) => {
+    if (sel && sel.kind !== 'thumbnail' && (opt.toggle || opt.range)) {
+      const previous = (multiSelection.length ? multiSelection : selection ? [selection] : []).filter((item) => item?.kind === sel.kind);
+      if (opt.range) {
+        const anchor = previous[previous.length - 1];
+        if (anchor?.kind === sel.kind) {
+          const from = anchor.kind === 'telop' ? anchor.group : anchor.index;
+          const to = sel.kind === 'telop' ? sel.group : sel.index;
+          setMultiSelection(Array.from({length: Math.abs(to - from) + 1}, (_, i) => sel.kind === 'telop' ? {kind: 'telop', group: Math.min(from, to) + i} : {kind: sel.kind, index: Math.min(from, to) + i}));
+        }
+      } else {
+        const next = previous.some((x) => sameSelection(x, sel)) ? previous.filter((x) => !sameSelection(x, sel)) : [...previous, sel];
+        setMultiSelection(next);
+        setSelection(next.length ? next[next.length - 1] : null);
+        return;
+      }
+      setSelection(sel);
+      return;
+    }
+    setMultiSelection([]);
     setSelection(sel);
     setFocusTelop(false);
     if (opt.seek === false || !sel || !cuts) return;
     if (sel.kind === 'cut') seekCut(sel.index);
     else if (sel.kind === 'telop') {
       const g = m.groups[sel.group];
-      if (g) seekCut(g.cutIndices[0]);
+      if (g) seek(Math.min(m.ranges[g.cutIndices[0]]?.from ?? 0, totalFrames - 1));
     } else if (sel.kind === 'narr') {
       const seg = narration?.segments[sel.index];
       if (seg) seekSec(seg.at);
@@ -294,21 +479,34 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     );
 
   const height = `calc(100vh - ${rootTop + 8}px)`;
+  const binMax = Math.min(500, Math.max(180, Math.floor(editorWidth * 0.3)));
+  const binWidth = Math.max(160, Math.min(binMax, layoutSafe.bin));
+  const inspectorMax = Math.min(620, Math.max(260, Math.floor(editorWidth * 0.42)));
+  const inspectorWidth = Math.max(250, Math.min(inspectorMax, layoutSafe.inspector, editorWidth - binWidth - 270));
+  const timelineMax = Math.max(220, Math.floor(window.innerHeight * 0.62));
+  const timelineHeight = Math.max(190, Math.min(timelineMax, layoutSafe.timeline));
+  const previewMobile = Math.max(30, Math.min(75, layoutSafe.previewMobile));
+  const sheetHeight = Math.max(30, Math.min(90, layoutSafe.sheet));
   const sel = selection;
   const selectedCutIndex = sel?.kind === 'cut' ? sel.index : null;
 
   return (
-    <div className="editor" ref={rootRef} style={{height}}>
+    <div className="editor" ref={rootRef} style={{height, '--timeline-h': `${timelineHeight}px`, '--mobile-preview-h': `${previewMobile}dvh`, '--mobile-sheet-h': `${sheetHeight}dvh`} as React.CSSProperties}>
       <PreviewReady />
       <div className="ed-toolbar" data-tour="ed-toolbar">
-        <button className="primary" onClick={() => void saveAll()} disabled={!dirtyCuts && !dirtyNarr} title="cuts.json と narration.json を保存（Ctrl+S）" data-tour="save">
-          保存{dirtyCuts || dirtyNarr ? ' *' : ''}
+        <button className="primary" onClick={() => void saveAll()} disabled={!dirtyCuts && !dirtyNarr && !s.files.catalog.dirty} title="変更を保存（Ctrl+S）" data-tour="save">
+          保存{dirtyCuts || dirtyNarr || s.files.catalog.dirty ? ' *' : ''}
         </button>
+        <span className="btns" aria-label="コピーと貼り付け">
+          <button className="small" onClick={copySelected} disabled={!copyableItems.length} title="選択したカットまたはテロップをコピー（Ctrl+C）">コピー</button>
+          <button className="small" onClick={() => void pasteSelected()} disabled={!readEditorClipboard()} title="コピーした項目を貼り付け（Ctrl+V）">貼り付け</button>
+        </span>
+        <span className="hint" title="Ctrl/⌘クリックで追加、Shiftクリックで範囲選択">Ctrl/⌘・Shift で複数選択</span>
         <span className="btns">
-          <button onClick={m.undo} disabled={!m.history.canUndo} title="取り消し（Ctrl+Z）">
+          <button onClick={m.undo} disabled={!m.canUndo} title="取り消し（Ctrl+Z）">
             ↶
           </button>
-          <button onClick={m.redo} disabled={!m.history.canRedo} title="やり直し（Ctrl+Y）">
+          <button onClick={m.redo} disabled={!m.canRedo} title="やり直し（Ctrl+Y）">
             ↷
           </button>
         </span>
@@ -333,10 +531,15 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           </button>
         )}
         <span className="sep" />
-        <AiMenu placeholders={placeholders} cutCount={cuts?.cuts.length ?? 0} hasCuts={!!cuts} hasOrderCheck={!!m.orderCheck} />
+        {cuts && <OrderLockToggle locked={cuts.meta?.orderLocked === true} onChange={(locked) => {
+          m.patchReel({meta: {...cuts.meta, orderLocked: locked}});
+          s.toast(locked ? '自動処理による並び順変更をロックしました。保存（Ctrl+S）すると案件に記憶されます。手動編集はできます' : '並び順のロックを解除しました。保存（Ctrl+S）してください', 'ok');
+        }} />}
+        <AiMenu orderLocked={cuts?.meta?.orderLocked === true} onJobRequest={m.captureAiJob} placeholders={placeholders} cutCount={cuts?.cuts.length ?? 0} hasCuts={!!cuts} hasOrderCheck={!!m.orderCheck} />
         <button className="small" onClick={() => s.addJob('tts')} disabled={!narration || !!ttsBlockedBy || needsTts === 0} title={ttsBlockedBy ?? (needsTts === 0 ? 'すべてのブロックに音声があります' : `${needsTts} ブロックの音声を Fish Audio で作ります`)}>
           {ttsBusy ? '音声を生成中…' : `音声を生成（${needsTts}）`}
         </button>
+        <button className="small" onClick={() => setLibraryOpen(true)} title="保存したナレーション音声を聴いて、再生位置へ追加する">音声ライブラリ</button>
         <span className="sep" />
         <label className="sb-inline" title="ナレーション・効果音をドラッグしたときカット境界に吸着する（Alt を押しながらで一時的に無効）">
           <input type="checkbox" checked={prefsSafe.snap} onChange={(e) => setPrefs({...prefsSafe, snap: e.target.checked})} />
@@ -376,10 +579,11 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
 
       {aiJob && <AiJobStatus job={aiJob} onCancel={(id) => void s.cancelJob(id)} compact />}
 
-      <div className="ed-main">
+      <div className="ed-main" style={{'--ed-bin-w': `${binWidth}px`, '--ed-inspector-w': `${inspectorWidth}px`} as React.CSSProperties}>
         <div className="ed-bin">
           <Bin catalog={catalog} mediaBase={s.mediaBase} usage={m.usage} draggingId={binDrag.drag?.payload ?? null} handleProps={binDrag.handleProps} onAdd={addClip} onOpenMaterials={() => onTab('materials')} />
         </div>
+        <ResizeHandle axis="x" label="素材一覧の幅" value={binWidth} min={160} max={binMax} reset={DEFAULT_LAYOUT.bin} onChange={(bin) => setLayout({...layoutSafe, bin})} className="ed-bin-resizer" />
         <div className="ed-center" ref={centerRef} data-tour="preview">
           {cuts ? (
             <>
@@ -403,9 +607,12 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             />
           )}
         </div>
+        <ResizeHandle axis="y" label="Preview の高さ" value={previewMobile} min={30} max={75} reset={DEFAULT_LAYOUT.previewMobile} onChange={(previewMobile) => setLayout({...layoutSafe, previewMobile})} className="ed-preview-resizer" unit="%" />
+        <ResizeHandle axis="x" label="クリップ詳細の幅" value={inspectorWidth} min={250} max={inspectorMax} reset={DEFAULT_LAYOUT.inspector} onChange={(inspector) => setLayout({...layoutSafe, inspector})} className="ed-inspector-resizer" direction={-1} />
         {/* 狭い画面では、何かを選んでいる間だけ手元（画面下）へせり上がるシートになる。
             タイムラインの下の方を触っているときに、上へ戻らなくても直せるようにするため */}
         <div className={`ed-inspector${sel ? ' sel' : ''}`} data-tour="inspector">
+          {sel && <ResizeHandle axis="y" label="クリップ詳細の高さ" value={sheetHeight} min={30} max={90} reset={DEFAULT_LAYOUT.sheet} onChange={(sheet) => setLayout({...layoutSafe, sheet})} className="ed-sheet-resizer" direction={-1} unit="%" />}
           {sel && (
             <div className="detail-bar">
               <b>{selectionLabel(sel)}</b>
@@ -426,13 +633,15 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           )}
           {sel?.kind === 'cut' && <CutInspector m={m} index={sel.index} onSeekCut={seekCut} focusTelop={focusTelop} />}
           {sel?.kind === 'telop' && <TelopInspector m={m} group={sel.group} onSeekCut={seekCut} />}
-          {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} ttsBlockedBy={ttsBlockedBy} />}
+          {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} onSaveToLibrary={() => setLibraryOpen(true)} ttsBlockedBy={ttsBlockedBy} />}
           {sel?.kind === 'sfx' && <SfxInspector m={m} index={sel.index} onSeekCut={seekCut} lib={lib} onPlay={playSfx} />}
           {sel?.kind === 'thumbnail' && <ThumbnailSection m={m} large />}
           {!sel && <ReelInspector m={m} />}
           <ValidationPanel m={m} onSeekCut={seekCut} onSeekSec={seekSec} />
         </div>
       </div>
+
+      {libraryOpen && s.active && <NarrationLibrary project={s.active} narration={narration} selected={selection?.kind === 'narr' ? narration?.segments[selection.index] ?? null : null} onUse={useSavedNarration} onClose={() => setLibraryOpen(false)} />}
 
       {prefsSafe.storyboard && cuts && (
         <div className="ed-storyboard">
@@ -455,11 +664,12 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             onSelect={seekCut}
             onReorder={m.applyReorder}
             onUndo={m.undo}
-            canUndo={m.history.canUndo}
+            canUndo={m.canUndo}
           />
         </div>
       )}
 
+      <ResizeHandle axis="y" label="タイムラインの高さ" value={timelineHeight} min={190} max={timelineMax} reset={DEFAULT_LAYOUT.timeline} onChange={(timeline) => setLayout({...layoutSafe, timeline})} className="ed-timeline-resizer" direction={-1} />
       <div className="ed-timeline" data-tour="timeline">
         <div className="tl-toolbar">
           <div className="tl-toolbar-side">
@@ -508,12 +718,14 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           mediaBase={s.mediaBase}
           cuts={cuts}
           fps={m.fps}
+          telopGroups={m.groups}
           narration={narration}
           sfxLib={lib}
           estimateSec={m.estimateSec}
           clipOf={m.clipOf}
           slotRole={(c) => m.slotOf(c)?.role}
           selection={selection}
+          multiSelection={multiSelection}
           onSelect={selectFromTimeline}
           onSelectQuiet={(sel) => selectFromTimeline(sel, {seek: false})}
           currentFrame={frame}
@@ -549,6 +761,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             setSelection({kind: 'thumbnail'});
           }}
         />
+        <ResizeHandle axis="y" label="タイムラインの高さ" value={timelineHeight} min={190} max={timelineMax} reset={DEFAULT_LAYOUT.timeline} onChange={(timeline) => setLayout({...layoutSafe, timeline})} className="ed-mobile-timeline-resizer" />
       </div>
 
       {binDrag.drag && (
@@ -560,4 +773,3 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     </div>
   );
 };
-

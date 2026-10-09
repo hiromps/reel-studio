@@ -131,7 +131,17 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
     let rebuiltBase = false;
     if (stashed) fs.mkdirSync(path.dirname(stashed), {recursive: true});
     if (proxy.needed) {
-      if (opt.force || !fs.existsSync(baseAbs)) {
+      let reusable = fs.existsSync(baseAbs) && !opt.force;
+      if (reusable) {
+        try {
+          const existingProbe = await ffprobe(baseAbs);
+          if (existingProbe.durationSec <= 0) throw new Error('duration is zero');
+        } catch (e) {
+          reusable = false;
+          log(`  既存のプロキシを読み取れないため作り直します: ${errText(e)}`);
+        }
+      }
+      if (!reusable) {
         log(`  proxy (${proxy.reason}) → ${baseRel}`);
         await makeProxy(src, baseAbs, srcProbe, {onLine: (l) => log(`    ${l}`)});
         changed.push(rel);

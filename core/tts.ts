@@ -404,6 +404,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
     }
     patch(seg.id, (s) => {
       s.durSec = dur;
+      delete s.trimSec;
       delete (s as {needsTts?: boolean}).needsTts;
     });
     made.push(seg.id);

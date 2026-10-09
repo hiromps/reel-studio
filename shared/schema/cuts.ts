@@ -113,6 +113,8 @@ export const GeneratedSchema = z.object({
 
 export const ReelMetaSchema = z
   .object({
+    /** AI によるカットの並べ替え・追加・削除を禁止。手動編集は自由。 */
+    orderLocked: z.boolean().optional(),
     slots: z.array(SlotSchema).optional(),
     telopGroups: z.array(TelopGroupMetaSchema).optional(),
     aliases: z.array(AliasOpSchema).optional(),

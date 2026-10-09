@@ -12,6 +12,7 @@ import {MosaicCard, MosaicClipSection, mediaVersion, useMosaicForm} from '../com
 import {UploadMaterials} from '../components/UploadMaterials';
 import {PreviewReady} from '../components/PreviewReady';
 import {ClipEditor} from '../components/ClipEditor';
+import {bulkQuickTrim} from '../components/bulkTrim';
 import {useUndo} from '../hooks/useUndo';
 import {useHotkeys} from '../hooks/useHotkeys';
 import {localDate} from '@shared/time';
@@ -164,6 +165,21 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
       return words.every((w) => hay.includes(w));
     });
   }, [catalog, filter, q, usage]);
+
+  const quickTrimTargets = shown.filter((c) => !c.user.ng).length;
+  const trimShown = () => {
+    if (!catalog) return;
+    const result = bulkQuickTrim(catalog, new Set(shown.map((c) => c.id)));
+    if (result.changed) {
+      history.push(catalog);
+      setCatalog(result.catalog);
+    }
+    const counts = [`${result.changed} 本を0.8秒にトリミング`];
+    if (result.unchanged) counts.push(`設定済み ${result.unchanged} 本`);
+    if (result.skipped) counts.push(`短い素材・尺やfpsが不明の素材 ${result.skipped} 本を除外`);
+    if (result.changed) counts.push('catalog.json を保存してください（Ctrl+S）');
+    s.toast(counts.join(' / '), 'ok');
+  };
 
   // 選別モード用キュー：開いた時点の順序を固定し、中身（タグ・判定）は catalog の最新値を都度引く
   const triageClips = useMemo(() => {
@@ -323,6 +339,12 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
               <button className="small primary" onClick={() => onTab('timeline')} title="素材を並べて尺・テロップ・ナレーションを整える">
                 Timeline で並べる →
               </button>
+            </div>
+            <div className="row" style={{marginTop: 8}}>
+              <button onClick={trimShown} disabled={!quickTrimTargets} title="表示中のNG以外の素材に適用。指定済みの開始位置（未指定なら先頭）から0.8秒を見せ場にします。Ctrl+Zでまとめて戻せます">
+                表示中の素材を0.8秒に一括トリミング（{quickTrimTargets} 本）
+              </button>
+              <span className="hint">開始位置を引き継ぎ、未指定なら先頭から。NG・0.8秒未満は除外。素材のfpsに合わせて丸めます。</span>
             </div>
             <p className="hint">
               クリックすると右側で編集できます（← → で前後のクリップ）。寄り・位置・使える区間は選別モードと同じように直せます。★＝つかみに使いたい画、NG＝使わない画。直したら <b>catalog.json を保存</b>（Ctrl+S）。取り消しは Ctrl+Z。並べるのは Timeline 画面の素材ビンから。

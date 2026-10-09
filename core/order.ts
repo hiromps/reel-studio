@@ -26,7 +26,7 @@ import type {FormatSpec} from '../shared/schema/format-spec';
 import type {ReelData} from '../shared/schema/cuts';
 import type {ValidationResult} from '../shared/validate';
 import {loadCatalog, studioDir} from './catalog';
-import {projectSlug, readBrief, readCuts, writeBrief, writeCuts} from './project';
+import {assertOrderUnlocked, projectSlug, readBrief, readCuts, writeBrief, writeCuts} from './project';
 import {applyAliases} from './alias';
 import {validateProject} from './render';
 import {writeJsonAtomic} from './json-io';
@@ -187,6 +187,7 @@ const finalTelopCount = (dir: string): number => {
  * write=true のときだけ cuts.json まで書く（brief.json は取り込み時点で書く）。
  */
 export const importOrder = (env: OrderEnv, raw: unknown, opt: {write?: boolean; copy?: boolean; force?: boolean; allowReuse?: boolean; now?: string} = {}): OrderImportResult => {
+  assertOrderUnlocked(env.dir);
   const parsed = OrderProposalSchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
@@ -213,7 +214,7 @@ export const importOrder = (env: OrderEnv, raw: unknown, opt: {write?: boolean; 
   let aliasesApplied = 0;
   let validation: ValidationResult | undefined;
   if (opt.write) {
-    writeCuts(env.dir, plan.cuts);
+    writeCuts(env.dir, plan.cuts, {preserveOrder: true});
     if (opt.copy !== false) {
       aliasesApplied = applyAliases(env.dir, plan.cuts).length;
       if (aliasesApplied) writeCuts(env.dir, plan.cuts);

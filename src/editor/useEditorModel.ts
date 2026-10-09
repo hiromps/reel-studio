@@ -1,7 +1,7 @@
 // 編集画面の状態と操作をまとめたフック。cuts.json / narration.json は store が持ち、ここは
 // 「選択」「取り消し履歴」「よく使う書き換え」を提供する。DOM には触らない。
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {useStudio} from '../state/store';
+import {useCallback, useEffect, useMemo, useRef, useState, type SetStateAction} from 'react';
+import {useStudio, type EditorSnapshot} from '../state/store';
 import type {Clip, Cut, Narration, NarrationSegment, ReelData, Slot, SubDef} from '@shared/schema';
 import {cutRanges, round3, snapSec, telopGroupsOf, totalSec} from '@shared/timeline';
 import {validateCuts, type Issue} from '@shared/validate';
@@ -11,7 +11,6 @@ import {findPersona} from '@shared/personas';
 import {checkNarration, fixNarrationOverlaps} from '@shared/narration';
 import {fitBlockedBy as fitBlockedByOf, fitCutsToNarration} from '@shared/fit';
 import {SFX_DEFAULTS, checkSfx, type SfxLibrary} from '@shared/sfx';
-import {useUndo} from '../hooks/useUndo';
 import {jobChangeToRecord} from '../hooks/undoStack';
 import {useDebounced} from '../components/useDebounced';
 import {defaultRangeFor, insertCutAt, makeCut, newCutId, removeCutAt, replaceCutSource, splitCutAt, sourceSecAt, usageBySrc, createReel} from '../components/track';
@@ -21,7 +20,7 @@ import {selectionAfterRemove, type Selection} from './selection';
 /** 落としたときの長さの上限（型の maxCutSec が分からないとき） */
 const DEFAULT_MAX_CUT_SEC = 3;
 
-type Snapshot = {cuts: ReelData | null; narration: Narration | null};
+type Snapshot = EditorSnapshot;
 
 export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const s = useStudio();
@@ -30,9 +29,12 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const catalog = s.files.catalog.data;
   const brief = s.files.brief.data;
 
-  const [selection, setSelection] = useState<Selection>(null);
+  const [selectionState, updateSelection] = useState<{selection: Selection; boundaries?: ReadonlySet<number>}>({selection: null});
+  const selection = selectionState.selection;
+  useEffect(() => updateSelection({selection: null}), [s.active]);
   const [frame, setFrame] = useState(0);
-  const history = useUndo<Snapshot>({resetKey: s.active});
+  const history = s.editorHistory;
+  const aiUpdating = s.jobs.some((j) => j.slug === s.active && j.type.startsWith('ai-') && (j.status === 'queued' || j.status === 'running')) || s.files.cuts.loading || s.files.narration.loading;
 
   const persona = brief ? findPersona(brief.persona) : undefined;
   const spec = brief ? FORMAT_SPECS[brief.format ?? persona?.defaultFormat ?? 'F0'] : undefined;
@@ -49,7 +51,25 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const slotOf = useCallback((c: Cut): Slot | undefined => cuts?.meta?.slots?.find((x) => x.cutId === c.id), [cuts]);
   const usage = useMemo(() => usageBySrc(cuts, resolveSrc), [cuts, resolveSrc]);
   const ranges = useMemo(() => (cuts ? cutRanges(cuts) : []), [cuts]);
-  const groups = useMemo(() => (cuts ? telopGroupsOf(cuts) : []), [cuts]);
+  // 選択中のテロップは、空文字や隣と同じ文言でも編集中に結合しない。
+  const groups = useMemo(() => (cuts ? telopGroupsOf(cuts, selectionState.boundaries) : []), [cuts, selectionState.boundaries]);
+  const selectionSource = useRef({cuts, groups});
+  selectionSource.current = {cuts, groups};
+  const setSelection = useCallback((next: SetStateAction<Selection>) => {
+    updateSelection(prev => {
+      const value = typeof next === 'function' ? next(prev.selection) : next;
+      if (value === prev.selection) return prev;
+      if (value?.kind !== 'telop') return {selection: value};
+      const {cuts: current, groups: shown} = selectionSource.current;
+      const target = shown[value.group];
+      if (!current || !target) return {selection: null};
+      const head = target.cutIndices[0];
+      const boundaries = new Set([head, target.cutIndices[target.cutIndices.length - 1] + 1]);
+      // 前の編集範囲を解放するとグループ番号が変わることがある。カット位置から選び直す。
+      const group = telopGroupsOf(current, boundaries).findIndex(g => g.cutIndices.includes(head));
+      return {selection: {kind: 'telop', group}, boundaries};
+    });
+  }, []);
   const groupOfCut = useMemo(() => {
     const m = new Map<number, number>();
     groups.forEach((g, gi) => g.cutIndices.forEach((ci) => m.set(ci, gi)));
@@ -125,6 +145,15 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   const cutsByJob = s.files.cuts.byJob;
   const narrByJob = s.files.narration.byJob;
   const pushSnap = history.push;
+  /** AI 開始時点の状態を閉じ込め、受付後に履歴へ 1 手だけ積む。完了イベントの順序に依存しない。 */
+  const captureAiJob = useCallback(() => {
+    const before = snapRef.current();
+    return (jobId: string) => {
+      if (takenJobs.current.has(jobId)) return;
+      takenJobs.current.add(jobId);
+      if (before.cuts || before.narration) pushSnap(before);
+    };
+  }, [pushSnap]);
   useEffect(() => {
     const prev = lastSeen.current;
     lastSeen.current = {cuts, narration};
@@ -133,8 +162,8 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     takenJobs.current.add(job);
     if (prev.cuts || prev.narration) pushSnap(prev);
   }, [cuts, narration, cutsByJob, narrByJob, pushSnap]);
-  const undo = useCallback(() => restore(history.undo(snapRef.current())), [history, restore]);
-  const redo = useCallback(() => restore(history.redo(snapRef.current())), [history, restore]);
+  const undo = useCallback(() => { if (!aiUpdating) restore(history.undo(snapRef.current())); }, [aiUpdating, history, restore]);
+  const redo = useCallback(() => { if (!aiUpdating) restore(history.redo(snapRef.current())); }, [aiUpdating, history, restore]);
 
   // ---- カットの操作 ----
   const patchCut = useCallback(
@@ -257,6 +286,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
       if (!g) return;
       const idx = new Set(g.cutIndices);
       commitCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) ? (text === '' ? {...c, main: undefined} : {...c, main: {...(c.main ?? {}), text}}) : c))});
+      if (text === '') setSelection(null); // 明示的に外したときは次のテロップを選ばない。
     },
     [cuts, groups, commitCuts],
   );
@@ -284,6 +314,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
           if (retts) {
             (n as {needsTts?: boolean}).needsTts = true;
             delete (n as {durSec?: number}).durSec;
+            delete n.trimSec;
           }
           return n;
         }),
@@ -358,6 +389,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
         segments: narration.segments.map((sg) => {
           const n: NarrationSegment = {...sg, needsTts: true} as NarrationSegment;
           delete (n as {durSec?: number}).durSec;
+          delete n.trimSec;
           return n;
         }),
       });
@@ -482,6 +514,9 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
     narrIssues,
     sfxIssues,
     history,
+    canUndo: history.canUndo && !aiUpdating,
+    canRedo: history.canRedo && !aiUpdating,
+    captureAiJob,
     pushHistory,
     undo,
     redo,

@@ -13,6 +13,8 @@ const entry = process.platform === 'win32' ? path.join(temp, '@openai', 'codex',
 fs.mkdirSync(path.dirname(entry), {recursive: true});
 fs.writeFileSync(entry, `#!/usr/bin/env node
 const args = process.argv.slice(2);
+const fs = require('fs');
+const path = require('path');
 if (args[0] === 'login' && args[1] === 'status') { console.log('Logged in'); process.exit(0); }
 if (args[0] === 'exec') {
   let input = '';
@@ -21,6 +23,15 @@ if (args[0] === 'exec') {
     if (!args.includes('read-only') || !args.includes('future-model') || !input.includes('JSON')) process.exit(2);
     console.log(JSON.stringify({type: 'thread.started'}));
     console.log(JSON.stringify({type: 'turn.started'}));
+    if (input.includes('CAPACITY')) {
+      const marker = path.join(process.cwd(), '.capacity-attempts');
+      const attempts = fs.existsSync(marker) ? Number(fs.readFileSync(marker, 'utf8')) : 0;
+      fs.writeFileSync(marker, String(attempts + 1));
+      if (attempts === 0) {
+        console.log(JSON.stringify({type: 'turn.failed', error: {message: 'Selected model is at capacity. Please try a different model.'}}));
+        process.exit(1);
+      }
+    }
     if (input.includes('FAIL')) {
       console.log(JSON.stringify({type: 'turn.failed', error: {message: 'model output limit reached'}}));
       process.exit(1);
@@ -74,4 +85,20 @@ it('Codex の失敗イベントの理由をエラーに含める', async () => {
     cwd: temp, prompt: 'Return JSON. FAIL', model: 'future-model',
     schema: {type: 'object', properties: {ok: {type: 'boolean'}}, required: ['ok'], additionalProperties: false},
   })).rejects.toThrow('model output limit reached');
+});
+
+it('モデルの容量不足だけを同じモデルで再試行する', async () => {
+  process.env.REEL_STUDIO_CODEX_BIN = bin;
+  process.env.REEL_STUDIO_AGENT_PROVIDER = 'codex';
+  process.env.REEL_STUDIO_HOME = temp;
+  resetSettings();
+  const logs: string[] = [];
+  const result = await runAgent<{ok: boolean}>({
+    cwd: temp, prompt: 'Return JSON. CAPACITY', model: 'future-model',
+    schema: {type: 'object', properties: {ok: {type: 'boolean'}}, required: ['ok'], additionalProperties: false},
+    onLine: (line) => logs.push(line),
+  });
+  expect(result.data).toEqual({ok: true});
+  expect(fs.readFileSync(path.join(temp, '.capacity-attempts'), 'utf8')).toBe('2');
+  expect(logs.some((line) => line.includes('再試行'))).toBe(true);
 });
