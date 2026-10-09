@@ -7,7 +7,7 @@
 // 秒 ⇄ px や cuts.json の書き換えは components/track.ts、段の配置は editor/tracks.ts（どちらも純粋・テストあり）。
 import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
 import type {Clip, Cut, Narration, NarrationSegment, ReelData} from '@shared/schema';
-import {cutDurationSec, type TelopGroup} from '@shared/timeline';
+import {cutDurationSec, cutRanges, type TelopGroup} from '@shared/timeline';
 import type {SfxLibrary} from '@shared/sfx';
 import {narrationDisplayName} from '@shared/narration';
 import {useDragReorder} from '../components/useDragReorder';
@@ -414,9 +414,11 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       onSelect({kind: 'cut', index: i});
-    } else if (e.key === 's' || e.key === 'S') {
+    } else if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      onSplitCut(i);
+      e.stopPropagation();
+      const target = data.cuts.length ? cutRanges(data).findIndex(r => currentFrame >= r.from && currentFrame < r.from + r.dur) : -1;
+      if (target >= 0) onSplitCut(target);
     }
   };
 

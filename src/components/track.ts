@@ -206,15 +206,32 @@ export const replaceCutSource = (data: ReelData, index: number, clip: Clip): Ree
  */
 export const splitCutAt = (data: ReelData, index: number, atSec: number, fps: number): ReelData | null => {
   const c = data.cuts[index];
-  if (!c) return null;
-  const at = snapSec(atSec, fps);
-  if (at - c.inSec < MIN_CUT_SEC || c.outSec - at < MIN_CUT_SEC) return null;
+  if (!c || !Number.isFinite(atSec)) return null;
+  const rate = c.playbackRate ?? 1;
+  // 素材の秒ではなく、このカットの先頭からの再生フレームに合わせる（倍速・半端な IN に対応）。
+  const offset = Math.round(((atSec - c.inSec) / rate) * fps);
+  const at = round3(c.inSec + (offset / fps) * rate);
+  if ((at - c.inSec) / rate < MIN_CUT_SEC - 1e-6 || (c.outSec - at) / rate < MIN_CUT_SEC - 1e-6) return null;
   const second: Cut = {...c, id: newCutId(data.cuts), inSec: at};
   delete (second as {badge?: string}).badge; // バッジはグループ先頭にだけ出すもの
   const first: Cut = {...c, outSec: at};
+  // 字幕は素材内の絶対秒。各半分と重なる字幕だけ残し、境界をまたぐ字幕はそこで切る。
+  if (c.subs) {
+    const within = (start: number, end: number) => c.subs!
+      .filter(s => s.startSec < end && s.endSec > start)
+      .map(s => ({...s, startSec: Math.max(start, s.startSec), endSec: Math.min(end, s.endSec)}));
+    first.subs = within(c.inSec, at);
+    second.subs = within(at, c.outSec);
+  }
   const cuts = [...data.cuts];
   cuts.splice(index, 1, first, second);
-  return {...data, cuts};
+  const slot = c.id ? data.meta?.slots?.find(s => s.cutId === c.id) : undefined;
+  return {...data, cuts, ...(data.meta ? {meta: {...data.meta,
+    ...(slot ? {slots: [...data.meta.slots!, {...slot, cutId: second.id!}]} : {}),
+    ...(data.meta.telopGroups ? {telopGroups: data.meta.telopGroups.map(g => ({...g,
+      cutIds: g.cutIds.flatMap(id => id === c.id ? [id, second.id!] : [id]),
+    }))} : {}),
+  }} : {})};
 };
 
 /** タイムライン上の秒（そのカットの頭からの実時間）→ 素材内の秒 */

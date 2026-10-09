@@ -231,17 +231,17 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
   );
   /** 再生ヘッドの位置で 2 つに割る。割れなければ理由 */
   const splitCut = useCallback(
-    (i: number): string | null => {
+    (i: number, atFrame = frame): string | null => {
       if (!cuts) return '構成がありません';
       const r = ranges[i];
       const c = cuts.cuts[i];
       if (!r || !c) return 'カットが見つかりません';
-      const offset = frame / cuts.fps - r.startSec;
+      const offset = (atFrame - r.from) / cuts.fps;
       if (offset < 0 || offset > r.durSec) return '再生ヘッド（赤い線）をこのカットの中に置いてから分割してください';
       const next = splitCutAt(cuts, i, sourceSecAt(c, offset), cuts.fps);
       if (!next) return '端に寄りすぎています（両側に 0.2 秒以上残る位置で分割してください）';
       commitCuts(next);
-      setSelection({kind: 'cut', index: i});
+      setSelection({kind: 'cut', index: i + 1});
       return null;
     },
     [cuts, ranges, frame, commitCuts],

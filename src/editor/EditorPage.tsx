@@ -146,6 +146,19 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const toggle = useCallback(() => preview.current?.toggle(), []);
   const step = useCallback((n: number) => seek((preview.current?.getCurrentFrame() ?? frame) + n), [seek, frame]);
 
+  const splitClip = (i: number) => {
+    const atFrame = preview.current?.getCurrentFrame() ?? frame;
+    preview.current?.pause();
+    const err = m.splitCut(i, atFrame);
+    if (err) s.toast(err, 'error');
+    else {
+      setFrame(atFrame);
+      setMultiSelection([]);
+      setFocusTelop(false);
+      s.toast('クリップを分割しました', 'ok');
+    }
+  };
+
   // 再生・シーク・コマ送りで位置が変わったら、映像クリップの選択をその位置へ追従させる。
   const selectionFrame = useRef(frame);
   useEffect(() => {
@@ -327,8 +340,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       handler: () => {
         const i = selection?.kind === 'cut' ? selection.index : m.currentCut;
         if (i < 0) return;
-        const err = m.splitCut(i);
-        if (err) s.toast(err, 'error');
+        splitClip(i);
       },
     },
     {key: 'Escape', handler: () => { setSelection(null); setMultiSelection([]); }},
@@ -631,7 +643,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
               <span className="hint">{selectionLabel(sel)} を編集中</span>
             </div>
           )}
-          {sel?.kind === 'cut' && <CutInspector m={m} index={sel.index} onSeekCut={seekCut} focusTelop={focusTelop} />}
+          {sel?.kind === 'cut' && <CutInspector m={m} index={sel.index} onSeekCut={seekCut} focusTelop={focusTelop} onSplit={splitClip} />}
           {sel?.kind === 'telop' && <TelopInspector m={m} group={sel.group} onSeekCut={seekCut} />}
           {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} onSaveToLibrary={() => setLibraryOpen(true)} ttsBlockedBy={ttsBlockedBy} />}
           {sel?.kind === 'sfx' && <SfxInspector m={m} index={sel.index} onSeekCut={seekCut} lib={lib} onPlay={playSfx} />}
@@ -673,6 +685,9 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       <div className="ed-timeline" data-tour="timeline">
         <div className="tl-toolbar">
           <div className="tl-toolbar-side">
+          <button className="small" onClick={() => splitClip(m.currentCut)} disabled={!cuts || m.currentCut < 0} title="再生バーの位置でクリップを前半・後半に分けます（S）。両側に0.2秒以上残してください">
+            クリップを分割
+          </button>
           <span className="hint">
             {cuts ? `${cuts.cuts.length} カット / ${m.total.toFixed(2)}s` : 'まだカットがありません'}
             {narration ? ` / ナレーション ${narration.segments.length}` : ''}
@@ -738,10 +753,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           onCutsChange={m.setCuts}
           onNarrationChange={m.setNarr}
           onRemoveCut={(i) => !m.removeCut(i) && s.toast('最後の 1 カットは消せません', 'error')}
-          onSplitCut={(i) => {
-            const err = m.splitCut(i);
-            if (err) s.toast(err, 'error');
-          }}
+          onSplitCut={splitClip}
           onAddNarration={(at) => {
             const idx = m.addSeg(at);
             if (idx === null) s.toast('brief が無いのでナレーションの設定が作れません', 'error');

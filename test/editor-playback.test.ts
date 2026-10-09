@@ -8,12 +8,13 @@ import {EditorPage} from '../src/editor/EditorPage';
 const player = vi.hoisted(() => ({
   onFrame: (_frame: number) => {},
   onPlayState: (_playing: boolean) => {},
+  split: vi.fn((_i: number, _frame?: number): string | null => null),
   pause: vi.fn(),
   seekTo: vi.fn(),
 }));
 
 vi.mock('../src/api', () => ({api: {get: async () => ({data: {version: 1, sounds: []}})}}));
-vi.mock('../src/state/store', () => ({useStudio: () => ({active: 'test', mediaBase: null, jobs: [], files: {cuts: {dirty: false}, narration: {dirty: false}, catalog: {dirty: false}}, supportsJob: () => true})}));
+vi.mock('../src/state/store', () => ({useStudio: () => ({active: 'test', mediaBase: null, jobs: [], files: {cuts: {dirty: false}, narration: {dirty: false}, catalog: {dirty: false}}, supportsJob: () => true, toast: vi.fn()})}));
 vi.mock('../src/components/Preview', async () => {
   const {forwardRef, useImperativeHandle} = await import('react');
   return {
@@ -37,6 +38,7 @@ vi.mock('../src/editor/useEditorModel', async () => {
       return {
         cuts, narration: null, catalog: null, brief: null, selection, setSelection, frame, setFrame,
         fps: 30, total: 12, ranges, currentCut: ranges.findIndex((r) => frame >= r.from && frame < r.from + r.dur),
+        splitCut: player.split,
         groups: [], groupOfCut: new Map(), history: {canUndo: false, canRedo: false},
         clipOf: () => undefined, slotOf: () => undefined, estimateSec: () => 1,
       };
@@ -118,6 +120,15 @@ describe('editor playback selection', () => {
       await act(async () => container.querySelector('.tl-scroll')!.dispatchEvent(pointer('pointermove', 405)));
       expect(selectedIndex()).toBe(4);
       await act(async () => container.querySelector('.tl-scroll')!.dispatchEvent(pointer('pointerup', 405)));
+
+      // カードにフォーカスが残っていても再生バーのクリップを1度だけ分割し、Ctrl+Sは分割しない。
+      player.split.mockClear();
+      const focused = container.querySelector('[data-dnd-index="7"]')!;
+      await act(async () => focused.dispatchEvent(new KeyboardEvent('keydown', {key: 's', bubbles: true})));
+      expect(player.split).toHaveBeenCalledTimes(1);
+      expect(player.split.mock.calls[0][0]).toBe(4);
+      await act(async () => focused.dispatchEvent(new KeyboardEvent('keydown', {key: 's', ctrlKey: true, bubbles: true})));
+      expect(player.split).toHaveBeenCalledTimes(1);
     } finally {
       await act(async () => root.unmount());
       container.remove();

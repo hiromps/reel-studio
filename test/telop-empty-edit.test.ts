@@ -22,7 +22,7 @@ function Harness() {
   mocked.store = {active: 'test', supportsJob: () => true, mediaBase: null, config: {fonts: []}, jobs: [], editorHistory: history, toast: vi.fn(), files: {cuts: {data: cuts, dirty: true, loading: false}, narration: {data: narration, dirty: true, loading: false}, catalog: {data: null}, brief: {data: null}}, setFile: (name: string, value: any) => name === 'cuts' ? setCuts(value) : setNarration(value)};
   model = useEditorModel(null);
   const sel = model.selection;
-  return sel?.kind === 'telop' ? React.createElement(TelopInspector, {m: model, group: sel.group, onSeekCut: vi.fn()}) : sel?.kind === 'cut' ? React.createElement(CutInspector, {m: model, index: sel.index, onSeekCut: vi.fn()}) : React.createElement(ReelInspector, {m: model});
+  return sel?.kind === 'telop' ? React.createElement(TelopInspector, {m: model, group: sel.group, onSeekCut: vi.fn()}) : sel?.kind === 'cut' ? React.createElement(CutInspector, {m: model, index: sel.index, onSeekCut: vi.fn(), onSplit: i => { model.splitCut(i); }}) : React.createElement(ReelInspector, {m: model});
 }
 beforeEach(() => {
   vi.clearAllMocks();initial = {fps: 30, cuts: [cut(1, '最初'), cut(2, '本編'), cut(3, '最後')]};initialNarration = null;
@@ -87,4 +87,25 @@ it('ロック中の尺合わせボタンは現在の順番と本数を保持し�
   expect(model.cuts!.cuts.map(c => c.id)).toEqual(['c3', 'c2', 'c1']);
   expect(model.cuts!.cuts.map(c => c.src)).toEqual(initial.cuts.map(c => c.src));expect(model.cuts!.meta?.orderLocked).toBe(true);
   expect(history.push).toHaveBeenCalledOnce();
+});
+
+it('1つのクリップを分割して後半を選び、1手の取り消し・やり直しで復元する', () => {
+  initial = {fps: 30, cuts: [cut(1, '続くテロップ')]};
+  render();
+  act(() => {model.setSelection({kind: 'cut', index: 0}); model.setFrame(15);});
+  const split = Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === '再生位置で分割')!;
+  act(() => split.click());
+  expect(model.cuts!.cuts).toHaveLength(2);
+  expect(model.cuts!.cuts[0]).toMatchObject({inSec: 0, outSec: 0.5});
+  expect(model.cuts!.cuts[1]).toMatchObject({inSec: 0.5, outSec: 1, main: initial.cuts[0].main});
+  expect(model.selection).toEqual({kind: 'cut', index: 1});
+  expect(history.push).toHaveBeenCalledTimes(1);
+  expect(history.push).toHaveBeenCalledWith({cuts: initial, narration: null});
+  const after = model.cuts;
+  history.undo.mockReturnValue({cuts: initial, narration: null});
+  act(() => model.undo());
+  expect(model.cuts).toBe(initial);
+  history.redo.mockReturnValue({cuts: after, narration: null});
+  act(() => model.redo());
+  expect(model.cuts).toBe(after);
 });

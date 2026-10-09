@@ -141,8 +141,8 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
 };
 
 // ───────────────────────── カット ─────────────────────────
-export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolean}> = ({m, index, onSeekCut, focusTelop}) => {
-  const {cuts, catalog, s, clipOf, slotOf, groupOfCut, patchCut, patchSlot, moveCut, duplicateCut, removeCut, splitCut, replaceClip, pushHistory, setCuts, subsFrom} = m;
+export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolean; onSplit: (i: number) => void}> = ({m, index, onSeekCut, focusTelop, onSplit}) => {
+  const {cuts, catalog, s, clipOf, slotOf, groupOfCut, patchCut, patchSlot, moveCut, duplicateCut, removeCut, replaceClip, pushHistory, setCuts, subsFrom} = m;
   const telopRef = useRef<HTMLInputElement>(null);
   const quickVideoRef = useRef<HTMLVideoElement>(null);
   const [quickCandidate, setQuickCandidate] = useState<{index: number; src: string; range: TrimRange} | null>(null);
@@ -507,10 +507,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
           </button>
           <button
             className="small"
-            onClick={() => {
-              const err = splitCut(index);
-              if (err) s.toast(err, 'error');
-            }}
+            onClick={() => onSplit(index)}
             title="再生ヘッド（赤い線）の位置で 2 つに割る（S）"
           >
             再生位置で分割

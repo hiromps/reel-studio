@@ -3,6 +3,7 @@ import {describe, expect, it} from 'vitest';
 import type {Clip, ReelData} from '@shared/schema';
 import {ReelDataSchema} from '@shared/schema';
 import {stripFps, stripStepSec} from '@shared/strip';
+import {calcTotalFrames, cutRanges} from '@shared/timeline';
 import {
   PX_PER_SEC_MAX,
   PX_PER_SEC_MIN,
@@ -283,6 +284,53 @@ describe('cuts.json の書き換え', () => {
     expect(splitCutAt(d, 0, 1.05, FPS)).toBeNull();
     expect(splitCutAt(d, 0, 2.95, FPS)).toBeNull();
     expect(splitCutAt(d, 5, 2, FPS)).toBeNull();
+  });
+
+  it('倍速と半端な IN でも再生バーのフレームで分割し、後続の開始位置を保つ', () => {
+    const d: ReelData = {fps: 30, cuts: [
+      {id: 'c01', src: 'a', inSec: 0.017, outSec: 3.23, playbackRate: 1.5, crop: {zoom: 1.2, x: 0.4, y: 0.6}},
+      {id: 'c02', src: 'b', inSec: 0, outSec: 1},
+    ]};
+    const r = splitCutAt(d, 0, sourceSecAt(d.cuts[0], 17 / 30), 30)!;
+    expect(r.cuts[0].outSec).toBe(0.867);
+    expect(r.cuts[1].inSec).toBe(0.867);
+    expect(cutRanges(r)[1].from).toBe(17);
+    expect(cutRanges(r)[2].from).toBe(cutRanges(d)[1].from);
+    expect(calcTotalFrames(r)).toBe(calcTotalFrames(d));
+    expect(r.cuts[1].playbackRate).toBe(1.5);
+    expect(r.cuts[1].crop).toEqual(d.cuts[0].crop);
+  });
+
+  it('字幕を前半・後半の範囲に切り分け、元の字幕は変更しない', () => {
+    const d: ReelData = {fps: FPS, cuts: [{id: 'c01', src: 'a', inSec: 1, outSec: 4, subs: [
+      {text: '前', startSec: 1, endSec: 1.5},
+      {text: 'またぐ', startSec: 1.5, endSec: 3},
+      {text: '後', startSec: 3, endSec: 4},
+    ]}]};
+    const r = splitCutAt(d, 0, 2, FPS)!;
+    expect(r.cuts[0].subs).toEqual([{text: '前', startSec: 1, endSec: 1.5}, {text: 'またぐ', startSec: 1.5, endSec: 2}]);
+    expect(r.cuts[1].subs).toEqual([{text: 'またぐ', startSec: 2, endSec: 3}, {text: '後', startSec: 3, endSec: 4}]);
+    expect(d.cuts[0].subs![1].endSec).toBe(3);
+  });
+
+  it('後半にも役割・固定状態・テロップグループを引き継ぐ', () => {
+    const d: ReelData = {fps: FPS, cuts: [{id: 'c01', src: 'a', inSec: 1, outSec: 3}], meta: {
+      orderLocked: true,
+      slots: [{cutId: 'c01', clipId: '01', segment: 'proof', role: 'proof', locked: true, textStatus: 'final', qc: [], telopGroupId: 'g01'}],
+      telopGroups: [{id: 'g01', cutIds: ['c01'], intent: 'proof', placeholder: '', minSec: 1}],
+    }};
+    const r = splitCutAt(d, 0, 2, FPS)!;
+    expect(r.meta!.slots![1]).toEqual({...d.meta!.slots![0], cutId: 'c02'});
+    expect(r.meta!.telopGroups![0].cutIds).toEqual(['c01', 'c02']);
+    expect(r.meta!.orderLocked).toBe(true);
+    expect(d.meta!.telopGroups![0].cutIds).toEqual(['c01']);
+  });
+
+  it('倍速でも両側に再生時間0.2秒を残し、不正な分割位置は拒否する', () => {
+    const d: ReelData = {fps: 30, cuts: [{src: 'a', inSec: 0, outSec: 3, playbackRate: 2}]};
+    expect(splitCutAt(d, 0, 0.2, 30)).toBeNull();
+    expect(splitCutAt(d, 0, 0.4, 30)).not.toBeNull();
+    expect(splitCutAt(d, 0, NaN, 30)).toBeNull();
   });
 
   it('タイムライン上の経過秒 → 素材内の秒（倍速を掛ける）', () => {
