@@ -128,18 +128,49 @@ export const codexArgs = (opt: AgentOptions, schemaPath: string): string[] => [
   '-',
 ];
 
-/** Codex の response_format は object の全 properties を required に含める必要がある。 */
+const schemaObject = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+const allowsNull = (value: unknown): boolean => {
+  const schema = schemaObject(value);
+  return schema.type === 'null' || (Array.isArray(schema.type) && schema.type.includes('null'))
+    || (Array.isArray(schema.anyOf) && schema.anyOf.some(allowsNull));
+};
+
+/** 全項目を required にするが、元の省略可能な項目には null（変更なし）を許す。 */
 export const codexOutputSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
   const visit = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(visit);
     if (!value || typeof value !== 'object') return value;
     const object = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, visit(item)]));
     if (object.type === 'object' && object.properties && typeof object.properties === 'object' && !Array.isArray(object.properties)) {
-      object.required = Object.keys(object.properties);
+      const required = new Set(Array.isArray(object.required) ? object.required : []);
+      const properties = Object.fromEntries(Object.entries(object.properties).map(([key, item]) => [
+        key, required.has(key) || allowsNull(item) ? item : {anyOf: [item, {type: 'null'}]},
+      ]));
+      object.properties = properties;
+      object.required = Object.keys(properties);
     }
     return object;
   };
   return visit(schema) as Record<string, unknown>;
+};
+
+/** Codex 用に追加した optional=null を省略へ戻す。必須項目・明示的な nullable は維持する。 */
+export const normalizeCodexOutput = (data: unknown, source: Record<string, unknown>): unknown => {
+  if (Array.isArray(data)) return data.map(item => normalizeCodexOutput(item, schemaObject(source.items)));
+  if (!data || typeof data !== 'object') return data;
+  if (Array.isArray(source.anyOf)) {
+    const branch = source.anyOf.map(schemaObject).find(s => s.type === 'object');
+    if (branch) return normalizeCodexOutput(data, branch);
+  }
+  const properties = schemaObject(source.properties);
+  const required = new Set(Array.isArray(source.required) ? source.required : []);
+  return Object.fromEntries(Object.entries(data).flatMap(([key, value]) => {
+    const schema = schemaObject(properties[key]);
+    if (value === null && key in properties && !required.has(key) && !allowsNull(schema)) return [];
+    return [[key, normalizeCodexOutput(value, schema)]];
+  }));
 };
 
 export async function runCodex<T = unknown>(opt: AgentOptions): Promise<AgentRun<T>> {
@@ -179,7 +210,7 @@ export async function runCodex<T = unknown>(opt: AgentOptions): Promise<AgentRun
     if (result.code !== 0 || turnStatus === 'failed') throw new AgentError(`Codex の実行に失敗しました: ${detail}`, detail);
     if (!answer) throw new AgentError(`Codex が結果を返しませんでした: ${detail}`, detail);
     let data: T;
-    try { data = JSON.parse(answer) as T; } catch { throw new AgentError('Codex の結果が JSON ではありません', answer.slice(0, 1000)); }
+    try { data = normalizeCodexOutput(JSON.parse(answer), opt.schema) as T; } catch { throw new AgentError('Codex の結果が JSON ではありません', answer.slice(0, 1000)); }
     return {data, costUsd: 0, durationMs: result.durationMs, turns};
   } finally {
     if (heartbeat) clearInterval(heartbeat);

@@ -35,6 +35,8 @@ const zoomPatch = applyPatch(readCuts(dir), null, {clips: []}, {summary: 'ズー
 ]}, {maxCutSec: 3});
 if (zoomPatch.applied.length !== 2 || zoomPatch.unapplied.length) throw new Error('AIズーム差分の適用に失敗しました。');
 writeCuts(dir, zoomPatch.cuts);
+const emptyTelopPatch = applyPatch(readCuts(dir), null, {clips: []}, {summary: '空のAI差分を保護', telops: [{cutId: 'c1', text: ''}]}, {maxCutSec: 3});
+if (emptyTelopPatch.cutsTouched || emptyTelopPatch.applied.length || emptyTelopPatch.unapplied.length !== 1 || emptyTelopPatch.cuts.cuts[0].main?.text !== 'アプリの書き出し確認') throw new Error('AIの空テロップから既存文言を保護できません。');
 const render = await renderProject({projectDir: dir, allowErrors: true, force: true, retries: 1, thumbnail: false, concurrency: 1, onLine: console.log});
 if (!render.ok || render.frames !== 30) throw new Error('映像の書き出し検証に失敗しました。');
 fs.mkdirSync(path.join(dir, 'narration'), {recursive: true});

@@ -44,6 +44,37 @@ describe('addedCutRange', () => {
 });
 
 describe('applyPatch', () => {
+  it.each(['', ' \n\t　', null, undefined])('AIの空テロップ %j がグループ全体を消さず、別のズーム差分は適用する', text => {
+    const cuts = reel([cut('c01', 'uploads/a.mp4', '旧'), cut('c02', 'uploads/b.mp4', '旧')]);
+    cuts.cuts[0].main = {...cuts.cuts[0].main!, orientation: 'horizontal'};
+    const r = applyPatch(cuts, null, catalog, {summary: '', telops: [{group: 'g01', text: text as string}], cuts: [{cutId: 'c01', zoom: {mode: 'push'}}]}, {maxCutSec: 3});
+    expect(r.cuts.cuts.map(c => c.main)).toEqual(cuts.cuts.map(c => c.main));
+    expect(r.applied).toHaveLength(1); expect(r.unapplied[0]).toContain('既存テロップを維持');
+    expect(r.cuts.cuts[0].zoom?.mode).toBe('push');
+  });
+
+  it('空の差分と正しい文言の差分が混在しても、対応するカットだけを変更する', () => {
+    const cuts = reel([cut('c01', 'uploads/a.mp4', '旧'), cut('c02', 'uploads/b.mp4', '旧')]);
+    const r = applyPatch(cuts, null, catalog, {summary: '', telops: [{group: 'g01', text: ''}, {group: 'g01', text: '新'}]}, {maxCutSec: 3});
+    expect(r.cuts.cuts.map(c => c.main?.text)).toEqual(['旧', '新']);
+    expect(r.applied).toHaveLength(1); expect(r.unapplied).toHaveLength(1);
+  });
+
+  it('cutIdも返されたテロップ差分をグループ全体へ広げない', () => {
+    const cuts = reel([cut('c01', 'uploads/a.mp4', '旧'), cut('c02', 'uploads/b.mp4', '旧')]);
+    const r = applyPatch(cuts, null, catalog, {summary: '', telops: [{group: 'g01', cutId: 'c02', text: '新'}]}, {maxCutSec: 3});
+    expect(r.cuts.cuts.map(c => c.main?.text)).toEqual(['旧', '新']);
+    expect(r.applied).toEqual(['テロップ c02「旧」→「新」']);
+  });
+
+  it('同じ文言だけのテロップ差分は無変更とするが、向きの変更は適用する', () => {
+    const same = apply({telops: [{cutId: 'c01', text: 'フック'}]});
+    expect(same.cutsTouched).toBe(false); expect(same.applied).toEqual([]);
+    const orientation = apply({telops: [{cutId: 'c01', text: 'フック', orientation: 'horizontal'}]});
+    expect(orientation.cuts.cuts[0].main).toMatchObject({text: 'フック', orientation: 'horizontal'});
+    expect(orientation.applied).toHaveLength(1);
+  });
+
   it('ズームだけの差分を適用し、尺・音声・テロップ・他のカットを保つ', () => {
     const narr: Narration = {voice: 'v', segments: [{id: 'n01', at: 0, text: 'そのまま'}]};
     const before = JSON.stringify(base);

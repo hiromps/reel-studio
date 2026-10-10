@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {runAgent} from '../core/agent';
-import {codexOutputSchema} from '../core/codex';
+import {codexOutputSchema, normalizeCodexOutput} from '../core/codex';
 import {resetSettings} from '../core/settings';
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-codex-test-'));
@@ -36,7 +36,8 @@ if (args[0] === 'exec') {
       console.log(JSON.stringify({type: 'turn.failed', error: {message: 'model output limit reached'}}));
       process.exit(1);
     }
-    console.log(JSON.stringify({type: 'item.completed', item: {type: 'agent_message', text: '{"ok":true}'}}));
+    const answer = input.includes('OPTIONAL') ? {ok: true, telops: null, cuts: [{cutId: 'c01', inSec: null, zoom: {mode: 'push', scale_end: null}}]} : {ok: true};
+    console.log(JSON.stringify({type: 'item.completed', item: {type: 'agent_message', text: JSON.stringify(answer)}}));
     console.log(JSON.stringify({type: 'turn.completed', turn: {status: 'completed'}}));
   });
 } else process.exit(3);
@@ -60,7 +61,39 @@ it('Codex の構造化出力では入れ子の全項目を required にする', 
   const source = {type: 'object', properties: {cuts: {type: 'array', items: {type: 'object', properties: {clipId: {type: 'string'}, telop: {type: 'string'}}, required: ['clipId']}}}, required: ['cuts']};
   const schema = codexOutputSchema(source) as {properties: {cuts: {items: {required: string[]}}}};
   expect(schema.properties.cuts.items.required).toEqual(['clipId', 'telop']);
+  expect((schema as any).properties.cuts.items.properties.telop).toEqual({anyOf: [{type: 'string'}, {type: 'null'}]});
+  expect((schema as any).properties.cuts.items.properties.clipId).toEqual({type: 'string'});
   expect(source.properties.cuts.items.required).toEqual(['clipId']);
+});
+
+const optionalSchema = {type: 'object', required: ['ok'], additionalProperties: false, properties: {
+  ok: {type: 'boolean'},
+  telops: {type: 'array', items: {type: 'string'}},
+  cuts: {type: 'array', items: {type: 'object', required: ['cutId'], additionalProperties: false, properties: {
+    cutId: {type: 'string'}, inSec: {type: 'number'},
+    zoom: {anyOf: [{type: 'object', required: ['mode'], additionalProperties: false, properties: {mode: {type: 'string', enum: ['push', 'none']}, scale_end: {type: 'number'}}}, {type: 'null'}]},
+  }}},
+}};
+
+it('省略可能なenumや配列をnullにでき、必須項目はnull不可のままにする', () => {
+  const source = {type: 'object', required: ['text', 'nullable'], properties: {
+    text: {type: 'string'}, nullable: {type: ['string', 'null']},
+    orientation: {type: 'string', enum: ['horizontal', 'vertical']},
+  }};
+  const strict = codexOutputSchema(source) as any;
+  expect(strict.properties.orientation).toEqual({anyOf: [source.properties.orientation, {type: 'null'}]});
+  expect(normalizeCodexOutput({text: '維持', nullable: null, orientation: null}, source)).toEqual({text: '維持', nullable: null});
+  expect(normalizeCodexOutput({text: null, nullable: null}, source)).toEqual({text: null, nullable: null});
+  expect(normalizeCodexOutput({ok: true, telops: [], cuts: [{cutId: 'c01', inSec: 0, zoom: null}]}, optionalSchema)).toEqual({ok: true, telops: [], cuts: [{cutId: 'c01', inSec: 0, zoom: null}]});
+});
+
+it('Codexの実行結果で入れ子のoptional=nullを省略へ戻し、値を捏造しない', async () => {
+  process.env.REEL_STUDIO_CODEX_BIN = bin;
+  process.env.REEL_STUDIO_AGENT_PROVIDER = 'codex';
+  process.env.REEL_STUDIO_HOME = temp;
+  resetSettings();
+  const result = await runAgent({cwd: temp, prompt: 'Return JSON. OPTIONAL', model: 'future-model', schema: optionalSchema});
+  expect(result.data).toEqual({ok: true, cuts: [{cutId: 'c01', zoom: {mode: 'push'}}]});
 });
 
 it('Codex 接続先では Claude CLI を通さず、選択モデルで JSON Schema の結果を受け取る', async () => {

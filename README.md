@@ -1,6 +1,6 @@
 # Reel Studio
 
-一般利用者向けのWindows版は **`Reel-Studio-0.4.1-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
+一般利用者向けのWindows版は **`Reel-Studio-0.4.2-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
 
 ソースから使う場合は、ZIPを展開して「Reel Studio セットアップ.cmd」を実行してください。[開発用セットアップ](docs/setup.md)も用意しています。
 

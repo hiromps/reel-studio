@@ -1,6 +1,6 @@
 {
   "name": "reel-studio",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Reel Studio: GUI/CLI that turns raw food-shop footage into 9:16 short reels with telops, AI narration, and captions (Remotion + Claude Code + Fish Audio)",
   "license": "MIT",

@@ -1107,12 +1107,12 @@ const PATCH_SCHEMA = {
     summary: {type: 'string', description: '何をどう変えたかを 1〜3 行で。何も変えないときはその理由'},
     telops: {
       type: 'array',
-      description: 'テロップ文言の変更。group（gNN）か cutId のどちらかで指す',
+      description: '変更するテロップだけ。group（gNN）か cutId の片方で指す。空文字で既存テロップを消さない',
       items: {
         type: 'object',
         additionalProperties: false,
         required: ['text'],
-        properties: {group: {type: 'string'}, cutId: {type: 'string'}, text: {type: 'string'}, orientation: {type: 'string', enum: ['vertical', 'horizontal']}},
+        properties: {group: {type: 'string'}, cutId: {type: 'string'}, text: {type: 'string', minLength: 1}, orientation: {type: 'string', enum: ['vertical', 'horizontal']}},
       },
     },
     narration: {
@@ -1359,28 +1359,38 @@ export function applyPatch(
 
   const groupSeen = new Map<string, number>();
   const groupCounts = new Map<string, number>();
-  for (const t of patch.telops ?? []) if (t.group) groupCounts.set(t.group, (groupCounts.get(t.group) ?? 0) + 1);
+  for (const t of patch.telops ?? []) if (t.group && !t.cutId) groupCounts.set(t.group, (groupCounts.get(t.group) ?? 0) + 1);
   for (const t of patch.telops ?? []) {
-    const groupIds = t.group ? (telopGroupIds.get(t.group) ?? []) : [];
-    const occurrence = t.group ? (groupSeen.get(t.group) ?? 0) : 0;
-    if (t.group) groupSeen.set(t.group, occurrence + 1);
+    // cutId があればそのカットだけ。group も返されたときに他のカットまで巻き込まない。
+    const group = t.cutId ? undefined : t.group;
+    const groupIds = group ? (telopGroupIds.get(group) ?? []) : [];
+    const occurrence = group ? (groupSeen.get(group) ?? 0) : 0;
+    if (group) groupSeen.set(group, occurrence + 1);
+    // 構造化出力でも空白だけの値等はあり得る。テロップの削除は手動編集で行う。
+    if (typeof t.text !== 'string' || !t.text.trim()) {
+      unapplied.push(`telops: ${t.cutId ?? group ?? '(指定なし)'} は空の文言なので既存テロップを維持しました（削除は手動編集で行ってください）`);
+      continue;
+    }
     // 同じ group にカット数だけ文言が来たら、順番に 1 カットずつ書き換える。
-    const ids = t.group && groupCounts.get(t.group) === groupIds.length && groupIds.length > 1
+    const ids = group && groupCounts.get(group) === groupIds.length && groupIds.length > 1
       ? [groupIds[occurrence]]
-      : t.group ? groupIds : t.cutId ? [t.cutId] : [];
+      : group ? groupIds : t.cutId ? [t.cutId] : [];
     const idx = ids.map(indexOfCut).filter((i) => i >= 0);
     if (!idx.length) {
       unapplied.push(`telops: ${t.group ?? t.cutId ?? '(指定なし)'} が無い`);
       continue;
     }
     const before = next.cuts[idx[0]].main?.text ?? '';
+    let changed = false;
     for (const i of idx) {
       const c = next.cuts[i];
+      const previous = JSON.stringify(c.main);
       c.main = {...(c.main ?? {}), text: normalizeEllipsis(t.text)};
       if (t.orientation === 'horizontal') c.main.orientation = 'horizontal';
       else if (t.orientation === 'vertical') delete c.main.orientation;
+      changed ||= JSON.stringify(c.main) !== previous;
     }
-    applied.push(`テロップ ${t.group ?? idOf(t.cutId!)}「${before}」→「${t.text}」`);
+    if (changed) applied.push(`テロップ ${group ?? idOf(t.cutId!)}「${before}」→「${t.text}」`);
   }
 
   if (patch.theme && patch.theme !== (next.theme ?? opt.defaultTheme)) {
@@ -1532,6 +1542,7 @@ export async function aiEdit(
     ...clipLines,
     '',
     '指示に関係するところだけ直す。関係ないところは触らない。返すのは差分だけで、ファイルは自分で書き換えないこと。',
+    '変更しない省略可能な項目は省略する。出力形式上必須なら null を使う。空文字・0・既定値で穴埋めしない。テロップを変更しない場合 telops は空配列か null にする。telops には変更対象だけを入れ、既存文言を空文字や空白にしない。テロップの削除はこの差分では行えないので unapplied に書く。group と cutId は片方だけ指定し、もう片方は省略または null。',
     'テロップをナレーションに合わせる指示では、ナレーションは参照元として使い、ナレーションの文言・位置は変えない。両方の変更を明示された場合だけ両方直す。',
     'キーフレームズームは cuts の各項目の zoom オブジェクトで実際に適用する。提案を summary や unapplied に書くだけで終わらせない。例: {"cutId":"c01","zoom":{"mode":"push","scale_start":1,"scale_end":1.18,"ease":"in_out","anchor_x":0.5,"anchor_y":0.45}}。pull は開始倍率を終了倍率以上にする。倍率は1.0〜1.5、アンカーは0〜1。省略値は in_out、中央アンカー。',
     'ズームの最適化を頼まれたら、画・既存の動き・画角を見て必要なカットだけ設定する。標準は1.05〜1.20倍程度。すでに寄っている画や素材自体に十分な動きがある箇所には無理に足さない。不要な既存ズームは zoom: {"mode":"none"} で解除する。zoom の省略または null は既存設定の維持で、解除ではない。',
@@ -1574,6 +1585,10 @@ export async function aiEdit(
     signal: opt.signal,
   });
   opt.onProgress?.(want.length, want.length, '差分を適用しています');
+  // AI の待ち時間中に保存された編集を、開始時点の古い cuts / narration で上書きしない。
+  if (JSON.stringify(readCuts(projectDir)) !== JSON.stringify(cuts) || JSON.stringify(readNarration(projectDir)) !== JSON.stringify(narration)) {
+    throw new Error('AI修正中にカットまたはナレーションが保存されたため、AIの差分は反映していません。最新の編集を維持しました。同じ指示を再実行してください');
+  }
   const patch = run.data;
   const r = applyPatch(cuts, narration, catalog, patch, {maxCutSec, defaultTheme: spec.theme});
   const {applied, unapplied, needsTts} = r;
