@@ -63,6 +63,14 @@ export const UpdateCard: React.FC<{notify?: UpdateNotify; onNotify?: (n: UpdateN
   const behind = info?.behind ?? null;
   const hasUpdate = behind !== null && behind > 0;
 
+  if (info?.distribution === 'desktop') return (
+    <section className="card">
+      <h2>版と更新</h2>
+      <p>Reel Studio デスクトップ版 <b className="mono">{l?.version}</b></p>
+      <p className="hint">更新するときはアプリを終了し、新しいインストーラーを実行してください。保存済みの案件・素材・設定は引き継がれます。</p>
+    </section>
+  );
+
   return (
     <section className="card">
       <h2>版と更新</h2>

@@ -23,6 +23,7 @@ versionRouter.get('/', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     // notify＝ポップアップを出すか（設定）、restart＝押したあと自動で起動し直せるか
     const extra = {notify: loadSettings().update.notify, restart: restartState()};
+    if (process.env.REEL_STUDIO_DESKTOP === '1') return res.json({local: await localVersion(), latest: null, behind: null, commits: [], problem: null, checkedAt: new Date().toISOString(), distribution: 'desktop', ...extra});
     // ?check=0 なら GitHub に問い合わせず手元の版だけ返す（起動直後の表示用・再起動待ち）
     if (req.query.check === '0') return res.json({local: await localVersion(), latest: null, behind: null, commits: [], problem: null, checkedAt: new Date().toISOString(), ...extra});
     res.json({...(await checkUpdate({refresh: req.query.refresh === '1'})), ...extra});
@@ -33,6 +34,7 @@ versionRouter.get('/', async (req, res) => {
 
 /** git pull --ff-only。npm install はしない（動いているサーバーが node_modules を掴んでいるため） */
 versionRouter.post('/update', async (_req, res) => {
+  if (process.env.REEL_STUDIO_DESKTOP === '1') return res.status(409).json({error: 'デスクトップ版は新しいインストーラーで更新してください。'});
   try {
     res.json(await pullUpdate());
   } catch (e) {

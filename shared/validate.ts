@@ -5,6 +5,7 @@ import type {Catalog, Clip} from './schema/catalog';
 import type {Brief} from './schema/brief';
 import type {FormatSpec} from './schema/format-spec';
 import type {Persona} from './personas';
+import {zoomResolutionWarning} from './zoom';
 import {cutDurationSec, cutRanges, telopGroupsOf, totalSec as totalSecOf, calcTotalFrames} from './timeline';
 import {
   countChars,
@@ -168,6 +169,10 @@ export function validateCuts(input: unknown, ctx: ValidateContext = {}): Validat
     const rate = c.playbackRate;
     const clip = resolveClip(catalog, c.src, aliases);
     clipOfCut.push(clip);
+    if (clip) {
+      const message = zoomResolutionWarning(c.zoom, clip.probe, c.crop?.zoom);
+      if (message) W({code: 'ZOOM_RESOLUTION', cutId: id, cutIndex: i, message});
+    }
 
     if (c.inSec < 0 || c.inSec >= c.outSec) E({code: 'RANGE_INVALID', cutId: id, cutIndex: i, message: `inSec(${c.inSec}) >= outSec(${c.outSec})`});
     if (catalog) {

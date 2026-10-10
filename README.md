@@ -1,5 +1,9 @@
 # Reel Studio
 
+一般利用者向けのWindows版は **`Reel-Studio-0.4.0-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
+
+ソースから使う場合は、ZIPを展開して「Reel Studio セットアップ.cmd」を実行してください。[開発用セットアップ](docs/setup.md)も用意しています。
+
 **Reel Studio** is a local GUI + CLI that turns raw footage from a restaurant visit into a
 9:16 short reel (Instagram Reels / TikTok / YouTube Shorts): it catalogs the clips, plans the
 cut order from a set of proven formats, writes the telops and the narration script with
@@ -9,7 +13,7 @@ deliverable (video + caption) into an `outputs/` folder.
 Everything runs on your machine. Your API key and your "personas" (voice, tone, caption style)
 live in `~/.reel-studio/`, outside the repository.
 
-- **Requirements**: Node.js 20+, `ffmpeg` / `ffprobe` on PATH,
+- **Requirements**: Node.js 22+, `ffmpeg` / `ffprobe` with libsoxr (Windows setup installs missing tools),
   [Claude Code](https://claude.com/claude-code) installed and logged in (`claude` on PATH),
   optionally a [Fish Audio](https://fish.audio/) API key for narration audio, and optionally
   Python 3.10+ for automatic face mosaic ([deface](https://github.com/ORB-HD/deface); installed from the Settings tab).
@@ -18,7 +22,7 @@ live in `~/.reel-studio/`, outside the repository.
   ```bash
   git clone https://github.com/hiromps/reel-studio.git
   cd reel-studio
-  npm install
+  npm run setup
   npm start          # builds the GUI once, starts the server on :4310, opens the browser
   ```
 
@@ -53,7 +57,7 @@ API キーは要りません。ログイン済みの Claude Code がそのまま
 
 | もの | 用途 | 確認 |
 |---|---|---|
-| Node.js 20 以上 | 本体 | `node -v` |
+| Node.js 22 以上（新規導入は24 LTS） | 本体・npm | セットアップ.cmdで自動導入 |
 | ffmpeg / ffprobe（PATH に通っていること） | 素材の解析・サムネイル・プロキシ・合成 | `ffmpeg -version` |
 | Claude Code（`claude` が PATH にあり、ログイン済み） | タグ付け・テロップ・原稿・キャプション | `claude --version` |
 | Fish Audio の API キー（任意） | ナレーション音声の生成 | Settings の「接続テスト」 |
@@ -67,7 +71,7 @@ Windows 11 で開発・運用しています。macOS / Linux でも動く作り�
 ```bash
 git clone https://github.com/hiromps/reel-studio.git
 cd reel-studio
-npm install
+npm run setup
 npm start            # 画面をビルド → サーバー（:4310）起動 → ブラウザを開く
 ```
 

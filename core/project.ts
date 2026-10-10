@@ -26,6 +26,7 @@ import {
 import {readJsonFile, readJsonLoose, writeJsonAtomic, backupFile} from './json-io';
 import {exec} from './exec';
 import {isReferencePresent} from '../shared/reference';
+import {installBundledEngine} from './bundled-engine';
 
 // 案件の「形」は shared/project.ts が正（クラウド側からも読めるように fs 非依存で置いてある）。
 // ここからは今までどおり core/project.ts の名前で使えるよう再輸出する。
@@ -399,11 +400,15 @@ export const cloneProject = (srcRef: string, newSlug: string, opt: CloneOptions 
 };
 
 export const npmInstall = async (dir: string, onLine?: (l: string) => void): Promise<boolean> => {
+  if (process.env.REEL_STUDIO_BUNDLED_ENGINE) {
+    await installBundledEngine(dir, process.env.REEL_STUDIO_BUNDLED_ENGINE, onLine);
+    return true;
+  }
   const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
   const useCli = fs.existsSync(npmCli);
   const r = useCli
-    ? await exec(process.execPath, [npmCli, 'install', '--no-audit', '--no-fund'], {cwd: dir, onLine})
-    : await exec(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--no-audit', '--no-fund'], {cwd: dir, onLine});
+    ? await exec(process.execPath, [npmCli, fs.existsSync(path.join(dir, 'package-lock.json')) ? 'ci' : 'install', '--include=dev', '--no-audit', '--no-fund'], {cwd: dir, onLine})
+    : await exec(process.platform === 'win32' ? 'npm.cmd' : 'npm', [fs.existsSync(path.join(dir, 'package-lock.json')) ? 'ci' : 'install', '--include=dev', '--no-audit', '--no-fund'], {cwd: dir, onLine});
   return r.code === 0;
 };
 

@@ -155,7 +155,7 @@ const resolveAll = (s: Settings = loadSettings()): {paths: ResolvedPaths; source
     paths.dataRoot = path.resolve(s.dataRoot);
     sources.dataRoot = 'settings';
   } else {
-    paths.dataRoot = path.join(appRoot, 'data');
+    paths.dataRoot = process.env.REEL_STUDIO_DEFAULT_DATA_ROOT || path.join(appRoot, 'data');
     sources.dataRoot = 'default';
   }
   for (const k of PATH_KEYS) {

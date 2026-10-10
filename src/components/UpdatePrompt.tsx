@@ -10,6 +10,7 @@ import type {UpdateNotify} from '../../shared/schema/settings';
 import {shouldPromptUpdate, UPDATE_POLL_MS, UPDATE_SNOOZE_MS, type UpdateSnooze} from '../../shared/update';
 
 export type VersionInfo = {
+  distribution?: 'desktop';
   local: {version: string; isGit: boolean; commit: string | null; shortCommit: string | null; committedAt: string | null; branch: string | null; dirty: boolean; repo: string};
   latest: {commit: string; shortCommit: string; committedAt: string | null; url: string} | null;
   behind: number | null;

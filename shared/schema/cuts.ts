@@ -1,6 +1,8 @@
 // cuts.json のスキーマ。GourmetReel.tsx の型（ReelData / Cut / MainTelopDef …）を鏡写しにし、
 // Remotion が無視する拡張（Cut.id / meta.slots / meta.telopGroups / meta.aliases / meta.generated）を足す。
 import {z} from 'zod';
+import {ZoomSchema} from './zoom';
+export {ZoomSchema, type Zoom} from './zoom';
 
 export const OrientationSchema = z.enum(['vertical', 'horizontal']);
 export type Orientation = z.infer<typeof OrientationSchema>;
@@ -50,6 +52,7 @@ export const CutSchema = z
     outSec: z.number(),
     playbackRate: z.number().positive().optional(),
     crop: CropSchema.optional(), // 画面内の切り出し（省略時は中央・そのまま）
+    zoom: ZoomSchema.optional(), // カット内のキーフレームズーム（映像のみ）
     main: MainTelopSchema.optional(),
     price: PriceTelopSchema.optional(),
     badge: z.string().optional(),

@@ -1,15 +1,16 @@
 {
   "name": "gourmet-reel",
   "private": true,
+  "type": "module",
   "scripts": {
     "studio": "remotion studio",
     "render": "remotion render GourmetReel out/final.mp4 --codec=h264 --crf=20"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.245",
+    "@remotion/cli": "4.0.522",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "remotion": "4.0.245"
+    "remotion": "4.0.522"
   },
   "devDependencies": {
     "@types/react": "18.3.1",

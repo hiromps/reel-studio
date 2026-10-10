@@ -26,3 +26,8 @@ dist/
 
 # Vercel Functions 用のバンドル（scripts/build-api.mjs が生成）
 /api/_app.cjs
+
+# このPC専用の実行環境・セットアップ結果・動作確認動画
+/.runtime/
+/releases/
+/desktop-out/

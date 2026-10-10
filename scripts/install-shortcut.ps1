@@ -1,4 +1,4 @@
-# デスクトップに「Reel Studio」のショートカットを作る（再実行すると上書き）。
+﻿# デスクトップに「Reel Studio」のショートカットを作る（再実行すると上書き）。
 #   powershell -ExecutionPolicy Bypass -File scripts\install-shortcut.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\install-shortcut.ps1 -Dev        開発モード（HMR）で起動する版
 #   powershell -ExecutionPolicy Bypass -File scripts\install-shortcut.ps1 -Uninstall  削除

@@ -36,7 +36,7 @@
 //   reel table --project P
 //   reel aliases --project P
 //   reel sync --project P [--check]
-//   reel draft|render --project P [--out f] [--gl x] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries n] [--force] [--force-errors] [--no-sync] [--strict-proxy] [--props f]
+//   reel draft|render --project P [--out f] [--gl x] [--concurrency n] [--crf n] [--cache-size 256mb] [--retries n] [--force] [--force-errors] [--no-sync] [--strict-proxy] [--props f] [--zoom-preset viral_zoom] [--zoom-config zoom.json]
 //   reel still --project P (--cut N | --frame F) [--out f]
 //   reel thumbnail --project P [--out f.jpg|f.png]      （サムネイルだけ作り直す。本番レンダーでは自動で out/thumbnail.jpg を作る）
 //   reel trial --project P [--ids A,B] [--draft] [--no-deliver] [--gl x] [--force] [--force-errors]     （フックだけ差し替えた複数版。キャプションもパターンごとに納品）
@@ -963,6 +963,8 @@ async function main() {
           noSync: flags.sync === false,
           strictProxy: bool(flags, 'strict-proxy'),
           props: str(flags, 'props'),
+          zoomPreset: str(flags, 'zoom-preset'),
+          zoomConfig: str(flags, 'zoom-config'),
           onLine: (l) => err(l),
         });
         out(`OK ${r.outPath} (${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB, ${r.frames}f / 期待 ${r.expectedFrames}f, ${r.durationSec.toFixed(2)}s, ${r.attempts} 回目で成功)`);

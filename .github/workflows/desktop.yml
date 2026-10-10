@@ -1,0 +1,43 @@
+name: Windows desktop installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Use the private official Node ZIP (including LICENSE) for packaging.
+      - shell: pwsh
+        run: |
+          ./scripts/bootstrap-windows.ps1 -ToolsOnly -PrivateNode
+          $nodeDir = (Get-ChildItem .runtime/node -Directory | Select-Object -First 1).FullName
+          "$nodeDir" >> $env:GITHUB_PATH
+      - run: npm test
+      - run: npm run desktop:installer
+      - run: npm run desktop:verify
+      - shell: pwsh
+        run: |
+          Get-ChildItem desktop-out/*-Setup.exe | ForEach-Object {
+            $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$digest  $($_.Name)" | Set-Content -LiteralPath "$($_.FullName).sha256" -Encoding ascii
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Reel-Studio-Windows-x64
+          path: |
+            desktop-out/*-Setup.exe
+            desktop-out/*.sha256
+            desktop-out/verification.json
+          if-no-files-found: error

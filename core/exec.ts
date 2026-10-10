@@ -1,6 +1,7 @@
 // 子プロセス実行のラッパ。args 配列のみ（shell 不使用）、Windows では windowsHide、kill は taskkill /T /F でツリーごと落とす。
 import {spawn, type ChildProcess} from 'node:child_process';
 import path from 'node:path';
+import {runtimeEnv} from '../scripts/runtime.mjs';
 
 export type ExecResult = {code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; durationMs: number};
 
@@ -59,7 +60,7 @@ export const exec = (cmd: string, args: string[], opt: ExecOptions = {}): Promis
   const keep = opt.keepChars ?? 200_000;
   const child = spawn(cmd, args, {
     cwd: opt.cwd,
-    env: {...process.env, ...opt.env},
+    env: runtimeEnv({...process.env, ...opt.env}),
     windowsHide: true,
     stdio: [opt.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     detached: !isWindows,

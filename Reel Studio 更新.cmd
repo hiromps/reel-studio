@@ -18,6 +18,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
+for /d %%D in ("%REEL_DIR%.runtime\node\node-v*-win-x64") do if exist "%%~D\node.exe" set "PATH=%%~D;%PATH%"
 where node >nul 2>&1
 if errorlevel 1 (
   echo.

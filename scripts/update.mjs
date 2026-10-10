@@ -93,6 +93,9 @@ console.log('');
 if (depsChanged) npm(['install', '--no-audit', '--no-fund'], '依存パッケージを入れ直しています');
 else log('依存パッケージの変更はありません');
 
+const setup = spawnSync(process.execPath, [path.join(root, 'scripts', 'setup.mjs'), '--no-build'], {cwd: root, stdio: 'inherit', windowsHide: true});
+if (setup.status !== 0) throw new Error('実行環境の更新に失敗しました。Reel Studioを終了してセットアップを再実行してください。');
+
 // 画面は次の起動時にランチャーが必要に応じてビルドするが、ここで作っておけば起動が速い
 npm(['run', 'build'], '画面をビルドしています');
 

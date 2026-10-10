@@ -7,6 +7,8 @@ import {applyReadingHints, narrationDisplayName, ttsReadingHints} from '@shared/
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
+import {ZoomControls} from '../components/ZoomControls';
+import {applyZoomSettings} from '@shared/zoom';
 import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
 import {fallbackDuration, fixedTrimRange, trimZoomView, type TrimRange} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
@@ -118,6 +120,10 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
       </Section>
       <Section title="サムネイル" right={<span className="hint">本番レンダーで自動作成</span>}>
         <ThumbnailSection m={m} />
+      </Section>
+      <Section title="カットごとのズーム">
+        <button className="small" onClick={() => patchReel({cuts: applyZoomSettings(cuts, 'viral_zoom').cuts})}>viral_zoom を全カットに適用</button>
+        <button className="small" onClick={() => patchReel({cuts: cuts.cuts.map((c) => ({...c, zoom: undefined}))})}>全カットのズームを解除</button>
       </Section>
       <Section title="操作">
         <ul className="insp-keys">
@@ -344,6 +350,11 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
 
         {/* 画面内の切り出し（アスペクト比は変えない）。カットごとに決められる。
             素材側（Materials・選別モード）で決めた値は、構成を組んだときにここへ引き継がれている */}
+        <details className="insp-crop" open={!!c.zoom && c.zoom.mode !== 'none'}>
+          <summary>キーフレームズーム</summary>
+          <ZoomControls zoom={c.zoom} onStart={pushHistory} onChange={(zoom) => patchCut(index, {zoom}, {history: false})} />
+          <button className="small" onClick={() => m.patchReel({cuts: cuts.cuts.map((cut) => ({...cut, zoom: c.zoom ? {...c.zoom} : undefined}))})}>このズームを全カットに適用</button>
+        </details>
         <details className="insp-crop" open={!isDefaultCrop(c.crop)}>
           <summary>
             切り出し（拡大・位置）{isDefaultCrop(c.crop) ? '' : ` ${(c.crop?.zoom ?? 1).toFixed(2)}×`}

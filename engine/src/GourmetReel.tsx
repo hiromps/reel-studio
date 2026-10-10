@@ -1,5 +1,6 @@
 import React from 'react';
-import {AbsoluteFill, OffthreadVideo, Sequence, staticFile} from 'remotion';
+import {AbsoluteFill, OffthreadVideo, Sequence, staticFile, useCurrentFrame} from 'remotion';
+import {zoomStyle, type Zoom} from './zoom';
 import {BadgeTelop, MainTelop, PriceTelop, TateTelop, TelopFont} from './telops';
 import type {ThemeName} from './telops';
 
@@ -68,6 +69,7 @@ export type Cut = {
   outSec: number;
   playbackRate?: number; // 会話クリップでは使わない（声のピッチが変わる）
   crop?: Crop; // 画面内の切り出し（省略時は中央・そのまま）
+  zoom?: Zoom;
   main?: MainTelopDef;
   price?: PriceTelopDef;
   badge?: string; // ランキング・まとめ型用（例: "第3位", "①幸楽"）。カット頭にポップイン
@@ -95,6 +97,20 @@ export const cutFrames = (c: Cut, fps: number): number =>
 export const calcTotalFrames = (data: ReelData): number =>
   data.cuts.reduce((sum, c) => sum + cutFrames(c, data.fps), 0);
 
+// Sequence内のローカルフレームで計算。既存の静的cropの外側で映像全体をズームする。
+const CutVideo: React.FC<{cut: Cut; fps: number; frames: number}> = ({cut, fps, frames}) => {
+  const frame = useCurrentFrame();
+  const video = <OffthreadVideo src={staticFile(cut.src)} startFrom={Math.round(cut.inSec * fps)} playbackRate={cut.playbackRate ?? 1} style={cropStyle(cut.crop)} />;
+  if (!cut.zoom || cut.zoom.mode === 'none') return <AbsoluteFill style={{overflow: 'hidden'}}>{video}</AbsoluteFill>;
+  return (
+    <AbsoluteFill style={{overflow: 'hidden'}}>
+      <AbsoluteFill style={zoomStyle(cut.zoom, frame, frames)}>
+        <AbsoluteFill style={{overflow: 'hidden'}}>{video}</AbsoluteFill>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
 export const GourmetReel: React.FC<ReelData> = (data) => {
   const theme = data.theme ?? 'pop';
 
@@ -116,14 +132,7 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
         name={`cut${String(i + 1).padStart(2, '0')}`}
       >
         {/* 寄った映像が画面の外へはみ出さないよう、映像だけを切り抜き枠に入れる（テロップは外） */}
-        <AbsoluteFill style={{overflow: 'hidden'}}>
-          <OffthreadVideo
-            src={staticFile(cut.src)}
-            startFrom={Math.round(cut.inSec * data.fps)}
-            playbackRate={cut.playbackRate ?? 1}
-            style={cropStyle(cut.crop)}
-          />
-        </AbsoluteFill>
+        <CutVideo cut={cut} fps={data.fps} frames={dur} />
         {/* 会話クリップ：発話に同期して字幕を切り替える（絶対秒→カット内フレームに変換） */}
         {cut.subs?.map((s, j) => {
           const rate = cut.playbackRate ?? 1;

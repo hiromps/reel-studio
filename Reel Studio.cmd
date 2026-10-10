@@ -21,14 +21,5 @@ if errorlevel 1 (
   exit /b 1
 )
 
-where node >nul 2>&1
-if errorlevel 1 (
-  echo.
-  echo   Node.js was not found. Install it from https://nodejs.org and try again.
-  echo.
-  pause
-  exit /b 1
-)
-
-node "scripts\launch.mjs" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REEL_DIR%scripts\bootstrap-windows.ps1" -Launch %*
 if errorlevel 1 pause

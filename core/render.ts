@@ -8,12 +8,13 @@ import {validateCuts, formatValidation, FATAL_CODES, type ValidationResult} from
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {findPersona} from '../shared/personas';
 import {fileStamp} from '../shared/time';
-import type {ReelData} from '../shared/schema/cuts';
+import {ReelDataSchema, type ReelData} from '../shared/schema/cuts';
+import {applyZoomSettings, ZoomConfigSchema, zoomResolutionWarning} from '../shared/zoom';
 import {exec, type ExecResult} from './exec';
-import {countFrames} from './ffprobe';
+import {countFrames, ffprobe} from './ffprobe';
 import {makeQcTile} from './thumbnails';
 import {loadCatalog} from './catalog';
-import {engineDiff, syncEngine, readCuts, readBrief, writeCuts} from './project';
+import {engineDiff, engineFamily, syncEngine, readCuts, readBrief, writeCuts, npmInstall} from './project';
 import {ensureProjectFont, type FontDelivery} from './fonts';
 import {pendingAliases, applyAliases} from './alias';
 import {loadSettings} from './settings';
@@ -44,6 +45,8 @@ export type RenderOptions = {
   strictProxy?: boolean;
   /** --props に渡す cuts.json（省略時は案件直下の cuts.json＝defaultProps） */
   props?: string;
+  zoomPreset?: string;
+  zoomConfig?: string;
   lowMemory?: boolean;
   /**
    * 書き出しのあとにサムネイル（out/thumbnail.jpg）も作るか。
@@ -128,7 +131,12 @@ export const preflight = (opt: RenderOptions): Preflight => {
   const overridden: string[] = [];
   const synced: string[] = [];
   if (!fs.existsSync(remotionCli(projectDir))) issues.push('node_modules に @remotion/cli が無い（npm install が必要）');
-  const cuts = readCuts(projectDir);
+  const baseCuts = opt.props ? ReelDataSchema.parse(JSON.parse(fs.readFileSync(path.resolve(opt.props), 'utf8'))) : readCuts(projectDir);
+  const zoomConfig = opt.zoomConfig ? ZoomConfigSchema.parse(JSON.parse(fs.readFileSync(path.resolve(opt.zoomConfig), 'utf8'))) : undefined;
+  const cuts = applyZoomSettings(baseCuts, opt.zoomPreset, zoomConfig);
+  if (cuts.cuts.some((c) => c.zoom && c.zoom.mode !== 'none') && engineFamily(projectDir) !== 'standard') {
+    issues.push('キーフレームズームは standard エンジンで利用できます。この案件のエンジンは対応していません');
+  }
   const validation = validateCuts(cuts, validationContext(projectDir, {strictProxy: opt.strictProxy}));
   const fatal = validation.errors.filter((e) => FATAL_CODES.has(e.code));
   const judgement = validation.errors.filter((e) => !FATAL_CODES.has(e.code));
@@ -145,7 +153,7 @@ export const preflight = (opt: RenderOptions): Preflight => {
   const pend = pendingAliases(projectDir, cuts);
   if (pend.length) {
     const done = applyAliases(projectDir, cuts);
-    if (done.length) writeCuts(projectDir, cuts);
+    if (done.length && !opt.props) writeCuts(projectDir, baseCuts);
     const still = pendingAliases(projectDir, cuts);
     if (still.length) issues.push(`alias 未適用: ${still.map((a) => a.to).join(', ')}`);
   }
@@ -184,6 +192,7 @@ const parseProgress = (line: string, attempt: number): RenderProgress | null => 
 
 export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
   const {projectDir} = opt;
+  if (process.env.REEL_STUDIO_BUNDLED_ENGINE) await npmInstall(projectDir, opt.onLine);
   const pf = preflight(opt);
   if (pf.issues.length) throw new PreflightError(pf.issues);
   if (pf.overridden.length) {
@@ -201,7 +210,30 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
   const retries = opt.retries ?? 3;
   const expectedFrames = calcTotalFrames(pf.cuts);
   const logs: string[] = [];
-  const warnings: string[] = pf.validation.warnings.map((w) => `${w.code}${w.cutId ? ` [${w.cutId}]` : ''} ${w.message}`);
+  // 解像度警告は実ファイルと実際の出力サイズで判定し直す（draftは1/4サイズ）。
+  const warnings: string[] = pf.validation.warnings.filter((w) => w.code !== 'ZOOM_RESOLUTION').map((w) => `${w.code}${w.cutId ? ` [${w.cutId}]` : ''} ${w.message}`);
+  // catalogなしのCLI案件でも、実際に読む素材（プロキシ含む）の解像度を検査する。
+  const probed = new Map<string, Awaited<ReturnType<typeof ffprobe>>>();
+  for (const [i, cut] of pf.cuts.cuts.entries()) {
+    if (!cut.zoom || cut.zoom.mode === 'none') continue;
+    if (opt.signal?.aborted) throw new Error('中断されました');
+    let probe = probed.get(cut.src);
+    if (!probe) {
+      probe = await ffprobe(path.join(projectDir, 'public', cut.src));
+      probed.set(cut.src, probe);
+    }
+    const message = zoomResolutionWarning(cut.zoom, probe, cut.crop?.zoom, opt.draft ? {width: 270, height: 480} : undefined);
+    if (message) {
+      warnings.push(`ZOOM_RESOLUTION [${cut.id ?? `#${i + 1}`}] ${message}`);
+      log(`W ZOOM_RESOLUTION [${cut.id ?? `#${i + 1}`}] ${message}`);
+    }
+  }
+  // 正規化済みの設定をレンダーに渡す。cuts.jsonは変更しない。
+  let renderProps = opt.props;
+  if (opt.zoomPreset || opt.zoomConfig || pf.cuts.cuts.some((c) => c.zoom)) {
+    renderProps = path.join(logsDir, `zoom-props-${fileStamp()}.json`);
+    fs.writeFileSync(renderProps, JSON.stringify(pf.cuts, null, 2));
+  }
   if (pf.font.missing) warnings.push(`テロップのフォント ${pf.font.file} が見つかりません（設定の置き場の fonts/ にも案件の public/fonts/ にも無い）。同梱の明朝で描かれます`);
   let attempts = 0;
   let last: ExecResult | null = null;
@@ -216,7 +248,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
     if (concurrency) args.push(`--concurrency=${concurrency}`);
     if (opt.draft) args.push('--scale=0.25');
     if (attempt >= 3) args.push('--x264-preset=veryfast');
-    if (opt.props) args.push(`--props=${path.resolve(opt.props)}`);
+    if (renderProps) args.push(`--props=${path.resolve(renderProps)}`);
     const logFile = path.join(logsDir, `render-${fileStamp()}-try${attempt}.log`);
     logs.push(logFile);
     const fh = fs.openSync(logFile, 'w');
@@ -257,7 +289,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
 
   // 事後検証
   const {frames, durationSec} = await countFrames(outAbs);
-  if (frames !== expectedFrames) warnings.push(`フレーム数が一致しない: 出力 ${frames} / 期待 ${expectedFrames}`);
+  if (frames !== expectedFrames) throw new Error(`フレーム数が一致しない: 出力 ${frames} / 期待 ${expectedFrames}`);
   // レンダーは素材の音だけを載せる。ナレーションは別工程（mix）なので、
   // 本番出力なのに narration.json が無ければ「素出力のまま」だと知らせる
   // （過去に素出力のまま投稿して保存率が落ちた事故があるため）
@@ -299,6 +331,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
 }
 
 export async function renderStill(projectDir: string, opt: {cut?: number; frame?: number; offsetSec?: number; out?: string; gl?: string; onLine?: (l: string) => void}): Promise<{out: string; frame: number}> {
+  if (process.env.REEL_STUDIO_BUNDLED_ENGINE) await npmInstall(projectDir, opt.onLine);
   const cuts = readCuts(projectDir);
   let frame = opt.frame ?? 0;
   if (opt.cut !== undefined) {
@@ -327,6 +360,7 @@ export async function renderStill(projectDir: string, opt: {cut?: number; frame?
  * （エンジンは案件にコピーされる独立したコードなので、既定の決め方はこちらで持つ）。
  */
 export async function renderThumbnail(projectDir: string, opt: {out?: string; gl?: string; onLine?: (l: string) => void; signal?: AbortSignal} = {}): Promise<{out: string}> {
+  if (process.env.REEL_STUDIO_BUNDLED_ENGINE) await npmInstall(projectDir, opt.onLine);
   const cuts = readCuts(projectDir);
   const thumb = resolveThumbnail(cuts, readBrief(projectDir), loadSettings().telop.font);
   if (!thumb.bg) throw new Error('背景にするカットがありません');

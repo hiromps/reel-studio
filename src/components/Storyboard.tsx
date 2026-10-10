@@ -6,6 +6,8 @@ import {cutDurationSec, type CutRange, type TelopGroup} from '@shared/timeline';
 import {useDragReorder} from './useDragReorder';
 import {destIndexOf} from './reorder';
 import {CutThumb, cutFrameUrl} from './CutThumb';
+import {ZoomControls} from './ZoomControls';
+import {applyZoomSettings, ZoomSchema, type Zoom} from '@shared/zoom';
 
 const ROLE_LABEL: Record<SlotRole, string> = {
   hook: 'フック',
@@ -67,6 +69,9 @@ type Props = {
   onReorder: (block: [number, number], to: number) => void;
   onUndo: () => void;
   canUndo: boolean;
+  onZoom?: (i: number, zoom: Zoom | undefined) => void;
+  onZoomStart?: () => void;
+  onZoomAll?: (cuts: Cut[]) => void;
 };
 
 export const Storyboard: React.FC<Props> = ({
@@ -89,6 +94,9 @@ export const Storyboard: React.FC<Props> = ({
   onReorder,
   onUndo,
   canUndo,
+  onZoom,
+  onZoomStart,
+  onZoomAll,
 }) => {
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [hover, setHover] = useState<number | null>(null);
@@ -165,6 +173,13 @@ export const Storyboard: React.FC<Props> = ({
         <span className="hint sb-howto">サムネをドラッグして並べ替え（クリックでその位置へシーク・Alt+←→ でも移動・Esc で取り消し）</span>
         <span className="hint sb-touch-hint">横へドラッグで並べ替え・タップでその位置へ</span>
         <span style={{flex: 1}} />
+        {onZoomAll && <>
+          <button className="small" onClick={() => onZoomAll(applyZoomSettings(cuts, 'viral_zoom').cuts)}>viral_zoom を一括適用</button>
+          <button className="small" onClick={() => {
+            const zoom = cuts.cuts[selected ?? 0]?.zoom;
+            onZoomAll(cuts.cuts.map((c) => ({...c, zoom: zoom ? {...zoom} : undefined})));
+          }} title="選択中のカット（未選択なら先頭）のズームを全カットへコピーします">ズーム設定を全カットに適用</button>
+        </>}
         <label className="sb-inline" title="同じテロップ文言が続くカットは 1 つのまとまりとして動かす（ばらけてテロップが分断されるのを防ぐ）">
           <input type="checkbox" checked={groupMove} onChange={(e) => onGroupMove(e.target.checked)} />
           <span>テロップ単位で動かす</span>
@@ -194,6 +209,7 @@ export const Storyboard: React.FC<Props> = ({
           }}
         >
           {cuts.cuts.map((c, i) => {
+            const zoom = c.zoom ? ZoomSchema.parse(c.zoom) : undefined;
             const clip = clipOf(c.src);
             const slot = slotOf(c);
             const gi = groupOfCut.get(i);
@@ -248,6 +264,10 @@ export const Storyboard: React.FC<Props> = ({
                   )}
                 </div>
                 <div className={`sb-telop${text ? '' : ' empty'}`}>{text || '（テロップ無し）'}</div>
+                {onZoom && <details className="sb-zoom" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => {if (!e.ctrlKey && !e.metaKey) e.stopPropagation();}}>
+                  <summary>ズーム：{!zoom || zoom.mode === 'none' ? 'なし' : `${zoom.mode === 'push' ? 'イン' : 'アウト'} ${Math.max(zoom.scale_start, zoom.scale_end).toFixed(2)}倍`}</summary>
+                  <ZoomControls zoom={c.zoom} onStart={() => onZoomStart?.()} onChange={(zoom) => onZoom(i, zoom)} />
+                </details>}
               </div>
             );
           })}

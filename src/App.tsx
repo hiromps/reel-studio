@@ -143,7 +143,7 @@ export const App: React.FC = () => {
       <header className="topbar" ref={topbarRef}>
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
-            ▶
+            <img src="/icons/reel-studio.svg" alt="" width="26" height="26" />
           </span>
           Reel Studio
         </div>

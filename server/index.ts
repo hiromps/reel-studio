@@ -81,6 +81,8 @@ const sourceMtimeMs = (): number => Math.max(...WATCHED_DIRS.map(newestMtimeMs),
 // Origin が付かないリクエスト（CLI・curl）はそのまま通す。
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 app.use((req, res, next) => {
+  const desktopToken = process.env.REEL_STUDIO_DESKTOP_TOKEN;
+  if (desktopToken && req.headers['x-reel-desktop-token'] !== desktopToken) return res.status(403).json({error: 'Reel Studioアプリからアクセスしてください'});
   const origin = req.headers.origin;
   if (origin && !LOCAL_ORIGIN.test(origin)) return res.status(403).json({error: `別オリジンからのリクエストは受け付けません: ${origin}`});
   next();
@@ -195,6 +197,9 @@ if (initial) {
   watchProject(resolveProjectDir(initial));
 }
 
-app.listen(port, host, () => {
-  console.log(`Reel Studio server: http://${host}:${port}  active=${state.activeSlug ?? '(none)'}  engine=${state.activeSlug ? (engineDiff(resolveProjectDir(state.activeSlug)).stale ? 'STALE' : 'ok') : '-'}`);
+const listener = app.listen(port, host, () => {
+  const address = listener.address();
+  const boundPort = typeof address === 'object' && address ? address.port : port;
+  console.log(`Reel Studio server: http://${host}:${boundPort}  active=${state.activeSlug ?? '(none)'}  engine=${state.activeSlug ? (engineDiff(resolveProjectDir(state.activeSlug)).stale ? 'STALE' : 'ok') : '-'}`);
+  process.send?.({type: 'reel-ready', port: boundPort});
 });

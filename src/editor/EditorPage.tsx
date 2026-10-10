@@ -680,6 +680,9 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             onReorder={m.applyReorder}
             onUndo={m.undo}
             canUndo={m.canUndo}
+            onZoomStart={m.pushHistory}
+            onZoom={(i, zoom) => m.patchCut(i, {zoom}, {history: false})}
+            onZoomAll={(next) => m.patchReel({cuts: next})}
           />
         </div>
       )}

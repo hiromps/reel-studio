@@ -7,6 +7,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {runtimeEnv} from './runtime.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -59,20 +60,6 @@ const newestMtime = (dir, skip = new Set(['node_modules', 'dist', '.studio'])) =
   };
   walk(dir);
   return newest;
-};
-
-/**
- * 依存パッケージを入れ直す必要があるか。
- * git pull で package-lock.json が新しくなったのに気づかず起動すると
- * 「Cannot find module …」で落ちる —— 更新後の一番よくある失敗なので、ここで吸収する。
- * `.package-lock.json` は npm が node_modules の中に置く「いま入っている状態」の記録。
- */
-const depsStale = () => {
-  const lock = path.join(root, 'package-lock.json');
-  const installed = path.join(root, 'node_modules', '.package-lock.json');
-  if (!fs.existsSync(path.join(root, 'node_modules', 'remotion'))) return true;
-  if (!fs.existsSync(lock) || !fs.existsSync(installed)) return false;
-  return fs.statSync(lock).mtimeMs > fs.statSync(installed).mtimeMs;
 };
 
 const needsBuild = () => {
@@ -188,11 +175,6 @@ async function main() {
   console.log(`\n${C.cyan}Reel Studio${C.reset} ${C.dim}${root}${C.reset}\n`);
   await noticeUpdate();
 
-  if (depsStale()) {
-    const first = !fs.existsSync(path.join(root, 'node_modules', 'remotion'));
-    runNpm(['install', '--no-audit', '--no-fund'], first ? '依存パッケージを導入しています（初回のみ・数分かかります）' : '依存パッケージを更新に合わせています（少し時間がかかります）');
-  }
-
   // すでに起動していれば、二重に立ち上げずブラウザだけ開く
   if (await alive(`http://127.0.0.1:${PORT}/api/health`)) {
     ok(`すでに起動しています → ${url}`);
@@ -201,6 +183,11 @@ async function main() {
     await sleep(2500);
     return;
   }
+
+  // 全利用者に必要なエンジン・FFmpeg・ブラウザも起動前に準備する。
+  const setup = spawnSync(process.execPath, [path.join(here, 'setup.mjs'), '--no-build'], {cwd: root, stdio: 'inherit', windowsHide: true, env: runtimeEnv()});
+  if (setup.status !== 0) throw new Error('初期セットアップに失敗しました。上のエラーを確認してセットアップを再実行してください。');
+  Object.assign(process.env, runtimeEnv());
 
   if (!dev && needsBuild()) {
     runNpm(['run', 'build'], '画面をビルドしています');

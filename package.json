@@ -1,6 +1,6 @@
 {
   "name": "reel-studio",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "description": "Reel Studio: GUI/CLI that turns raw food-shop footage into 9:16 short reels with telops, AI narration, and captions (Remotion + Claude Code + Fish Audio)",
   "license": "MIT",
@@ -13,9 +13,10 @@
     "url": "https://github.com/hiromps/reel-studio/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "type": "module",
+  "main": "desktop/main.cjs",
   "bin": {
     "reel": "bin/reel"
   },
@@ -31,8 +32,18 @@
     "cloud:migrate": "node scripts/cloud-migrate.mjs",
     "cloud:copy-db": "node scripts/cloud-copy-db.mjs",
     "dev": "vite",
-    "build": "node scripts/prepare-public.mjs && node scripts/build-api.mjs && vite build",
+    "icons": "node scripts/make-icon.mjs && node scripts/make-pwa-icons.mjs",
+    "build": "npm run icons && node scripts/prepare-public.mjs && node scripts/build-api.mjs && vite build",
     "start": "node scripts/launch.mjs",
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "test:export": "node scripts/smoke-export.mjs",
+    "package:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "desktop": "electron .",
+    "desktop:prepare": "node scripts/prepare-desktop.mjs",
+    "desktop:unpacked": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64 --dir",
+    "desktop:installer": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64",
+    "desktop:verify": "node scripts/verify-desktop.mjs",
     "start:dev": "node scripts/launch.mjs --dev",
     "update": "node scripts/update.mjs",
     "ci": "npm run typecheck && npm test && npm run build"
@@ -57,6 +68,7 @@
     "qs": "6.16.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "@types/express": "^4.17.21",
     "@types/node": "^20.17.0",
     "@types/react": "^18.3.12",
@@ -65,6 +77,8 @@
     "@vercel/node": "^13.0.1",
     "@vitejs/plugin-react": "^4.3.4",
     "drizzle-kit": "^0.31.10",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
     "jsdom": "^26.0.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.0",
