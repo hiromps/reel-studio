@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {addedCutRange, applyPatch, type Patch} from '../core/ai';
+import {ZoomSchema} from '../shared/schema/zoom';
 import type {Clip} from '../shared/schema/catalog';
 import type {Cut, ReelData} from '../shared/schema/cuts';
 import type {Narration} from '../shared/schema/narration';
@@ -43,6 +44,53 @@ describe('addedCutRange', () => {
 });
 
 describe('applyPatch', () => {
+  it('ズームだけの差分を適用し、尺・音声・テロップ・他のカットを保つ', () => {
+    const narr: Narration = {voice: 'v', segments: [{id: 'n01', at: 0, text: 'そのまま'}]};
+    const before = JSON.stringify(base);
+    const r = apply({cuts: [
+      {cutId: 'c01', zoom: {mode: 'push', scale_start: 1, scale_end: 1.1, anchor_x: 0.5, anchor_y: 0.42}},
+      {cutId: 'c02', zoom: {mode: 'pull', scale_start: 1.1, scale_end: 1, anchor_x: 0.43, anchor_y: 0.61}},
+    ]}, narr);
+    expect(r.cuts.cuts[0].zoom).toEqual(ZoomSchema.parse({mode: 'push', scale_start: 1, scale_end: 1.1, anchor_x: 0.5, anchor_y: 0.42}));
+    expect(r.cuts.cuts[1].zoom?.mode).toBe('pull');
+    expect(r.cuts.cuts.map(({zoom, ...c}) => c)).toEqual(base.cuts);
+    expect(r.narration).toBeNull(); expect(r.needsTts).toEqual([]);
+    expect(r.applied).toHaveLength(2); expect(r.applied[0]).toContain('ズームイン 1.00→1.10倍');
+    expect(r.applied[0]).not.toContain('区間'); expect(r.cutsTouched).toBe(true);
+    expect(r.unapplied).toEqual([]); expect(JSON.stringify(base)).toBe(before);
+  });
+
+  it('null・省略はズームを維持し、noneだけ明示的に解除する（並び順ロック中も可）', () => {
+    const withZoom: ReelData = {...base, meta: {orderLocked: true}, cuts: base.cuts.map(c => ({...c, zoom: ZoomSchema.parse({mode: 'push'})}))};
+    const r = applyPatch(withZoom, null, catalog, {summary: '', cuts: [
+      {cutId: 'c01', zoom: null}, {cutId: 'c02'}, {cutId: 'c03', zoom: {mode: 'none'}},
+    ]}, {maxCutSec: 3});
+    expect(r.cuts.cuts.map(c => c.zoom?.mode)).toEqual(['push', 'push', 'none']);
+    expect(r.cuts.meta?.orderLocked).toBe(true); expect(r.applied).toEqual(['カット c03: ズームを解除']);
+    expect(withZoom.cuts[2].zoom?.mode).toBe('push'); expect(r.unapplied).toEqual([]);
+  });
+
+  it('不正な倍率・方向・アンカーは拒否し、有効な別カットのズームは適用する', () => {
+    const r = apply({cuts: [
+      {cutId: 'c01', zoom: {mode: 'push', scale_end: 1.6}},
+      {cutId: 'c02', zoom: {mode: 'pull', scale_start: 1, scale_end: 1.2}},
+      {cutId: 'c03', zoom: {mode: 'push', anchor_y: -0.1}},
+      {cutId: 'c01', zoom: {mode: 'push', scale_end: 1.08}},
+    ]});
+    expect(r.unapplied).toHaveLength(3); expect(r.applied).toHaveLength(1);
+    expect(r.cuts.cuts[0].zoom?.scale_end).toBe(1.08); expect(r.cuts.cuts[1].zoom).toBeUndefined();
+  });
+
+  it('Codexが返す同じ尺・等速・空バッジなどの無変更差分を修正件数に数えない', () => {
+    const r = apply({cuts: [{cutId: 'c01', inSec: 0, outSec: 1, playbackRate: 1, badge: '', remove: false, zoom: null}]});
+    expect(r.cuts).toEqual(base); expect(r.cutsTouched).toBe(false); expect(r.applied).toEqual([]);
+  });
+
+  it('新規カットもrefを使ってズームできる', () => {
+    const r = apply({add: [{ref: 'n1', clipId: '08'}], cuts: [{cutId: 'n1', zoom: {mode: 'pull'}}]});
+    expect(r.cuts.cuts.at(-1)?.zoom?.mode).toBe('pull'); expect(r.applied).toHaveLength(2);
+  });
+
   it('meta の無い台本カットでも推定した g01 のテロップを更新する', () => {
     const cuts = reel([cut('c01', 'uploads/a.mp4', '旧'), cut('c02', 'uploads/b.mp4', '旧'), cut('c03', 'uploads/c.mp4', '次')]);
     const r = applyPatch(cuts, null, catalog, {summary: '', telops: [{group: 'g01', text: '新しい文言'}]}, {maxCutSec: 3});

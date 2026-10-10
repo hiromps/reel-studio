@@ -8,6 +8,7 @@ import {studioConfig} from '../studio.config';
 import {ClipKindSchema, AngleSchema, MotionSchema} from '../shared/schema/catalog';
 import type {Catalog, Clip} from '../shared/schema/catalog';
 import {ReelDataSchema, type Cut, type ReelData} from '../shared/schema/cuts';
+import {ZoomSchema, type Zoom} from '../shared/schema/zoom';
 import {NarrationSchema, type Narration} from '../shared/schema/narration';
 import type {ValidationResult} from '../shared/validate';
 import {checkOrder, collapseSameRuns, formatOrderCheck, orderPrinciples} from '../shared/order';
@@ -1143,12 +1144,28 @@ const PATCH_SCHEMA = {
     },
     cuts: {
       type: 'array',
-      description: 'カットの区間・倍速・削除',
+      description: 'カットの区間・倍速・キーフレームズーム・削除',
       items: {
         type: 'object',
         additionalProperties: false,
         required: ['cutId'],
-        properties: {cutId: {type: 'string'}, inSec: {type: 'number'}, outSec: {type: 'number'}, playbackRate: {type: 'number'}, badge: {type: 'string'}, remove: {type: 'boolean'}},
+        properties: {
+          cutId: {type: 'string'}, inSec: {type: 'number'}, outSec: {type: 'number'}, playbackRate: {type: 'number'}, badge: {type: 'string'}, remove: {type: 'boolean'},
+          zoom: {
+            description: 'カット内の映像ズーム。mode=noneで解除。省略またはnullなら既存設定を維持する',
+            anyOf: [{
+              type: 'object', additionalProperties: false, required: ['mode'],
+              properties: {
+                mode: {type: 'string', enum: ['none', 'push', 'pull']},
+                scale_start: {type: 'number', minimum: 1, maximum: 1.5},
+                scale_end: {type: 'number', minimum: 1, maximum: 1.5},
+                ease: {type: 'string', enum: ['in_out', 'out', 'linear']},
+                anchor_x: {type: 'number', minimum: 0, maximum: 1},
+                anchor_y: {type: 'number', minimum: 0, maximum: 1},
+              },
+            }, {type: 'null'}],
+          },
+        },
       },
     },
     order: {type: 'array', items: {type: 'string'}, description: '並べ替え後の全カット（残す既存の cutId と、add の ref）を先頭から列挙する。並び替えないなら省略'},
@@ -1163,7 +1180,7 @@ export type Patch = {
   telops?: {group?: string; cutId?: string; text: string; orientation?: 'vertical' | 'horizontal'}[];
   narration?: {id: string; text?: string; at?: number; add?: boolean; remove?: boolean}[];
   add?: {ref: string; clipId: string; inSec?: number; outSec?: number; text?: string; after?: string}[];
-  cuts?: {cutId: string; inSec?: number; outSec?: number; playbackRate?: number; badge?: string; remove?: boolean}[];
+  cuts?: {cutId: string; inSec?: number; outSec?: number; playbackRate?: number; badge?: string; remove?: boolean; zoom?: Partial<Zoom> | null}[];
   order?: string[];
   theme?: 'pop' | 'bold' | 'human' | 'stylish';
   unapplied?: string[];
@@ -1296,10 +1313,10 @@ export function applyPatch(
       continue;
     }
     const c = next.cuts[i];
-    const before = `${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`;
+    const before = {...c};
     if (e.inSec !== undefined) c.inSec = e.inSec;
     if (e.outSec !== undefined) c.outSec = e.outSec;
-    if (e.playbackRate !== undefined) {
+    if (e.playbackRate !== undefined && e.playbackRate !== (c.playbackRate ?? 1)) {
       if (e.playbackRate === 1) delete c.playbackRate;
       else c.playbackRate = e.playbackRate;
     }
@@ -1307,7 +1324,19 @@ export function applyPatch(
       if (e.badge) c.badge = e.badge;
       else delete c.badge;
     }
-    applied.push(`カット ${c.id} を ${before} → ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`);
+    const changes: string[] = [];
+    if (c.inSec !== before.inSec || c.outSec !== before.outSec) changes.push(`区間 ${before.inSec.toFixed(2)}〜${before.outSec.toFixed(2)} → ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}`);
+    if ((c.playbackRate ?? 1) !== (before.playbackRate ?? 1)) changes.push(`速度 ${before.playbackRate ?? 1} → ${c.playbackRate ?? 1}倍`);
+    if (c.badge !== before.badge) changes.push(`バッジ「${before.badge ?? ''}」→「${c.badge ?? ''}」`);
+    if (e.zoom !== undefined && e.zoom !== null) {
+      const zoom = ZoomSchema.safeParse(e.zoom);
+      if (!zoom.success) unapplied.push(`cuts: ${e.cutId} のズームを反映していない: ${zoom.error.issues[0]?.message ?? '設定が不正'}`);
+      else if (JSON.stringify(zoom.data) !== JSON.stringify(ZoomSchema.parse(before.zoom ?? {mode: 'none'}))) {
+        c.zoom = zoom.data;
+        changes.push(zoom.data.mode === 'none' ? 'ズームを解除' : `ズーム${zoom.data.mode === 'push' ? 'イン' : 'アウト'} ${zoom.data.scale_start.toFixed(2)}→${zoom.data.scale_end.toFixed(2)}倍（${zoom.data.ease}、アンカー ${zoom.data.anchor_x.toFixed(2)},${zoom.data.anchor_y.toFixed(2)}）`);
+      }
+    }
+    if (changes.length) applied.push(`カット ${c.id}: ${changes.join(' / ')}`);
   }
 
   if (patch.order?.length && orderLocked) {
@@ -1364,7 +1393,7 @@ export function applyPatch(
   if (next.meta?.slots) next.meta = {...next.meta, slots: next.meta.slots.filter((s) => alive.has(s.cutId))};
   if (next.meta?.telopGroups) next.meta = {...next.meta, telopGroups: next.meta.telopGroups.map((g) => ({...g, cutIds: g.cutIds.filter((id) => alive.has(id))})).filter((g) => g.cutIds.length)};
 
-  const cutsTouched = (patch.add?.length ?? 0) + (patch.cuts?.length ?? 0) + (patch.telops?.length ?? 0) + (patch.order?.length ?? 0) > 0 || !!patch.theme;
+  const cutsTouched = JSON.stringify(next) !== JSON.stringify(cuts);
 
   // ── narration.json ──
   let nextNarr: Narration | null = null;
@@ -1451,7 +1480,7 @@ export async function aiEdit(
     const cl = clipOf(c);
     const g = groupByCut.get(i);
     const f = frames[i];
-    return `- ${c.id ?? `#${i + 1}`} / ${i + 1}番目 / 役割 ${slotOf(c)?.role ?? '-'} / ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}（${cutDurationSec(c).toFixed(2)}秒）${c.playbackRate ? ` / rate ${c.playbackRate}` : ''} / 素材 ${cl?.tags?.description ?? cl?.slug ?? c.src}${g ? ` / テロップ ${g}` : ''}「${c.main?.text ?? (c.subs?.length ? '（会話字幕）' : '（無し）')}」${f ? ` / 画 ${path.relative(projectDir, f).replace(/\\/g, '/')}` : ''}`;
+    return `- ${c.id ?? `#${i + 1}`} / ${i + 1}番目 / 役割 ${slotOf(c)?.role ?? '-'} / ${c.inSec.toFixed(2)}〜${c.outSec.toFixed(2)}（${cutDurationSec(c).toFixed(2)}秒）${c.playbackRate ? ` / rate ${c.playbackRate}` : ''} / zoom ${JSON.stringify(c.zoom ?? {mode: 'none'})}${c.crop ? ` / crop ${JSON.stringify(c.crop)}` : ''} / 素材 ${cl?.tags?.description ?? cl?.slug ?? c.src}${g ? ` / テロップ ${g}` : ''}「${c.main?.text ?? (c.subs?.length ? '（会話字幕）' : '（無し）')}」${f ? ` / 画 ${path.relative(projectDir, f).replace(/\\/g, '/')}` : ''}`;
   });
 
   const narrLines: string[] = [];
@@ -1504,7 +1533,10 @@ export async function aiEdit(
     '',
     '指示に関係するところだけ直す。関係ないところは触らない。返すのは差分だけで、ファイルは自分で書き換えないこと。',
     'テロップをナレーションに合わせる指示では、ナレーションは参照元として使い、ナレーションの文言・位置は変えない。両方の変更を明示された場合だけ両方直す。',
-    '差分でできること: 素材からカットを足す（add。ref に n1, n2 … と仮の名前を付け、order・telops・cuts の cutId にその ref を使える）／区間・倍速・削除（cuts）／並べ替え（order＝残す既存の cutId と add の ref を全部、先頭から）／テロップ（telops）／ナレーションの文言・位置の変更と追加・削除（narration）／theme。',
+    'キーフレームズームは cuts の各項目の zoom オブジェクトで実際に適用する。提案を summary や unapplied に書くだけで終わらせない。例: {"cutId":"c01","zoom":{"mode":"push","scale_start":1,"scale_end":1.18,"ease":"in_out","anchor_x":0.5,"anchor_y":0.45}}。pull は開始倍率を終了倍率以上にする。倍率は1.0〜1.5、アンカーは0〜1。省略値は in_out、中央アンカー。',
+    'ズームの最適化を頼まれたら、画・既存の動き・画角を見て必要なカットだけ設定する。標準は1.05〜1.20倍程度。すでに寄っている画や素材自体に十分な動きがある箇所には無理に足さない。不要な既存ズームは zoom: {"mode":"none"} で解除する。zoom の省略または null は既存設定の維持で、解除ではない。',
+    'ズームだけの指示では区間・順番・倍速・テロップ・ナレーションを変えない。スキーマ上必須の既存フィールドには現在値を返し、無変更のカットは cuts に入れない。静的な crop とキーフレーム zoom は別設定。ズームは映像だけにかかり、テロップの位置・大きさと音声は変わらない。',
+    '差分でできること: 素材からカットを足す（add。ref に n1, n2 … と仮の名前を付け、order・telops・cuts の cutId にその ref を使える）／区間・倍速・キーフレームズーム・削除（cuts）／並べ替え（order＝残す既存の cutId と add の ref を全部、先頭から）／テロップ（telops）／ナレーションの文言・位置の変更と追加・削除（narration）／theme。',
     '**頼まれたことは、できる部分は全部この差分でやりきる**。一部に確認したいことがあっても、残りを見送らない。確認事項は unapplied に書き、その部分は無難な案で入れておくか、入れずに残す。',
     'カットを足したり並べ替えたりすると後ろのカットの位置がずれる。ナレーションがあるときは、並べ替え後の時間軸でブロックが対応するカットの区間に来るよう at を直し、足したカットに合うブロックが要るなら add で足す。',
     `足すカットの区間は素材の尺の内側で、${maxCutSec} 秒以内（使える区間の best を優先。省略すると best 区間の頭から）。見た目で決めたいときは「一覧画」を Read で見てよい（1 枚ずつ）。`,

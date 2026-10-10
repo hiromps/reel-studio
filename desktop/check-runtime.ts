@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {createProject, npmInstall, writeCuts} from '../core/project';
+import {createProject, npmInstall, readCuts, writeCuts} from '../core/project';
+import {applyPatch} from '../core/ai';
 import {loadPersonasFromDisk} from '../core/personas-store';
 import {defaultPersonaId} from '../shared/personas';
 import {renderProject} from '../core/render';
@@ -28,6 +29,12 @@ writeCuts(dir, {fps: 30, theme: 'pop', cuts: [
   {id: 'c1', src: 'uploads/sample.mp4', inSec: 0, outSec: 0.5, zoom: {mode: 'push', scale_start: 1, scale_end: 1.18, ease: 'in_out', anchor_x: 0.5, anchor_y: 0.45}, main: {text: 'アプリの書き出し確認', orientation: 'horizontal'}},
   {id: 'c2', src: 'uploads/sample.mp4', inSec: 1, outSec: 2, playbackRate: 2, crop: {zoom: 1.2, x: 0.4, y: 0.5}, zoom: {mode: 'pull', scale_start: 1.2, scale_end: 1, ease: 'out', anchor_x: 0.6, anchor_y: 0.45}, price: {text: '同梱のエンジンで編集'}},
 ]});
+const zoomPatch = applyPatch(readCuts(dir), null, {clips: []}, {summary: 'ズームを最適化', cuts: [
+  {cutId: 'c1', zoom: {mode: 'push', scale_start: 1, scale_end: 1.1, anchor_x: 0.5, anchor_y: 0.42}},
+  {cutId: 'c2', zoom: {mode: 'pull', scale_start: 1.1, scale_end: 1, anchor_x: 0.43, anchor_y: 0.61}},
+]}, {maxCutSec: 3});
+if (zoomPatch.applied.length !== 2 || zoomPatch.unapplied.length) throw new Error('AIズーム差分の適用に失敗しました。');
+writeCuts(dir, zoomPatch.cuts);
 const render = await renderProject({projectDir: dir, allowErrors: true, force: true, retries: 1, thumbnail: false, concurrency: 1, onLine: console.log});
 if (!render.ok || render.frames !== 30) throw new Error('映像の書き出し検証に失敗しました。');
 fs.mkdirSync(path.join(dir, 'narration'), {recursive: true});

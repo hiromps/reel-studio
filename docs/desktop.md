@@ -2,7 +2,7 @@
 
 ## 利用者の使い方
 
-1. `Reel-Studio-0.4.0-Setup.exe` を実行します。
+1. `Reel-Studio-0.4.1-Setup.exe` を実行します。
 2. インストール先を選び、完了後に「Reel Studio」を起動します。
 3. デスクトップまたはスタートメニューの「Reel Studio」から次回も起動できます。
 
@@ -30,9 +30,9 @@ npm run desktop:installer
 npm run desktop:verify
 ```
 
-成果物は `desktop-out/Reel-Studio-0.4.0-Setup.exe` です。`dist`は内部の編集画面であり、利用者への配布物はこのEXEです。`.runtime/desktop-stage` と `desktop-out/win-unpacked` はビルド・検証用です。
+成果物は `desktop-out/Reel-Studio-0.4.1-Setup.exe` です。`dist`は内部の編集画面であり、利用者への配布物はこのEXEです。`.runtime/desktop-stage` と `desktop-out/win-unpacked` はビルド・検証用です。
 
-`desktop:verify` は外部のNode.js・npm・FFmpegが見えないPATHを使い、日本語と空白を含む独立した保存先で新規案件を作ります。日本語テロップ、カット・速度・クロップ・キーフレームズーム、1080×1920の動画出力、音声合成、パッケージ化されたElectron起動、ローカルAPIの未認証拒否を確認します。既存の案件・設定・APIキーは使いません。結果は `desktop-out/verification.json` です。
+`desktop:verify` は外部のNode.js・npm・FFmpegが見えないPATHを使い、日本語と空白を含む独立した保存先で新規案件を作ります。日本語テロップ、カット・速度・クロップ・キーフレームズーム・AI差分の適用、1080×1920の動画出力、音声合成、パッケージ化されたElectron起動、ローカルAPIの未認証拒否を確認します。既存の案件・設定・APIキーは使いません。結果は `desktop-out/verification.json` です。
 
 展開版を作る場合は `npm run desktop:unpacked`、開発時の専用ウィンドウは準備後に `npm run desktop` で起動できます。GitHub Actionsの「Windows desktop installer」を手動実行しても作成できます。自動公開はしません。
 
