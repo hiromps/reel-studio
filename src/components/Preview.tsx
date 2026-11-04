@@ -1,5 +1,5 @@
 // Remotion Player でテロップ付きプレビュー。エンジン（hiro マスター）を alias 経由で import し、フォント読込後にマウントする。
-import React, {forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
+import React, {forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
 import {Player, type PlayerRef} from '@remotion/player';
 import type {ReelData} from '@shared/schema';
 import {calcTotalFrames} from '@shared/timeline';
@@ -42,11 +42,13 @@ const setStaticBase = (base: string | null) => {
   (window as Window & {remotion_staticBase?: string}).remotion_staticBase = base ?? '';
 };
 
-export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width = 360, loop = false, controls = true, onFrame, onPlayState}, ref) => {
+export const Preview = memo(forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width = 360, loop = false, controls = true, onFrame, onPlayState}, ref) => {
   setStaticBase(mediaBase);
   const [Comp, setComp] = useState<React.ComponentType<ReelData> | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const player = useRef<PlayerRef>(null);
+  const callbacks = useRef({onFrame, onPlayState});
+  callbacks.current = {onFrame, onPlayState};
 
   useEffect(() => {
     let alive = true;
@@ -83,9 +85,9 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
   useEffect(() => {
     const p = player.current;
     if (!p) return;
-    const onF = (e: {detail: {frame: number}}) => onFrame?.(e.detail.frame);
-    const onPlay = () => onPlayState?.(true);
-    const onPause = () => onPlayState?.(false);
+    const onF = (e: {detail: {frame: number}}) => callbacks.current.onFrame?.(e.detail.frame);
+    const onPlay = () => callbacks.current.onPlayState?.(true);
+    const onPause = () => callbacks.current.onPlayState?.(false);
     p.addEventListener('frameupdate', onF);
     p.addEventListener('play', onPlay);
     p.addEventListener('pause', onPause);
@@ -96,7 +98,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
       p.removeEventListener('pause', onPause);
       p.removeEventListener('ended', onPause);
     };
-  }, [onFrame, onPlayState, Comp]);
+  }, [Comp, mediaBase]);
 
   const duration = useMemo(() => Math.max(1, calcTotalFrames(cuts)), [cuts]);
   useEffect(() => {
@@ -126,5 +128,5 @@ export const Preview = forwardRef<PreviewHandle, Props>(({cuts, mediaBase, width
       errorFallback={({error}) => <div className="preview-err">再生エラー: {error.message}（HEVC 素材ならプロキシ生成を）</div>}
     />
   );
-});
+}));
 Preview.displayName = 'Preview';

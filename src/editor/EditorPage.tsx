@@ -1,6 +1,6 @@
 // 編集画面（Timeline タブ）：素材ビン｜プレビュー｜インスペクタ の 3 列と、下の 4 段タイムライン。
 // cuts.json と narration.json をここ 1 か所で編集する（以前は Materials と Timeline と Render に分かれていた）。
-import React, {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import {Preview, type PreviewHandle} from '../components/Preview';
@@ -41,6 +41,7 @@ import {EditorMoreActions} from './EditorMoreActions';
 import {EmotionCutsDialog} from './EmotionCutsDialog';
 import {useNarrationRegeneration} from '../hooks/useNarrationRegeneration';
 import type {NarrationLibraryEntry} from '@shared/narration-library';
+import {createPlaybackClock} from './playbackClock';
 
 /** 狭い画面のシートの見出し（いま何を触っているか） */
 const selectionLabel = (sel: NonNullable<Selection>): string =>
@@ -70,8 +71,29 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const prefsSafe: Prefs = {...DEFAULT_PREFS, ...prefs, tracks: {...DEFAULT_PREFS.tracks, ...(prefs.tracks ?? {})}, zoom: clampZoom(prefs.zoom ?? PX_PER_SEC_DEFAULT)};
   const [loop, setLoop] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [suppressMobileDetails, setSuppressMobileDetails] = useState(false);
   const [focusTelop, setFocusTelop] = useState(false);
   const preview = useRef<PreviewHandle>(null);
+  const playbackClock = useMemo(createPlaybackClock, []);
+  const playbackModel = useRef({ranges: m.ranges, currentCut: m.currentCut});
+  playbackModel.current = {ranges: m.ranges, currentCut: m.currentCut};
+  // Keep full-rate playhead updates outside React's expensive editor tree.
+  // Selection and inspectors only need a render when the playhead enters another cut.
+  const onPreviewFrame = useCallback((next: number) => {
+    playbackClock.setFrame(next);
+    const {ranges, currentCut} = playbackModel.current;
+    const nextCut = ranges.findIndex((r) => next >= r.from && next < r.from + r.dur);
+    if (nextCut !== currentCut) {
+      playbackModel.current.currentCut = nextCut;
+      setFrame(next);
+    }
+  }, [playbackClock, setFrame]);
+  const onPreviewPlayState = useCallback((next: boolean) => {
+    setPlaying(next);
+    if (next) setSuppressMobileDetails(true);
+    if (!next) setFrame(playbackClock.getFrame());
+  }, [playbackClock, setFrame]);
+  useLayoutEffect(() => { playbackClock.setFrame(0); }, [s.active, playbackClock]);
   const timeline = useRef<TimelineHandle>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -134,21 +156,23 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   // 生成済みのナレーション wav と効果音を、再生に合わせて重ねて鳴らす（レンダーには入れない。mix で載せるものなので）
   const getFrame = useCallback(() => preview.current?.getCurrentFrame() ?? 0, []);
   const setPlayerVolume = useCallback((v: number) => preview.current?.setVolume(v), []);
-  const mixStatus = useMixPreview({enabled: prefsSafe.mixPreview && !!narration, narration, mediaBase: s.mediaBase, lib, fps: m.fps, playing, frame, getFrame, setPlayerVolume});
+  const mixStatus = useMixPreview({enabled: prefsSafe.mixPreview && !!narration, narration, mediaBase: s.mediaBase, lib, fps: m.fps, playing, frame, getFrame, setPlayerVolume, playbackClock});
   const seek = useCallback(
     (f: number) => {
       const clamped = Math.max(0, Math.min(Math.max(0, totalFrames - 1), Math.round(f)));
       setFrame(clamped);
+      playbackClock.setFrame(clamped);
       preview.current?.pause();
       preview.current?.seekTo(clamped);
     },
-    [totalFrames, setFrame],
+    [totalFrames, setFrame, playbackClock],
   );
   const seekCut = useCallback(
     (i: number) => {
       const r = m.ranges[i];
       if (!r || !cuts) return;
       seek(Math.min(r.from + Math.round(0.3 * cuts.fps), r.from + r.dur - 1));
+      setSuppressMobileDetails(false);
       setSelection({kind: 'cut', index: i});
       timeline.current?.scrollToCut(i);
     },
@@ -247,7 +271,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         const sourceItems = copied.kind === 'narr' ? copied.segments : copied.sounds;
         const selectedNarr = selection?.kind === 'narr' ? narration?.segments[selection.index] : undefined;
         const selectedSfx = selection?.kind === 'sfx' ? narration?.sfx?.[selection.index] : undefined;
-        const at = selectedNarr ? selectedNarr.at + m.estimateSec(selectedNarr) : selectedSfx ? sfxEndSec(selectedSfx, lib ?? undefined) : frame / m.fps;
+        const at = selectedNarr ? selectedNarr.at + m.estimateSec(selectedNarr) : selectedSfx ? sfxEndSec(selectedSfx, lib ?? undefined) : getFrame() / m.fps;
         const offset = Math.max(0, at);
         const firstAt = sourceItems[0].at;
         const base: Narration = narration ?? (copied.kind === 'narr' ? {...copied.settings, videoSec: m.total, segments: [], sfx: []} : {voice: m.persona?.narration.voiceId ?? '', segments: [], sfx: []});
@@ -316,7 +340,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     await api.post(`/api/narration-library/${encodeURIComponent(entry.id)}/use`, {project: s.active, segmentId: id});
     const base: Narration = narration ?? {voice: entry.voice, voiceTitle: entry.voiceTitle, speed: entry.speed, latency: entry.latency, segments: []};
     const index = base.segments.length;
-    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(frame / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec}]});
+    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec}]});
     setSelection({kind: 'narr', index});
     setMultiSelection([]);
     s.toast(`「${entry.title}」を再生位置に追加しました`, 'ok');
@@ -450,6 +474,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   // サムネイルの背景にしているコマ（動画の秒）。目盛りのピンの位置
   const thumbnailSec = cuts ? bgTimelineSec(cuts, cuts.thumbnail?.bg ?? defaultBgOf(cuts)) : null;
   const selectFromTimeline = (sel: typeof selection, opt: {seek?: boolean; toggle?: boolean; range?: boolean} = {}) => {
+    if (opt.seek !== false) setSuppressMobileDetails(false);
     if (sel && sel.kind !== 'thumbnail' && (opt.toggle || opt.range)) {
       const previous = (multiSelection.length ? multiSelection : selection ? [selection] : []).filter((item) => item?.kind === sel.kind);
       if (opt.range) {
@@ -620,7 +645,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           {cuts ? (
             <>
               <div className="ed-stage">
-                <Preview ref={preview} cuts={debouncedCuts ?? cuts} mediaBase={s.mediaBase} width={previewW} loop={loop} controls={false} onFrame={setFrame} onPlayState={setPlaying} />
+                <Preview ref={preview} cuts={debouncedCuts ?? cuts} mediaBase={s.mediaBase} width={previewW} loop={loop} controls={false} onFrame={onPreviewFrame} onPlayState={onPreviewPlayState} />
               </div>
               <PreviewOptions
                 loop={loop}
@@ -643,7 +668,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         <ResizeHandle axis="x" label="クリップ詳細の幅" value={inspectorWidth} min={250} max={inspectorMax} reset={DEFAULT_LAYOUT.inspector} onChange={(inspector) => setLayout({...layoutSafe, inspector})} className="ed-inspector-resizer" direction={-1} />
         {/* 狭い画面では、何かを選んでいる間だけ手元（画面下）へせり上がるシートになる。
             タイムラインの下の方を触っているときに、上へ戻らなくても直せるようにするため */}
-        <div className={`ed-inspector${sel ? ' sel' : ''}`} data-tour="inspector">
+        <div className={`ed-inspector${sel && !suppressMobileDetails ? ' sel' : ''}`} data-tour="inspector">
           {sel && <ResizeHandle axis="y" label="クリップ詳細の高さ" value={sheetHeight} min={30} max={90} reset={DEFAULT_LAYOUT.sheet} onChange={(sheet) => setLayout({...layoutSafe, sheet})} className="ed-sheet-resizer" direction={-1} unit="%" />}
           {sel && (
             <div className="detail-bar">
@@ -719,7 +744,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           <span className="hint tl-touch-hint">2 本指でつまむ＝拡大・縮小（広げると寄り、狭めると全体）</span>
           </div>
           {cuts ? (
-            <Transport playing={playing} frame={frame} fps={cuts.fps} totalFrames={totalFrames} currentCut={m.currentCut} cutCount={cuts.cuts.length} onToggle={toggle} onStep={step} onHome={() => seek(0)} onEnd={() => seek(totalFrames - 1)} />
+            <Transport playing={playing} frame={frame} playbackClock={playbackClock} fps={cuts.fps} totalFrames={totalFrames} currentCut={m.currentCut} cutCount={cuts.cuts.length} onToggle={toggle} onStep={step} onHome={() => seek(0)} onEnd={() => seek(totalFrames - 1)} />
           ) : (
             <span />
           )}
@@ -767,6 +792,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           onSelect={selectFromTimeline}
           onSelectQuiet={(sel) => selectFromTimeline(sel, {seek: false})}
           currentFrame={frame}
+          playbackClock={playbackClock}
           onSeek={seek}
           pxPerSec={prefsSafe.zoom}
           onPxPerSec={(v) => setPrefs({...prefsSafe, zoom: v})}

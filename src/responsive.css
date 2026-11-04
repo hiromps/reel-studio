@@ -90,6 +90,9 @@ input:not([type='checkbox']):not([type='radio']), select, textarea { max-inline-
   .card.detail.open { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
   .ed-inspector.sel { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
   .ed-center { min-width: 0; }
+  /* Wrapped transport controls must not consume the clip and audio track area. */
+  .ed-timeline { height: auto; min-height: var(--timeline-h, 270px); }
+  .ed-timeline .tl { flex: 0 0 auto; overflow-y: visible; }
   .ed-toolbar, .tl-toolbar, .tl-toolbar-side, .canvas-pill { min-width: 0; max-width: 100%; }
   .ed-toolbar { top: var(--topbar-h, 0px); }
   .ed-toolbar > .btns { max-width: 100%; }

@@ -1,6 +1,6 @@
 {
   "name": "reel-studio",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "private": true,
   "description": "Reel Studio: GUI/CLI that turns raw food-shop footage into 9:16 short reels with telops, AI narration, and captions (Remotion + Claude Code + Fish Audio)",
   "license": "MIT",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@openai/codex": "^0.160.1",
-    "@remotion/player": "4.0.522",
+    "@remotion/player": "4.0.540",
     "chokidar": "^4.0.3",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
@@ -60,7 +60,7 @@
     "postgres": "^3.4.9",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "remotion": "4.0.522",
+    "remotion": "4.0.540",
     "tsx": "^4.19.2",
     "web-push": "^3.6.7",
     "zod": "^3.25.0"

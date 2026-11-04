@@ -5,7 +5,7 @@
 //   S: 効果音。同じく横にドラッグ
 // 素材ビンからのドロップ（挿入）は親が useBinDrag でポインタを追い、ここは「その点なら何番目か」を答える（insertIndexAtPoint）。
 // 秒 ⇄ px や cuts.json の書き換えは components/track.ts、段の配置は editor/tracks.ts（どちらも純粋・テストあり）。
-import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
+import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {Clip, Cut, Narration, NarrationSegment, ReelData} from '@shared/schema';
 import {cutDurationSec, cutRanges, type TelopGroup} from '@shared/timeline';
 import {colorFilter} from '@shared/color';
@@ -20,6 +20,7 @@ import {cutBoundaries, draggedAt, narrationBlocks, setNarrationAt, setSfxAt, sfx
 import type {Selection} from './selection';
 import {sameSelection} from './selection';
 import {ROLE_LABEL} from './labels';
+import type {PlaybackClock} from './playbackClock';
 
 export type TimelineHandle = {
   /** viewport 座標の点が映像段の上なら、そこへ落としたときの挿入位置（0〜n）。外なら null */
@@ -54,6 +55,7 @@ type Props = {
   /** ドラッグ開始など、選ぶだけでシークしない */
   onSelectQuiet: (sel: Selection) => void;
   currentFrame: number;
+  playbackClock?: PlaybackClock;
   onSeek: (frame: number) => void;
   pxPerSec: number;
   onPxPerSec: (v: number) => void;
@@ -101,10 +103,11 @@ const descOf = (clip: Clip | undefined, c: Cut): string => clip?.tags?.descripti
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
-  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, multiSelection = [], onSelect, onSelectQuiet, currentFrame, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
+  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, multiSelection = [], onSelect, onSelectQuiet, currentFrame, playbackClock, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
   const videoRowRef = useRef<HTMLDivElement | null>(null);
+  const playheadRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const [activeTrim, setActiveTrim] = useState<{index: number; handle: TrimHandle} | null>(null);
   const [extCaret, setExtCaret] = useState<Caret | null>(null);
@@ -268,12 +271,17 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
   }, [pinching]);
 
   // 再生中に再生ヘッドが画面の外へ出たら追いかける（ドラッグ中は動かさない）
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el || dnd.drag || dragRef.current) return;
-    const x = (currentFrame / data.fps) * pxPerSec;
-    if (x < el.scrollLeft || x > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, x - el.clientWidth * 0.2);
-  }, [currentFrame, data.fps, pxPerSec, dnd.drag]);
+  useLayoutEffect(() => {
+    const update = () => {
+      const x = ((playbackClock?.getFrame() ?? currentFrame) / data.fps) * pxPerSec;
+      if (playheadRef.current) playheadRef.current.style.left = `${x}px`;
+      const el = scrollerRef.current;
+      if (!el || dnd.drag || dragRef.current || pinch.current) return;
+      if (x < el.scrollLeft || x > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, x - el.clientWidth * 0.2);
+    };
+    update();
+    return playbackClock?.subscribe(update);
+  }, [currentFrame, data.fps, pxPerSec, dnd.drag, playbackClock]);
 
   // Alt+←→ で動かしたあと、移動先のブロックにフォーカスを戻す
   useEffect(() => {
@@ -418,7 +426,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     } else if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       e.stopPropagation();
-      const target = data.cuts.length ? cutRanges(data).findIndex(r => currentFrame >= r.from && currentFrame < r.from + r.dur) : -1;
+      const atFrame = playbackClock?.getFrame() ?? currentFrame;
+      const target = data.cuts.length ? cutRanges(data).findIndex(r => atFrame >= r.from && atFrame < r.from + r.dur) : -1;
       if (target >= 0) onSplitCut(target);
     }
   };
@@ -495,7 +504,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
           <div className="tl-label tl-label-n" title="ナレーション：ドラッグで配置秒を動かす">
             <span className="tl-ico n">N</span>
             <span className="tl-name">ナレーション</span>
-            <button className="tl-add" title="再生ヘッドの位置にナレーションを追加" onClick={() => onAddNarration(Math.round(playheadSec * 1000) / 1000)} disabled={!cuts}>
+            <button className="tl-add" title="再生ヘッドの位置にナレーションを追加" onClick={() => onAddNarration(Math.round(((playbackClock?.getFrame() ?? currentFrame) / data.fps) * 1000) / 1000)} disabled={!cuts}>
               ＋
             </button>
           </div>
@@ -504,7 +513,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
           <div className="tl-label tl-label-s" title="効果音：ドラッグで配置秒を動かす">
             <span className="tl-ico s">S</span>
             <span className="tl-name">効果音</span>
-            <button className="tl-add" title="再生ヘッドの位置に効果音を追加" onClick={() => onAddSfx(Math.round(playheadSec * 1000) / 1000)} disabled={!cuts || !narration}>
+            <button className="tl-add" title="再生ヘッドの位置に効果音を追加" onClick={() => onAddSfx(Math.round(((playbackClock?.getFrame() ?? currentFrame) / data.fps) * 1000) / 1000)} disabled={!cuts || !narration}>
               ＋
             </button>
           </div>
@@ -737,7 +746,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
             </div>
           )}
 
-          <div className="tl-playhead" style={{left: playheadX}} />
+          <div ref={playheadRef} className="tl-playhead" style={{left: playheadX}} />
         </div>
         {dnd.drag?.caret && <div className="dnd-caret" style={dnd.drag.caret} />}
         {extCaret && <div className="dnd-caret ext" style={extCaret} />}

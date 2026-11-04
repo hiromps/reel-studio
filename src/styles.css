@@ -2423,6 +2423,11 @@ a.btn-like:hover {
 .ed-timeline .tl-scroll {
   overflow-y: hidden;
 }
+.ed-timeline .tl-scroll,
+.ed-timeline .tl-labels {
+  /* Let the outer timeline scroll all rows together instead of clipping tracks. */
+  align-self: flex-start;
+}
 /* 左：件数　中央：再生　右：拡大と表示 */
 .tl-toolbar {
   display: grid;

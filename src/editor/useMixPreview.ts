@@ -5,6 +5,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Narration} from '@shared/schema';
 import type {SfxLibrary} from '@shared/sfx';
 import {AMBIENT_DEFAULT, driftExceeded, mixClipsOf, planPlayback, type MixClip} from './mixPreview';
+import type {PlaybackClock} from './playbackClock';
 
 export type MixPreviewStatus = {
   /** 読み込めたナレーション wav の数 / 鳴らす対象の数 */
@@ -26,6 +27,7 @@ type Opt = {
   playing: boolean;
   /** 現在のフレーム（frameupdate で更新される値）。ずれの検出に使う */
   frame: number;
+  playbackClock?: PlaybackClock;
   /** 正確な現在フレーム（スケジュール時に使う） */
   getFrame: () => number;
   setPlayerVolume: (v: number) => void;
@@ -33,7 +35,7 @@ type Opt = {
 
 type Buf = AudioBuffer | 'loading' | 'missing';
 
-export const useMixPreview = ({enabled, narration, mediaBase, lib, fps, playing, frame, getFrame, setPlayerVolume}: Opt): MixPreviewStatus => {
+export const useMixPreview = ({enabled, narration, mediaBase, lib, fps, playing, frame, getFrame, setPlayerVolume, playbackClock}: Opt): MixPreviewStatus => {
   const ctxRef = useRef<AudioContext | null>(null);
   const buffers = useRef(new Map<string, Buf>());
   const active = useRef<{nodes: AudioScheduledSourceNode[]; anchor: {ctxSec: number; mediaSec: number} | null}>({nodes: [], anchor: null});
@@ -131,11 +133,15 @@ export const useMixPreview = ({enabled, narration, mediaBase, lib, fps, playing,
   // ---- ずれたら鳴らし直す（ループで頭に戻ったときもここで拾う） ----
   useEffect(() => {
     if (!playing || !enabled) return;
-    const c = ctxRef.current;
-    if (!c) return;
-    const mediaSec = frame / fps;
-    if (driftExceeded(active.current.anchor, c.currentTime, mediaSec)) startFrom(mediaSec);
-  }, [frame, playing, enabled, fps, startFrom]);
+    const check = () => {
+      const c = ctxRef.current;
+      if (!c) return;
+      const mediaSec = (playbackClock?.getFrame() ?? frame) / fps;
+      if (driftExceeded(active.current.anchor, c.currentTime, mediaSec)) startFrom(mediaSec);
+    };
+    check();
+    return playbackClock?.subscribe(check);
+  }, [frame, playing, enabled, fps, startFrom, playbackClock]);
 
   // ---- Player の音量：有効なら環境音の値に落とす ----
   const ambient = narration?.ambientGain ?? AMBIENT_DEFAULT;

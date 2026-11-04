@@ -11,6 +11,7 @@ const player = vi.hoisted(() => ({
   split: vi.fn((_i: number, _frame?: number): string | null => null),
   pause: vi.fn(),
   seekTo: vi.fn(),
+  modelRender: vi.fn(),
 }));
 
 vi.mock('../src/api', () => ({api: {get: async () => ({data: {version: 1, sounds: []}})}}));
@@ -33,6 +34,7 @@ vi.mock('../src/editor/useEditorModel', async () => {
   const ranges = cutRanges(cuts);
   return {
     useEditorModel: () => {
+      player.modelRender();
       const [selection, setSelection] = useState<import('../src/editor/selection').Selection>(null);
       const [frame, setFrame] = useState(0);
       return {
@@ -52,7 +54,6 @@ vi.mock('../src/components/useBinDrag', () => ({useBinDrag: () => ({drag: null, 
 vi.mock('../src/components/useDebounced', () => ({useDebounced: (value: unknown) => value}));
 vi.mock('../src/hooks/useHotkeys', () => ({useHotkeys: () => {}}));
 vi.mock('../src/editor/Bin', () => ({Bin: () => null}));
-vi.mock('../src/editor/Transport', () => ({PreviewOptions: () => null, Transport: () => null}));
 vi.mock('../src/editor/Inspector', () => ({
   CutInspector: ({index}: {index: number}) => React.createElement('output', {'data-inspector': true}, index + 1),
   NarrationInspector: () => null, ReelInspector: () => null, SfxInspector: () => null, TelopInspector: () => null,
@@ -83,6 +84,7 @@ describe('editor playback selection', () => {
       for (const clip of container.querySelectorAll<HTMLElement>('.ctl-clip')) clip.scrollIntoView = vi.fn();
       await act(async () => container.querySelector('[data-dnd-index="7"]')!.dispatchEvent(new MouseEvent('click', {bubbles: true})));
       expect(selectedIndex()).toBe(7);
+      expect(container.querySelector('.ed-inspector.sel')).not.toBeNull();
       expect(player.seekTo).toHaveBeenLastCalledWith(219);
 
       // 再生状態の通知がなくても、再生バーの位置そのものに選択が追従する。
@@ -92,6 +94,7 @@ describe('editor playback selection', () => {
       expect(selectedIndex()).toBe(7);
 
       await act(async () => player.onPlayState(true));
+      expect(container.querySelector('.ed-inspector.sel')).toBeNull();
       player.pause.mockClear();
       player.seekTo.mockClear();
       await act(async () => player.onFrame(329));
@@ -102,14 +105,33 @@ describe('editor playback selection', () => {
       expect(container.querySelector<HTMLElement>('.tl-playhead')?.style.left).toBe('990px');
       await act(async () => player.onFrame(340));
       expect(selectedIndex()).toBe(11);
+      expect(container.querySelector('.ed-inspector.sel')).toBeNull();
+      expect(container.querySelector<HTMLElement>('.tl-playhead')?.style.left).toBe('1020px');
+      expect(container.querySelector('.tp-time')?.getAttribute('title')).toContain('フレーム 340');
+      // A whole second of full-rate playback must not rerender the editor model.
+      // The playhead and time display still receive every exact frame.
+      const editorRenders = player.modelRender.mock.calls.length;
+      for (let frame = 341; frame < 360; frame++) {
+        await act(async () => player.onFrame(frame));
+      }
+      expect(player.modelRender.mock.calls.length).toBe(editorRenders);
+      expect(container.querySelector<HTMLElement>('.tl-playhead')?.style.left).toBe('1077px');
+      expect(container.querySelector('.tp-time')?.getAttribute('title')).toContain('フレーム 359');
       expect(player.pause).not.toHaveBeenCalled();
       expect(player.seekTo).not.toHaveBeenCalled();
+
+      // A loop/seek can cross two boundaries before React commits either event.
+      await act(async () => { player.onFrame(0); player.onFrame(345); });
+      expect(selectedIndex()).toBe(11);
+      expect(container.querySelector<HTMLElement>('.tl-playhead')?.style.left).toBe('1035px');
 
       await act(async () => player.onFrame(0));
       expect(selectedIndex()).toBe(0);
       await act(async () => player.onPlayState(false));
+      expect(container.querySelector('.ed-inspector.sel')).toBeNull();
       await act(async () => container.querySelector('[data-dnd-index="7"]')!.dispatchEvent(new MouseEvent('click', {bubbles: true})));
       expect(selectedIndex()).toBe(7);
+      expect(container.querySelector('.ed-inspector.sel')).not.toBeNull();
       const pointer = (type: string, clientX: number) => {
         const event = new MouseEvent(type, {bubbles: true, button: 0, clientX});
         Object.defineProperties(event, {pointerId: {value: 1}, pointerType: {value: 'mouse'}});

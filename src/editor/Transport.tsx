@@ -1,14 +1,16 @@
 // プレビューの操作（再生・コマ送り・頭出し）と時刻表示。キーはページ側（Space / ← → / Home / End）が同じ関数を呼ぶ。
 // 再生ボタン群（Transport）はタイムラインの上段の中央に、合成音・ループ・軽量の切り替え（PreviewOptions）は
 // プレビューのキャンバス左下に浮かせて置く。
-import React from 'react';
+import React, {useSyncExternalStore} from 'react';
 import type {MixPreviewStatus} from './useMixPreview';
+import type {PlaybackClock} from './playbackClock';
 
 type MixProps = {enabled: boolean; status: MixPreviewStatus; pending: number; hasNarration: boolean; onToggle: (v: boolean) => void};
 
 type TransportProps = {
   playing: boolean;
   frame: number;
+  playbackClock?: PlaybackClock;
   fps: number;
   totalFrames: number;
   currentCut: number;
@@ -69,7 +71,11 @@ const ICON = {
   pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
 };
 
-export const Transport: React.FC<TransportProps> = ({playing, frame, fps, totalFrames, currentCut, cutCount, onToggle, onStep, onHome, onEnd}) => (
+const noSubscribe = () => () => {};
+
+export const Transport: React.FC<TransportProps> = ({playing, frame: fallbackFrame, playbackClock, fps, totalFrames, currentCut, cutCount, onToggle, onStep, onHome, onEnd}) => {
+  const frame = useSyncExternalStore(playbackClock?.subscribe ?? noSubscribe, playbackClock?.getFrame ?? (() => fallbackFrame));
+  return (
   <div className="transport">
     <span className="tp-time mono" title={`${fmtTime(frame, fps)}s / フレーム ${frame}`}>
       {fmtClock(frame, fps)}
@@ -96,7 +102,8 @@ export const Transport: React.FC<TransportProps> = ({playing, frame, fps, totalF
       </span>
     )}
   </div>
-);
+  );
+};
 
 export const PreviewOptions: React.FC<OptionsProps> = ({loop, light, mix, onLoop, onLight}) => {
   const ml = mixLabel(mix);

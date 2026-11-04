@@ -1403,7 +1403,7 @@ outputs/musch_hiro_ナレーション付き_v2.mp4              ← 同名で中
 - `shared/validate.ts` の `validateCuts` は edit-pipeline.md / telop-style.md / format-patterns.md の規則をコード化。context（catalog / brief / spec / persona）が無いルールは `skipped` に列挙
 - エンジン（`engine/src/`）。`shared/timeline.ts` はエンジンの `cutFrames` / `calcTotalFrames` / telopGroups と同一式で、テストで突合している
 - Windows 対策：spawn は args 配列のみ（shell 不使用）。`npm` と `remotion` は `node <cli.js>` で起動。kill は `taskkill /T /F`
-- 依存：GUI 側は `remotion` / `@remotion/player` 4.0.522（`npm audit` 0 件）。**レンダーは案件フォルダ側の `node_modules/@remotion/cli` を使う**ので、案件側のバージョンとは独立している
+- 依存：GUI 側の `remotion` / `@remotion/player` と同梱エンジンの `remotion` / `@remotion/cli` を 4.0.540 に統一。デスクトップの案件描画部品は lock の変更を検知して更新し、既存設定をバックアップする。開発版で独自に作成した案件の依存は別途更新が必要
 - 低メモリ対策：空き RAM 1.2GB 未満で concurrency 1・cache 128MB。失敗時は 5s/15s/30s 待って段階的に保守化して再試行
 - 起動：`scripts/launch.mjs` が「依存導入 → 必要ならビルド → サーバー起動 → ブラウザを開く」を行い、終了時に子プロセスを `taskkill /T /F` で片付ける。ビルドの要否は `src` / `shared` / `index.html` / `vite.config.ts` / エンジンの最終更新時刻と `dist/index.html` の比較で決めるので、コードを直したら次回起動時に自動で作り直される
 - 素材フォルダの「参照…」は `core/pick-folder.ts` が PowerShell の `FolderBrowserDialog` を開く（サーバー側で開くのでローカル利用専用）。日本語パスが化けないよう選択結果は UTF-8 ファイル経由で受け取り、`SelectedPath` はスラッシュ区切りだと無視されるため `path.win32.resolve` で正規化してから渡す。ダイアログは同時に 1 つだけ（多重に開くと 409）
@@ -1418,14 +1418,14 @@ outputs/musch_hiro_ナレーション付き_v2.mp4              ← 同名で中
 `resolveProjectDirStrict` を通し、不正なら 400 / 404 を返す（`resolveProjectDir` はパスも受けるが、
 これは CLI の `--project <dir>` のためのもので HTTP からは使わない）。
 
-`work/*-reel/node_modules` の remotion は **4.0.245** のままで、`@remotion/studio-server` に
+古い開発用案件には Remotion **4.0.245** の依存が残っている場合がある。`@remotion/studio-server` に
 CVE-2026-30120（RCE）/ CVE-2026-30121（任意ファイル書き込み）がある（修正は 4.0.410）。
 **脆弱なのは `remotion studio`（開発サーバー）だけ**で、CLI レンダー（`remotion render` / `still`）と
 `@remotion/player` は対象外。Reel Studio はレンダーとスチルしか呼ばないため、通常運用では
 到達しない。ただし各案件の `package.json` に `"studio": "remotion studio"` が残っているので、
-**`npm run studio` は実行しないこと**。全案件を 4.0.522 へ上げる場合は 277 バージョン分の差分に
-なるため、既存案件の再レンダー結果が変わらないかを 1 案件で検証してから一括適用する
-（`startFrom` は 4.0.522 でも deprecated 扱いで動作する）。
+**古い依存のまま `npm run studio` は実行しないこと**。現在の同梱版は 4.0.540。
+開発版の既存案件も更新するときは、既存案件の再レンダー結果を 1 案件で検証してから適用する。
+`startFrom` を利用している既存エンジンも 4.0.540 で実際の MP4 書き出しを確認している。
 
 ## ロードマップ
 

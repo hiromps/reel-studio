@@ -18,7 +18,7 @@ Node.jsやnpmの知識、手動のPATH設定、Gitのインストールは初回
 |---|---|---|
 | Node.js 24 LTS + npm | アプリと依存パッケージの実行 | 対応版がなければ公式ZIPをSHA256検証して`.runtime/node`へ展開 |
 | アプリの依存パッケージ | 編集画面・API・同梱Codex CLI | lockファイルに従って`npm ci` |
-| Remotion / CLI / Player | 動画プレビューと書き出し | 4.0.522で統一・固定 |
+| Remotion / CLI / Player | 動画プレビューと書き出し | 4.0.540で統一・固定 |
 | Chrome Headless Shell | 動画描画 | Remotionがダウンロード、案件間で共有 |
 | FFmpeg / FFprobe | 素材解析・変換・音声合成 | 対応版がなければSHA256検証したGyan full buildを`.runtime/ffmpeg`へ展開 |
 | 日本語フォント | テロップ | Noto Serif JPをライセンス付きで同梱 |
