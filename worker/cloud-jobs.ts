@@ -5,9 +5,8 @@
 //   fonts          … スマホから上げたテロップ用フォントの取り込み・削除
 import fs from 'node:fs';
 import path from 'node:path';
-import {pipeline} from 'node:stream/promises';
-import {Readable} from 'node:stream';
 import {studioConfig} from '../studio.config';
+import {copyLocalMedia, requireLocalMedia} from '../core/local-media';
 import {cloneProject, createProject, npmInstall, resolveProjectDir} from '../core/project';
 import {importTags, loadCatalog} from '../core/catalog';
 import {deleteFont, fontsDir, saveFont} from '../core/fonts';
@@ -16,6 +15,14 @@ import {safeFontFile} from '../shared/schema/fonts';
 import {makePreviewProxy} from '../core/proxy';
 import type {PersonaId} from '../shared/schema/brief';
 import type {JobRunCtx} from '../server/jobs';
+import {importModalResult} from '../core/modal-results';
+import type {CloudClient} from './client';
+import {z} from 'zod';
+
+export const runModalImport = async (client: CloudClient, slug: string, p: Record<string, unknown>, ctx: JobRunCtx): Promise<unknown> => {
+  if (!z.string().uuid().safeParse(p.id).success) throw new Error('ModalジョブIDが不正です');
+  return importModalResult(p.id as string, resolveProjectDir(slug), ctx.signal, ctx.onLine, {job: id => client.modalJob(id), result: id => client.modalResult(id, ctx.signal)});
+};
 
 /** ファイル名に使えない文字を落とす（フォルダを掘られないように） */
 const safeName = (s: string): string => s.replace(/[\\/:*?"<>|]/g, '_').replace(/^\.+/, '').trim() || 'clip';
@@ -62,11 +69,7 @@ export const runIngest = async (slug: string, p: Record<string, unknown>, ctx: J
       saved.push(dest);
       continue;
     }
-    const res = await fetch(f.url, {signal: ctx.signal});
-    if (!res.ok || !res.body) throw new Error(`取り込めません（HTTP ${res.status}）: ${f.name}`);
-    const tmp = `${dest}.part`;
-    await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(tmp));
-    fs.renameSync(tmp, dest);
+    copyLocalMedia(f.url, dest);
     saved.push(dest);
     ctx.onLine(`取り込みました: ${path.basename(dest)}（${(fs.statSync(dest).size / 1024 / 1024).toFixed(1)} MB）`);
   }
@@ -79,7 +82,7 @@ export const runIngest = async (slug: string, p: Record<string, unknown>, ctx: J
 /**
  * テロップの自前フォントを、置き場（<設定の置き場>/fonts/）に入れる／置き場から消す。
  *
- * スマホからは Blob に上がってくるので、ここで落として取り込む（中身の検証は saveFont が行う）。
+ * ファイルは検証済みのローカル参照から読み込む（中身の検証は saveFont が行う）。
  * 削除も同じジョブで受ける ── 実体が PC にあり、クラウドからは直接触れないため。
  */
 export const runFontJob = async (p: Record<string, unknown>, ctx: JobRunCtx): Promise<unknown> => {
@@ -104,9 +107,7 @@ export const runFontJob = async (p: Record<string, unknown>, ctx: JobRunCtx): Pr
     ctx.signal.throwIfAborted();
     i++;
     ctx.onProgress({phase: f.name, done: i - 1, total: files.length});
-    const res = await fetch(f.url, {signal: ctx.signal});
-    if (!res.ok) throw new Error(`取り込めません（HTTP ${res.status}）: ${f.name}`);
-    const entry = saveFont(f.name, Buffer.from(await res.arrayBuffer()));
+    const entry = saveFont(f.name, fs.readFileSync(requireLocalMedia(f.url)));
     saved.push(entry.file);
     ctx.onLine(`取り込みました: ${entry.file}（${(entry.sizeBytes / 1024 / 1024).toFixed(1)} MB）`);
   }

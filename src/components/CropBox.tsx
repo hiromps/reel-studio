@@ -8,10 +8,12 @@
 import React, {useCallback, useRef, useState} from 'react';
 import {MAX_CROP_ZOOM, cropStyle} from '@engine/GourmetReel';
 import {DEFAULT_CROP, type Crop} from '@shared/schema/cuts';
+import {colorFilter, type ColorAdjustments} from '@shared/color';
 
 type Props = {
   src: string | null;
   crop: Crop;
+  color?: ColorAdjustments;
   onChange: (c: Crop) => void;
   /** 素材の実サイズ（寄ったときの粗さを知らせる） */
   probe?: {width: number; height: number; rotation?: number};
@@ -30,7 +32,7 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 /** 2 本指の間の距離（ピンチの判定に使う） */
 const spread = (a: {clientX: number; clientY: number}, b: {clientX: number; clientY: number}) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 
-export const CropBox: React.FC<Props> = ({src, crop, onChange, probe, videoRef, onError, big, onBig, children}) => {
+export const CropBox: React.FC<Props> = ({src, crop, color, onChange, probe, videoRef, onError, big, onBig, children}) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const localVideo = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
   const video = videoRef ?? localVideo;
@@ -120,7 +122,7 @@ export const CropBox: React.FC<Props> = ({src, crop, onChange, probe, videoRef, 
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
       >
-        <video ref={video} src={src ?? undefined} autoPlay loop muted playsInline preload="metadata" style={cropStyle(crop)} onError={onError} />
+        <video ref={video} src={src ?? undefined} autoPlay loop muted playsInline preload="metadata" style={{...cropStyle(crop), filter: colorFilter(color)}} onError={onError} />
         {/* 目安の線（三分割）。寄せる位置を決めるときの当たりにする */}
         <div className="cropbox-guides" aria-hidden />
         {children}

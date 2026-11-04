@@ -1,4 +1,4 @@
-param([switch]$ToolsOnly, [switch]$PrivateNode, [switch]$Launch, [switch]$Doctor, [switch]$ExportTest, [Parameter(ValueFromRemainingArguments=$true)][string[]]$LauncherArgs)
+param([switch]$ToolsOnly, [switch]$NodeOnly, [switch]$PrivateNode, [switch]$Launch, [switch]$Doctor, [switch]$ExportTest, [Parameter(ValueFromRemainingArguments=$true)][string[]]$LauncherArgs)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -51,6 +51,7 @@ try {
     $nodeBin = Join-Path (Join-Path $runtimeRoot 'node') ($match.Groups[2].Value.Replace('.zip', '') + '\node.exe')
   }
   $env:Path = (Split-Path -Parent $nodeBin) + ';' + $env:Path
+  if ($NodeOnly) { exit 0 }
   $toolsFile = Join-Path $runtimeRoot 'tools.json'
   $tools = @{}
   if (Test-Path -LiteralPath $toolsFile) {

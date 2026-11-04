@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
+import {loadEmotionTags} from '../core/emotion-tags';
 import {exec} from '../core/exec';
 import {claudeAvailable, claudeBin, claudeVersion, resetClaudeBin} from '../core/agent';
 import {codexAvailable, codexBinInfo, codexLoggedIn, codexVersion} from '../core/codex';
@@ -37,7 +38,7 @@ import {listVideoStyles} from '../core/video-style';
 import type {CloudJob} from '../cloud/store';
 import type {WorkerStatus} from '../cloud/worker-status';
 import {CloudClient, CloudError, cloudConfig} from './client';
-import {ensurePreviewProxies, runCatalogImport, runCreateProject, runFontJob, runIngest} from './cloud-jobs';
+import {ensurePreviewProxies, runCatalogImport, runCreateProject, runFontJob, runIngest, runModalImport} from './cloud-jobs';
 import {acquireWorkerLock, releaseWorkerLock, touchWorkerLock} from './lock';
 import {pullNarrationAudio, pushProjectState, syncAssets, syncDocs, syncFonts} from './sync';
 
@@ -202,7 +203,7 @@ const currentSettingsView = async () => {
   const catalogs = await Promise.allSettled(providers.map((provider) => listAgentModels(provider)));
   view.agentModels = {};
   catalogs.forEach((result, index) => {if (result.status === 'fulfilled') view.agentModels![providers[index]] = result.value;});
-  return view;
+  return {...view, emotionTags: loadEmotionTags()};
 };
 
 // ───────────────────────── ジョブの実行 ─────────────────────────
@@ -222,7 +223,7 @@ const runSync = (ctx: JobRunCtx): {ok: true} => {
   return {ok: true};
 };
 
-const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | null): Promise<void> => {
+const runOne = async (client: CloudClient, job: CloudJob): Promise<void> => {
   const abort = new AbortController();
   running.set(job.id, {slug: job.slug, type: job.type, abort});
   log(`▶ ${job.type} [${job.slug}] ${job.id}`);
@@ -285,6 +286,8 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
             ? await runFontJob(job.params, ctx)
             : job.type === 'catalog-import'
               ? await runCatalogImport(job.slug, job.params, ctx)
+              : job.type === 'modal-import'
+                ? await runModalImport(client, job.slug, job.params, ctx)
               : job.type === 'sync'
                 ? runSync(ctx)
                 : await runJobBody({type: job.type as Parameters<typeof runJobBody>[0]['type'], slug: job.slug, params: job.params}, ctx);
@@ -314,7 +317,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
     if (job.type === 'fonts' && !abort.signal.aborted) {
       try {
         await client.pushSettings(await currentSettingsView());
-        if (blobToken) await syncFonts(client, blobToken, {onLine: ctx.onLine});
+        await syncFonts(client, {onLine: ctx.onLine});
       } catch (e) {
         ctx.onLine(`※ フォントの反映に失敗: ${(e as Error).message}（次の同期で入ります）`);
       }
@@ -333,7 +336,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
     clearInterval(timer);
     stopped = true;
     // 結果（契約ファイルの更新・生成物）をクラウドへ返す
-    await pushAfterJob(client, job, blobToken, ctx.onLine);
+    await pushAfterJob(client, job, ctx.onLine);
     await flush();
     await client.finish(job.id, {status: abort.signal.aborted ? 'cancelled' : 'done', result, lines: buffer.length ? buffer : undefined});
     log(`✔ ${job.type} [${job.slug}] ${job.id}`);
@@ -342,7 +345,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
     stopped = true;
     const message = e instanceof Error ? e.message : String(e);
     try {
-      await pushAfterJob(client, job, blobToken, ctx.onLine);
+      await pushAfterJob(client, job, ctx.onLine);
     } catch {
       /* 失敗したジョブでも、できたところまでは上げる */
     }
@@ -355,7 +358,7 @@ const runOne = async (client: CloudClient, job: CloudJob, blobToken: string | nu
   }
 };
 
-const pushAfterJob = async (client: CloudClient, job: CloudJob, blobToken: string | null, onLine: (l: string) => void): Promise<void> => {
+const pushAfterJob = async (client: CloudClient, job: CloudJob, onLine: (l: string) => void): Promise<void> => {
   if (job.type === 'ingest' || isProjectless(job)) return;
   const dir = resolveProjectDir(job.slug);
   if (!fs.existsSync(dir)) return;
@@ -363,10 +366,7 @@ const pushAfterJob = async (client: CloudClient, job: CloudJob, blobToken: strin
   await pullNarrationAudio(client, dir);
   if (r.pushed.length) onLine(`クラウドへ反映: ${r.pushed.join(', ')}`);
   await pushProjectState(client, dir);
-  if (blobToken) {
-    const a = await syncAssets(client, dir, blobToken, {onLine});
-    if (a.uploaded) onLine(`メディアを ${a.uploaded} 件アップロードしました（${(a.bytes / 1024 / 1024).toFixed(1)} MB）`);
-  }
+  await syncAssets(client, dir, {onLine});
 };
 
 // ───────────────────────── 全案件の棚卸し ─────────────────────────
@@ -378,7 +378,7 @@ let lastSweep = 0;
  */
 let sweeping = false;
 
-const sweep = async (client: CloudClient, blobToken: string | null): Promise<void> => {
+const sweep = async (client: CloudClient): Promise<void> => {
   lastSweep = Date.now();
   const projects = listProjects();
   let done = 0;
@@ -392,7 +392,7 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
       await syncDocs(client, p.dir);
       await pullNarrationAudio(client, p.dir);
       await pushProjectState(client, p.dir);
-      if (blobToken) await syncAssets(client, p.dir, blobToken, {limit: 120});
+      await syncAssets(client, p.dir, {limit: 120});
       done++;
     } catch (e) {
       log(`同期に失敗 [${p.slug}]:`, (e as Error).message);
@@ -407,10 +407,7 @@ const sweep = async (client: CloudClient, blobToken: string | null): Promise<voi
     await client.pushVideoStyles(listVideoStyles());
     await client.pushSettings(await currentSettingsView());
     // 自前フォント（スマホのプレビューで PC と同じ絵を出すため）
-    if (blobToken) {
-      const f = await syncFonts(client, blobToken);
-      if (f.uploaded) log(`フォントを ${f.uploaded} 件アップロードしました`);
-    }
+    await syncFonts(client);
   } catch (e) {
     log('設定の同期に失敗:', (e as Error).message);
   }
@@ -445,7 +442,6 @@ const main = async (): Promise<void> => {
   log(`Reel Studio ワーカー起動: ${cfg.url}`);
   log(`  ffmpeg=${env.ffmpeg ? 'ok' : '無し'} claude=${claudeAvailable() ? 'ok' : '無し'} 案件=${listProjects().length} 件`);
 
-  let blobToken: string | null = null;
   let backoff = 0;
 
   const stop = () => {
@@ -460,7 +456,6 @@ const main = async (): Promise<void> => {
     touchWorkerLock(); // 生きているあいだは錠を新しく保つ
     try {
       const reply = await client.hello(await status([...running.values()].map((r) => ({slug: r.slug, type: r.type}))));
-      blobToken = reply.blobToken;
       backoff = 0;
       await applyRemoteChanges(client, reply);
       // PC 側で人格が変わっていれば（ローカルの Settings・ai-persona）、棚卸しを待たずに送る
@@ -473,7 +468,7 @@ const main = async (): Promise<void> => {
       // 待たない（上の hello とジョブの取得を止めないため）
       if (!sweeping && running.size === 0 && Date.now() - lastSweep > SWEEP_MS) {
         sweeping = true;
-        void sweep(client, blobToken).finally(() => {
+        void sweep(client).finally(() => {
           sweeping = false;
         });
       }
@@ -484,7 +479,7 @@ const main = async (): Promise<void> => {
       );
       if (job) {
         // 実行は待たない（同時に走らせてよい組み合わせはクラウド側が canStartJob で判定済み）
-        void runOne(client, job, blobToken);
+        void runOne(client, job);
         await new Promise((r) => setTimeout(r, 200));
         continue;
       }

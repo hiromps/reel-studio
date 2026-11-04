@@ -3,6 +3,7 @@
 
 /** ジョブ種別の唯一の定義。サーバーの受け口も GUI のボタンもこれを見る（二重管理にしない） */
 export const JOB_TYPES = [
+  'modal-import',
   'catalog',
   'thumbs',
   'proxy',
@@ -30,6 +31,7 @@ export const JOB_TYPES = [
   /** 依頼文（どんな動画にしたいか）から台本（script.md）を書く。assemble なら続けて「台本から組み立てる」まで */
   'ai-script-draft',
   'tts',
+  'emotion-test',
   /** テロップの文言をそのまま原稿に取り込み、Fish Audio で音声まで生成する */
   'telop-tts',
   'sfx-scan',
@@ -86,6 +88,7 @@ export type JobType = (typeof JOB_TYPES)[number];
  * mosaic-setup は mosaic が使っている venv を入れ替えるので、同時に走らせない。
  */
 export const HEAVY_JOBS: ReadonlySet<JobType> = new Set<JobType>([
+  'modal-import',
   'catalog',
   'thumbs',
   'proxy',

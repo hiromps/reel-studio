@@ -214,7 +214,7 @@ planRouter.get('/preview-status', async (req, res) => {
 
 /**
  * ローカルでは ffmpeg でその場で切り出すが、クラウドでは素材そのものが無い。
- * 代わりに catalog のストリップ（1 秒刻みの静止画。Blob に上がっている）から一番近いコマを返す。
+ * 代わりに catalog のストリップ（1 秒刻みの静止画。PC に保存している）から一番近いコマを返す。
  * 見つからなければ 404 —— 画面（CutThumb）はコンタクトシートに落ちる作りになっている。
  */
 planRouter.get('/frame', async (req, res) => {
@@ -230,5 +230,5 @@ planRouter.get('/frame', async (req, res) => {
   const asset = await findAsset(slug, 'studio', 'full', rel);
   if (!asset) return res.status(404).json({error: 'まだ PC から上がっていません'});
   res.setHeader('Cache-Control', 'private, max-age=60');
-  res.redirect(307, asset.url);
+  res.redirect(307, `/p/${encodeURIComponent(slug)}/full/studio/${rel.split('/').map(encodeURIComponent).join('/')}`);
 });

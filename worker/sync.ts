@@ -1,14 +1,13 @@
-// 案件の同期。契約ファイル（docs）の双方向と、メディア（サムネ・軽量プロキシ・完成動画）の一方向。
+// 契約ファイルの双方向同期と、ローカルメディアの参照登録。
 //
 // 決め事:
 // - **契約ファイルはクラウドが正**。衝突したら PC 側を .studio/conflicts/ に退避してクラウドを採る
 //   （スマホで直したものが黙って消える方が困る。退避してあるので失われはしない）
-// - **原本 4K は上げない**。上げるのはサムネ・ストリップ・軽量プロキシ（540x960）・完成動画・ナレーション音声
+// - バイナリは全て PC に保持する。DB にはパスとメタデータのみ登録する。
 // - 何をどこまで同期したかは案件の .studio/cloud-sync.json に残す
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import {put} from '@vercel/blob';
 import {studioConfig} from '../studio.config';
 import {DOC_FILES, DOC_NAMES, isTextDoc, type DocName} from '../shared/project';
 import {stableHash} from '../shared/hash';
@@ -17,8 +16,13 @@ import {writeJsonAtomic} from '../core/json-io';
 import {backupsDir, engineDiff, projectInfo, projectSlug} from '../core/project';
 import {fontsDir, listFonts} from '../core/fonts';
 import {buildFacts} from '../core/build';
-import {blobPath, contentTypeOf, type AssetKind, type AssetMode} from '../cloud/blob';
+import {contentTypeOf, type AssetKind, type AssetMode} from '../shared/media';
+import {copyLocalMedia} from '../core/local-media';
+import {settingsDir} from '../core/settings';
 import type {CloudClient} from './client';
+import {hasReelCuts} from '../core/reel-cuts';
+import {readCuts, readNarration} from '../core/project';
+import {readScript} from '../core/script';
 
 const studioDir = (dir: string) => path.join(dir, studioConfig.studioDirName);
 const syncStatePath = (dir: string) => path.join(studioDir(dir), 'cloud-sync.json');
@@ -42,6 +46,11 @@ const docFile = (dir: string, name: DocName) => path.join(dir, DOC_FILES[name]);
 
 /** ローカルのファイル → docs に載せる形（テキストのものは {text}）。無ければ null */
 export const readLocalDoc = (dir: string, name: DocName): unknown | null => {
+  if (hasReelCuts(dir)) {
+    if (name === 'cuts') return readCuts(dir);
+    if (name === 'narration') return readNarration(dir);
+    if (name === 'script') return {text: readScript(dir)};
+  }
   const file = docFile(dir, name);
   if (!fs.existsSync(file)) return null;
   try {
@@ -81,16 +90,18 @@ export type DocSyncReport = {pulled: DocName[]; pushed: DocName[]; conflicted: D
 export const syncDocs = async (client: CloudClient, dir: string): Promise<DocSyncReport> => {
   const slug = projectSlug(dir);
   const state = readSyncState(dir);
-  const remote = new Map((await client.pullDocs(slug)).docs.map((d) => [d.name, d]));
+  const localDocs = new Map(DOC_NAMES.map((name) => [name, readLocalDoc(dir, name)]));
+  const known = Object.fromEntries([...localDocs].filter(([, data]) => data !== null).map(([name, data]) => [name, stableHash(data)]));
+  const remote = new Map((await client.pullDocs(slug, known)).docs.map((d) => [d.name, d]));
   const report: DocSyncReport = {pulled: [], pushed: [], conflicted: []};
   const toPush: {name: DocName; data: unknown; baseRev: number | null}[] = [];
 
   for (const name of DOC_NAMES) {
-    const local = readLocalDoc(dir, name);
+    const local = localDocs.get(name) ?? null;
     const localHash = local === null ? null : stableHash(local);
     const r = remote.get(name);
     const last = state.docs[name];
-    const remoteMoved = !!r && (!last || r.rev > last.rev);
+    const remoteMoved = !!r && (local === null || !last || r.rev > last.rev);
     const localMoved = localHash !== null && (!last || localHash !== last.hash);
 
     if (remoteMoved && r!.hash !== localHash) {
@@ -154,10 +165,11 @@ const walk = (root: string, rel = ''): string[] => {
   return out;
 };
 
-/** 上げる対象。**原本（public/uploads）は入れない** */
+/** 実体を送らず参照として登録する対象。 */
 const candidates = (dir: string): Candidate[] => {
   const sdir = studioDir(dir);
   const out: Candidate[] = [];
+  for (const rel of walk(path.join(dir, 'public', 'uploads'))) out.push({kind: 'uploads', mode: 'full', relPath: rel, file: path.join(dir, 'public', 'uploads', rel)});
   // サムネイル・ストリップ・コンタクトシート（画面の素材一覧・絵コンテ・トリムバー）
   for (const sub of ['thumbs', 'strips', 'cutframes']) {
     for (const rel of walk(path.join(sdir, sub))) out.push({kind: 'studio', mode: 'full', relPath: `${sub}/${rel}`, file: path.join(sdir, sub, rel)});
@@ -177,10 +189,16 @@ const candidates = (dir: string): Candidate[] => {
 /** 大きいものは中身を読まずに済ませる（作り直せば必ず時刻が変わるため） */
 const SMALL_BYTES = 8 * 1024 * 1024;
 
+const hashCache = new Map<string, {stamp: string; hash: string}>();
 const fileHash = (file: string): string => {
   const st = fs.statSync(file);
-  if (st.size > SMALL_BYTES) return `s${st.size}-m${Math.round(st.mtimeMs)}`;
-  return crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex').slice(0, 20);
+  const stamp = `${st.size}-${st.mtimeMs}-${st.ctimeMs}`;
+  const cached = hashCache.get(file);
+  if (cached?.stamp === stamp) return cached.hash;
+  const hash = st.size > SMALL_BYTES ? `s${stamp}` : crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex').slice(0, 20);
+  if (hashCache.size >= 10_000) hashCache.delete(hashCache.keys().next().value!);
+  hashCache.set(file, {stamp, hash});
+  return hash;
 };
 
 const key = (c: {kind: string; mode: string; relPath: string}) => `${c.kind}/${c.mode}/${c.relPath}`;
@@ -191,103 +209,73 @@ export type AssetSyncReport = {uploaded: number; skipped: number; bytes: number}
 export const pullNarrationAudio = async (client: CloudClient, dir: string): Promise<number> => {
   const narration = readLocalDoc(dir, 'narration') as {segments?: {id?: string; durSec?: number; needsTts?: boolean}[]} | null;
   if (!narration?.segments?.length) return 0;
+  const needed = narration.segments.filter((s) => s.id && /^[a-zA-Z0-9_-]+$/.test(s.id) && s.durSec && !s.needsTts && !fs.existsSync(path.join(dir, 'narration', `${s.id}.wav`)));
+  if (!needed.length) return 0;
   const assets = await client.listAssets(projectSlug(dir));
   const remote = new Map(assets.assets.filter((a) => a.kind === 'narration' && a.mode === 'full').map((a) => [a.relPath, a]));
   const folder = path.join(dir, 'narration');
   let count = 0;
-  for (const segment of narration.segments) {
+  for (const segment of needed) {
     if (!segment.id || !/^[a-zA-Z0-9_-]+$/.test(segment.id) || !segment.durSec || segment.needsTts) continue;
     const file = path.join(folder, `${segment.id}.wav`);
     if (fs.existsSync(file)) continue;
     const asset = remote.get(`${segment.id}.wav`);
     if (!asset?.url) continue;
-    const response = await fetch(asset.url);
-    if (!response.ok) throw new Error(`音声の同期に失敗しました: ${segment.id}（HTTP ${response.status}）`);
-    const bytes = Buffer.from(await response.arrayBuffer());
-    fs.mkdirSync(folder, {recursive: true});
-    const temp = path.join(folder, `.${segment.id}.${process.pid}.tmp`);
-    try { fs.writeFileSync(temp, bytes); fs.renameSync(temp, file); } finally { fs.rmSync(temp, {force: true}); }
+    copyLocalMedia(asset.url, file);
     count++;
   }
   return count;
 };
 
-/** 変わったものだけ Blob に上げて索引に登録する */
-export const syncAssets = async (client: CloudClient, dir: string, blobToken: string, opt: {limit?: number; onLine?: (l: string) => void} = {}): Promise<AssetSyncReport> => {
-  const slug = projectSlug(dir);
-  const remote = new Map((await client.listAssets(slug)).assets.map((a) => [key(a), a.hash]));
+/** バイナリを送らず、ローカルの絶対パスとメタデータだけを差分登録する。 */
+export const syncAssets = async (client: CloudClient, dir: string, opt: {limit?: number; onLine?: (l: string) => void} = {}): Promise<AssetSyncReport> => {
+  const state = readSyncState(dir);
   const list = candidates(dir);
-  const todo: {c: Candidate; hash: string}[] = [];
+  const registered = [];
+  const stamps: [string, string][] = [];
   for (const c of list) {
-    let hash: string;
-    try {
-      hash = fileHash(c.file);
-    } catch {
-      continue;
-    }
-    if (remote.get(key(c)) === hash) continue;
-    todo.push({c, hash});
+    const hash = fileHash(c.file);
+    const file = path.resolve(c.file);
+    const stamp = `local-v1:${file}:${hash}`;
+    if (state.assets[key(c)] === stamp) continue;
+    registered.push({kind: c.kind, mode: c.mode, relPath: c.relPath, url: file, bytes: fs.statSync(file).size, hash, contentType: contentTypeOf(file)});
+    stamps.push([key(c), stamp]);
+    if (registered.length >= (opt.limit ?? 400)) break;
   }
-  const limit = opt.limit ?? 400;
-  const batch = todo.slice(0, limit);
-  if (!batch.length) return {uploaded: 0, skipped: list.length, bytes: 0};
-  opt.onLine?.(`クラウドへ ${batch.length} 件アップロード中…`);
-
-  const registered: {kind: string; mode: string; relPath: string; url: string; bytes: number; hash: string; contentType: string}[] = [];
-  let bytes = 0;
-  for (const {c, hash} of batch) {
-    const st = fs.statSync(c.file);
-    const contentType = contentTypeOf(c.relPath);
-    const body = st.size > SMALL_BYTES ? fs.createReadStream(c.file) : fs.readFileSync(c.file);
-    const r = await put(blobPath(slug, c.kind, c.mode, c.relPath), body, {access: 'public', contentType, addRandomSuffix: true, token: blobToken});
-    registered.push({kind: c.kind, mode: c.mode, relPath: c.relPath, url: r.url, bytes: st.size, hash, contentType});
-    bytes += st.size;
-    // 索引は 50 件ずつ入れる（1 リクエストを大きくしすぎない）
-    if (registered.length >= 50) {
-      await client.registerAssets(slug, registered.splice(0, registered.length));
-    }
+  for (let i = 0; i < registered.length; i += 50) {
+    const batch = registered.slice(i, i + 50);
+    const result = await client.registerAssets(projectSlug(dir), batch);
+    if (result.bad.length || result.saved !== batch.length) throw new Error('ローカルメディア索引の登録に失敗しました');
   }
-  if (registered.length) await client.registerAssets(slug, registered);
-  return {uploaded: batch.length, skipped: list.length - batch.length, bytes};
+  const current = readSyncState(dir);
+  for (const [k, stamp] of stamps) current.assets[k] = stamp;
+  writeSyncState(dir, current);
+  if (registered.length) opt.onLine?.(`ローカルメディア ${registered.length} 件の参照を登録しました`);
+  return {uploaded: registered.length, skipped: list.length - registered.length, bytes: 0};
 };
 
-// ───────────────────────── 自前フォント ─────────────────────────
-
-/**
- * テロップの自前フォント（<設定の置き場>/fonts/）をクラウドへ上げる。
- *
- * 案件に属さないので slug は `_global`（効果音と同じ扱い）。これが無いと、スマホで見る
- * プレビューだけ同梱の明朝で描かれてしまい、PC で見えているものと違う絵になる。
- * レンダー自体は PC で走るので、上げ損ねても完成品の見た目は変わらない。
- */
-export const syncFonts = async (client: CloudClient, blobToken: string, opt: {onLine?: (l: string) => void} = {}): Promise<AssetSyncReport> => {
-  const dir = fontsDir();
+/** フォントも実体は動かさず、参照を登録する。 */
+export const syncFonts = async (client: CloudClient, opt: {onLine?: (l: string) => void} = {}): Promise<AssetSyncReport> => {
+  const file = path.join(settingsDir(), 'local-font-sync.json');
+  let state: Record<string, string> = {};
+  try { state = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* 初回 */ }
+  const registered = [];
   const list = listFonts();
-  if (!list.length) return {uploaded: 0, skipped: 0, bytes: 0};
-  const remote = new Map((await client.listAssets('_global')).assets.map((a) => [key(a), a.hash]));
-  const registered: {kind: string; mode: string; relPath: string; url: string; bytes: number; hash: string; contentType: string}[] = [];
-  let uploaded = 0;
-  let bytes = 0;
-  for (const f of list) {
-    const file = path.join(dir, f.file);
-    let hash: string;
-    try {
-      hash = fileHash(file);
-    } catch {
-      continue;
-    }
-    if (remote.get(key({kind: 'fonts', mode: 'full', relPath: f.file})) === hash) continue;
-    const contentType = contentTypeOf(f.file);
-    const r = await put(blobPath('_global', 'fonts', 'full', f.file), fs.readFileSync(file), {access: 'public', contentType, addRandomSuffix: true, token: blobToken});
-    registered.push({kind: 'fonts', mode: 'full', relPath: f.file, url: r.url, bytes: f.sizeBytes, hash, contentType});
-    uploaded++;
-    bytes += f.sizeBytes;
+  for (const font of list) {
+    const localPath = path.resolve(fontsDir(), font.file);
+    const hash = fileHash(localPath);
+    const stamp = `${localPath}:${hash}`;
+    if (state[font.file] === stamp) continue;
+    registered.push({kind: 'fonts', mode: 'full', relPath: font.file, url: localPath, bytes: font.sizeBytes, hash, contentType: contentTypeOf(font.file)});
+    state[font.file] = stamp;
   }
   if (registered.length) {
-    await client.registerAssets('_global', registered);
-    opt.onLine?.(`フォントを ${registered.length} 件アップロードしました`);
+    const result = await client.registerAssets('_global', registered);
+    if (result.bad.length || result.saved !== registered.length) throw new Error('フォント索引の登録に失敗しました');
+    writeJsonAtomic(file, state);
+    opt.onLine?.(`フォント ${registered.length} 件のローカル参照を登録しました`);
   }
-  return {uploaded, skipped: list.length - uploaded, bytes};
+  return {uploaded: registered.length, skipped: list.length - registered.length, bytes: 0};
 };
 
 // ───────────────────────── 案件の状態 ─────────────────────────

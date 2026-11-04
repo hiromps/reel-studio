@@ -26,6 +26,7 @@ export const AI_JOB_LABEL: Record<string, string> = {
   winner: '二次活用版を作成中（レンダー→音声→mix→倍速）',
   build: '仕上げを実行中',
   tts: '音声を生成中',
+  'emotion-test': '感情タグの聞き比べ音声を生成中',
   mosaic: '顔にモザイクをかけています（deface）',
   'mosaic-revert': 'モザイクを外しています',
   'mosaic-setup': 'deface を導入中',

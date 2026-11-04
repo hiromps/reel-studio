@@ -1,14 +1,15 @@
 # クラウドモード（スマホの PWA ＋ 自宅 PC ワーカー）
 
-Reel Studio を **スマホから全機能使えるようにする**ための構成です。ローカル専用の使い方
-（`npm start`）は今までどおり動きます。クラウドモードは置き換えではなく追加です。
+**2026-10-21 更新：動画・音声はすべてローカル保存に切り替えました。** クラウドは台本・メタデータ・ジョブ用です。
+メディアの取り込み・プレビュー・ダウンロードはPC版（`npm start`）で行います。
+保存先と既存ファイルの移行は [ローカル保存の手順](local-storage.md) を参照してください。
 
 ```
 [スマホ / PC のブラウザ]
         │  HTTPS（Cookie 認証・パスワード 1 つ）
         ▼
 [Vercel]  画面（PWA）＋ API
-        │  Supabase の Postgres（案件・契約ファイル・ジョブ）／Vercel Blob（サムネ・軽量プロキシ・完成動画）
+        │  Supabase の Postgres（案件・契約ファイル・ジョブ）／バイナリは PC のみ
         ▲
         │  ポーリング（**PC からの発信だけ**。PC のポートは開けない）
         │
@@ -39,7 +40,7 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 - **PC で Reel Studio が動いていないとジョブが実行されません。** 押したジョブはキューに残り、
   次に起動したとき順に実行されます（画面上部に「PC オフライン」と出ます）。
   PC を触らない日もスマホから使いたいなら、下の「Windows で常駐させる」で自動起動にしてください
-- スマホで再生できるのは軽量プロキシがあるクリップだけです（Timeline に作成状況が出ます）
+- 動画・音声の再生はPC版で行います。VercelはPCのディスクへアクセスできません
 
 ## 何がどこにあるか
 
@@ -48,7 +49,7 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 | 案件・契約ファイル（catalog / brief / cuts / narration / caption / script / hooks） | Supabase（`docs` テーブル） | **クラウド** |
 | ジョブとログ | Supabase（`jobs` / `job_logs`） | クラウド |
 | 人格・設定・効果音の一覧 | Supabase（`personas` / `kv`） | クラウド（PC に反映される） |
-| サムネ・ストリップ・軽量プロキシ・完成動画・ナレーション音声 | Vercel Blob（`assets` テーブルが索引） | PC（生成元） |
+| サムネ・ストリップ・軽量プロキシ・完成動画・ナレーション音声 | PC のローカルファイル（`assets` はパスの索引） | PC |
 | **原本の素材（4K）** | PC の `uploads/` | PC のみ。クラウドには上げない |
 | Remotion プロジェクト（`work/<slug>-reel/`） | PC | PC のみ |
 
@@ -83,7 +84,7 @@ npm run cloud:setup
 ```
 
 対話で次を全部やります —— Vercel のプロジェクト作成 → デプロイ保護を外す →
-Blob ストアの作成と接続 → DB のスキーマ適用 → パスワードと鍵の生成 →
+ローカル保存の確認 → DB のスキーマ適用 → パスワードと鍵の生成 →
 環境変数の設定 → 本番デプロイ → この PC をワーカーとして接続。
 
 用意しておくもの:
@@ -135,10 +136,7 @@ Neon から移す手順は [docs/supabase-migration.md](supabase-migration.md) �
 
 ```bash
 npx vercel link              # プロジェクトを作って紐づける
-npx vercel blob create-store reel-studio-media
-# 作った Blob ストアをプロジェクトに接続する（BLOB_READ_WRITE_TOKEN が自動で入る）
-npx vercel api "/v1/storage/stores/<storeId>/connections?teamId=<teamId>" -X POST \
-  --input connect.json   # {"projectId":"<prj_...>","envVarEnvironments":["production","preview","development"]}
+# メディアはローカル保存。Blob ストア・Storage キーは不要です
 ```
 
 **デプロイ保護（SSO）は切ってください。** 有効なままだと、スマホからも PC のワーカーからも
@@ -163,7 +161,6 @@ npx vercel api "/v9/projects/<prj_…>/link?teamId=<team_…>" -X DELETE
 | `AUTH_PASSWORD_HASH` | `node scripts/hash-password.mjs` の出力（`scrypt$…`） |
 | `AUTH_JWT_SECRET` | 32 文字以上のランダム文字列（`openssl rand -base64 48`） |
 | `WORKER_TOKEN` | ランダム文字列。PC のワーカーと同じ値にする |
-| `BLOB_READ_WRITE_TOKEN` | Blob ストアを接続すると自動で入る |
 | `FISH_API_KEY`（任意） | 音声のボイス一覧と試聴をクラウドから使う場合。生成そのものは PC が行う |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`（任意） | 通知を使う場合。`node -e "console.log(JSON.stringify(require('web-push').generateVAPIDKeys()))"` |
 | `VAPID_SUBJECT`（任意） | 通知の連絡先。`mailto:you@example.com` |
@@ -217,12 +214,12 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 ## ワーカーの動き
 
 1. `POST /api/worker/hello` — 生きていることと環境（ffmpeg / claude / 空きメモリ）を送り、
-   Blob の書き込みトークンと「PC に反映すべき変更」（設定・人格・効果音）を受け取る
+   ローカル保存モードと「PC に反映すべき変更」（設定・人格・効果音）を受け取る
 2. `POST /api/worker/claim` — 始められるジョブを 1 つもらう。同時実行の可否は
    ローカル版と同じ `canStartJob`（`shared/jobs.ts`）で判定される
 3. ジョブ実行 — 実体は `server/jobs.ts` の `runJobBody`（ローカル版とまったく同じコード）
 4. 進捗・ログを 1.2 秒ごとに送る。返りの `cancelRequested` が立っていたら自分で中断する
-5. 終わったら契約ファイルを書き戻し、生成物（サムネ・軽量プロキシ・完成動画）を Blob に上げる
+5. 終わったら契約ファイルを書き戻し、生成物のローカルパスとメタデータだけを登録する
 
 間隔はアイドル 15 秒 / 稼働中 3 秒。5 分ごとに全案件の棚卸し（同期）を行います。
 
@@ -232,7 +229,7 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 構成を直した直後は、スマホから見るとまだ古いことがあります。上部バーの **「⟳ 最新に」** を押すと、
 同期ジョブ（`sync`）を積んで **PC に今すぐ送らせ**、そのうえで画面を読み直します。
 
-- 送られるもの: 契約ファイル（`syncDocs`）・サムネイル・軽量プレビュー・書き出し（`syncAssets`）
+- 送られるもの: 契約ファイル（`syncDocs`）・生成物のローカルパスとメタデータ（`syncAssets`）
 - ジョブ本体は空。**ワーカーがジョブの前後で必ず行う同期がそのまま仕事**になる（`worker/index.ts` の `runSync`）
 - PC が繋がっていなければ待機のまま残り、PC で Reel Studio を起動したときに実行されます
 - 未保存の編集があるファイルは読み直しません（黙って捨てない）
@@ -258,27 +255,25 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 
 | もの | 理由と代わり |
 |---|---|
-| フォルダ選択ダイアログ（📂 参照…） | PC のダイアログは開けない。パスを手で入力するか、スマホから動画を上げる |
+| フォルダ選択ダイアログ（📂 参照…） | PC のダイアログは開けない。PC 版でフォルダを選ぶか、パスを手で入力する |
 | 並べ替え用の書き出し（order/export） | 手元の claude に読ませるためのファイル出力。PC の Reel Studio で行う |
-| カット頭のフレーム切り出し（ffmpeg） | 代わりに catalog のストリップ（1 秒刻みの静止画）から一番近いコマを返す |
+| 動画・音声・サムネイルの取り込み・再生・ダウンロード | PC 内のファイルは Vercel から読めない。PC 版で行う |
 
 ## 費用のめやす
 
 - **Supabase** — 契約ファイルとジョブだけなので数 MB。無料枠で足りる（ただし **1 週間使われないとプロジェクトが一時停止**する。ダッシュボードから再開できる）
-- **Vercel Blob** — 軽量プロキシが 1 案件あたり 50〜200MB。案件が増えたら古いものを消す
-  （消しても PC に原本があるので、`preview-proxy` ジョブで作り直せる）
+- **メディア** — ローカルのディスクを使用する。既存Storageのファイルは移行後も削除確認まで保持する
 - **Vercel Functions** — SSE は 55 秒で切って繋ぎ直す形。画面を開いている間だけ動く
 - **AI** — PC の Claude Code をそのまま使うので、クラウド化による追加課金は無い
 
 ## 気をつけること
 
-- **メディアの URL は推測困難なランダム URL による保護**です（Blob のプライベート配信には
-  制限があるため）。URL を知られると中身は見られます
+- メディアはローカルサーバーから配信する。既存の公開Storage URLは削除するまで有効な場合がある
 - ログインは自分専用の 1 アカウント（パスワード 1 つ）。**人に教えないでください**——
   知られると案件も素材も全部見られます。変えるときは `node scripts/hash-password.mjs` で
   作り直して `AUTH_PASSWORD_HASH` を差し替え、再デプロイ
 - **ワーカーのトークンを他人に渡さないでください。** 渡すと、その人の PC があなたのジョブを
-  取りに来ます（素材も落ちていきます）
+  取りに来ます（台本・メタデータを取得できます）
 - `Vercel Hobby` プランは商用利用不可です。仕事で使うなら Pro のチームに置いてください
 
 ## 困ったとき
@@ -287,7 +282,7 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 |---|---|
 | ジョブが `queued` のまま | PC で Reel Studio（またはワーカー）が動いているか（画面上部の「PC オフライン」） |
 | PC で Reel Studio を起動したのに「PC オフライン」のまま | 起動したコンソールに出ているワーカーの行を見る。`クラウド接続が未設定` なら Settings の「クラウド接続」、`401` ならトークンの食い違い |
-| Timeline の映像が真っ黒 | 軽量プレビューが未作成。Timeline 上部の「軽量プレビューを作る」 |
+| クラウド画面で動画が再生されない | ローカル保存モードのため PC の Reel Studio で開く |
 | 「PC のワーカーがまだ繋がっていません」 | PC 側のコンソール（ランチャーの窓、または `npm run worker`）のログ。`WORKER_TOKEN` の食い違いなら 401 が出る |
 | ジョブが「ワーカーとの通信が途切れました」で失敗 | PC がスリープした。押し直せば再実行される |
 | デプロイした関数が 500 | `npx vercel logs <url>`。`api/_app.cjs` が生成されているか（`npm run build`） |

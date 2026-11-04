@@ -5,6 +5,7 @@ import type {Brief, Catalog, Narration, ReelData} from '@shared/schema';
 import type {CaptionIssue} from '@shared/caption';
 import type {FontEntry} from '@shared/schema/fonts';
 import type {AgentStatus} from '@shared/schema/settings';
+import type {ScriptSkillCatalog} from '@shared/script-skill';
 import {listPersonas, setPersonas, type Persona} from '@shared/personas';
 import {useUndo} from '../hooks/useUndo';
 
@@ -59,6 +60,7 @@ type Store = {
     fonts?: FontEntry[];
     /** 新しく作る動画で使う既定のフォント（<設定の置き場>/fonts/ の中のファイル名） */
     telopFont?: string | null;
+    scriptSkills?: ScriptSkillCatalog;
     /**
      * cloud = Vercel 上で動いていて、重い処理は自宅 PC のワーカーが行う。
      * 未指定（ローカルのサーバー）は今までどおり全部この PC で動く。
@@ -294,8 +296,17 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
       const st = filesRef.current[name];
       if (!slug || !st.data) return false;
       try {
-        const r = await api.put<{etag: string}>(`/api/projects/${slug}/files/${name}`, st.data, force ? null : st.etag);
-        setFiles((f) => ({...f, [name]: {...f[name], etag: r.data.etag, dirty: false, external: null}}));
+        const r = await api.put<{etag: string; relatedEtags?: Record<string, {before: string | null; after: string | null}>}>(`/api/projects/${slug}/files/${name}`, st.data, force ? null : st.etag);
+        if (activeRef.current !== slug) return true;
+        let next = {...filesRef.current, [name]: {...filesRef.current[name], etag: r.data.etag, dirty: filesRef.current[name].data !== st.data, external: null}};
+        // A common-cut save also projects its sibling. Only rebase our own known
+        // revision, so a concurrent external edit still causes a 409.
+        for (const key of ['cuts', 'narration'] as const) {
+          const related = r.data.relatedEtags?.[key];
+          if (key !== name && related && next[key].dirty && next[key].etag === related.before) next = {...next, [key]: {...next[key], etag: related.after, external: null}};
+        }
+        filesRef.current = next;
+        setFiles(next);
         toast(`${name}.json を保存`, 'ok');
         return true;
       } catch (e) {

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "render": {"fps": 30, "theme": "pop"},
+  "defaults": {
+    "slot": "dish",
+    "duration": 2,
+    "line": "",
+    "intensity": 3,
+    "emotion_tag": null,
+    "speed": 1.0,
+    "pause_after": 0.15,
+    "emphasis": []
+  },
+  "fish": {
+    "supported_models": ["s2-pro", "s2.1-pro", "s2.1-pro-free"],
+    "intensity_tags": {"1": "[soft tone]", "2": "[calm]", "3": "", "4": "[excited]", "5": "[very excited]"},
+    "emphasis_tag": "[emphasis]",
+    "chunk_length": 200,
+    "normalize": true,
+    "volume": 0
+  }
+}

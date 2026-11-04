@@ -59,7 +59,7 @@ export const titleTextOf = (brief: Pick<Brief, 'shop'> | null | undefined, cuts:
   return brief?.shop.name?.trim() ?? '';
 };
 
-export type ThumbnailBg = {src: string; atSec: number; crop?: Crop};
+export type ThumbnailBg = {src: string; atSec: number; crop?: Crop; color?: Cut['color']};
 
 /**
  * 背景の既定。料理が出るカット（構成の役割が reveal → sizzle）の真ん中、無ければ 1 カット目の真ん中。
@@ -74,10 +74,11 @@ export const defaultBgOf = (cuts: Pick<ReelData, 'cuts' | 'meta'> | null | undef
 };
 
 /** カットの中の位置（カット頭からの素材秒）を背景にする。切り出しはカットのものを引き継ぐ */
-export const bgFromCut = (cut: Pick<Cut, 'src' | 'inSec' | 'outSec' | 'crop'>, offsetSec: number): ThumbnailBg => {
+export const bgFromCut = (cut: Pick<Cut, 'src' | 'inSec' | 'outSec' | 'crop' | 'color'>, offsetSec: number): ThumbnailBg => {
   const at = Math.min(Math.max(cut.inSec, cut.inSec + offsetSec), Math.max(cut.inSec, cut.outSec - 0.05));
   const bg: ThumbnailBg = {src: cut.src, atSec: Math.round(at * 1000) / 1000};
   if (cut.crop) bg.crop = cut.crop;
+  if (cut.color) bg.color = {...cut.color};
   return bg;
 };
 

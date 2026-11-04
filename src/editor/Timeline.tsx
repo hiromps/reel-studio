@@ -8,6 +8,7 @@
 import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
 import type {Clip, Cut, Narration, NarrationSegment, ReelData} from '@shared/schema';
 import {cutDurationSec, cutRanges, type TelopGroup} from '@shared/timeline';
+import {colorFilter} from '@shared/color';
 import type {SfxLibrary} from '@shared/sfx';
 import {narrationDisplayName} from '@shared/narration';
 import {useDragReorder} from '../components/useDragReorder';
@@ -580,8 +581,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                 >
                   <div className="ctl-film" aria-hidden>
                     {mediaBase && cells.length > 0
-                      ? cells.map((cell) => <img key={cell.src} src={`${mediaBase}/studio/${cell.src}`} alt="" draggable={false} style={{left: `${cell.left}%`, width: `${cell.width}%`}} />)
-                      : slug && <CutThumb slug={slug} src={c.src} inSec={c.inSec} width={160} className="ctl-film-fallback" />}
+                      ? cells.map((cell) => <img key={cell.src} src={`${mediaBase}/studio/${cell.src}`} alt="" draggable={false} style={{left: `${cell.left}%`, width: `${cell.width}%`, filter: colorFilter(c.color)}} />)
+                      : slug && <CutThumb slug={slug} src={c.src} color={c.color} inSec={c.inSec} width={160} className="ctl-film-fallback" />}
                   </div>
                   <span className="ctl-no">{i + 1}</span>
                   <span className="ctl-flags">

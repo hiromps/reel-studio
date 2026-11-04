@@ -3,6 +3,7 @@
 // 優先順位は 環境変数 > settings.json > 既定（core/settings.ts が解決する）。
 import {z} from 'zod';
 import type {FontEntry} from './fonts';
+import {ScriptSkillSchema, ScriptSkillLibrarySchema} from '../script-skill';
 
 export const VoiceEntrySchema = z.object({
   /** Fish Audio の reference_id（32 桁の 16 進数） */
@@ -147,6 +148,9 @@ export const SettingsSchema = z.object({
   instagram: InstagramSchema.default({}),
   /** 更新の知らせ方 */
   update: UpdateSettingsSchema.default({}),
+  /** Settings から読み込んだ台本スキル。本文を保持するので元ファイルの移動後も使える */
+  scriptSkill: ScriptSkillSchema.optional(),
+  scriptSkills: ScriptSkillLibrarySchema.optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -185,6 +189,8 @@ export const SettingsPatchSchema = z
     cloud: z.object({url: nullable(), token: nullable(), enabled: z.boolean().optional()}).strict().optional(),
     instagram: z.object({mcpUrl: nullable(), mcpKey: nullable(), account: nullable()}).strict().optional(),
     update: z.object({notify: z.enum(UPDATE_NOTIFY).optional()}).strict().optional(),
+    scriptSkill: ScriptSkillSchema.nullable().optional(),
+    scriptSkills: ScriptSkillLibrarySchema.optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;

@@ -1,6 +1,7 @@
 import React from 'react';
 import {AbsoluteFill, OffthreadVideo, Sequence, staticFile, useCurrentFrame} from 'remotion';
 import {zoomStyle, type Zoom} from './zoom';
+import {colorFilter, type ColorAdjustments} from './color';
 import {BadgeTelop, MainTelop, PriceTelop, TateTelop, TelopFont} from './telops';
 import type {ThemeName} from './telops';
 
@@ -70,6 +71,7 @@ export type Cut = {
   playbackRate?: number; // 会話クリップでは使わない（声のピッチが変わる）
   crop?: Crop; // 画面内の切り出し（省略時は中央・そのまま）
   zoom?: Zoom;
+  color?: ColorAdjustments;
   main?: MainTelopDef;
   price?: PriceTelopDef;
   badge?: string; // ランキング・まとめ型用（例: "第3位", "①幸楽"）。カット頭にポップイン
@@ -100,7 +102,7 @@ export const calcTotalFrames = (data: ReelData): number =>
 // Sequence内のローカルフレームで計算。既存の静的cropの外側で映像全体をズームする。
 const CutVideo: React.FC<{cut: Cut; fps: number; frames: number}> = ({cut, fps, frames}) => {
   const frame = useCurrentFrame();
-  const video = <OffthreadVideo src={staticFile(cut.src)} startFrom={Math.round(cut.inSec * fps)} playbackRate={cut.playbackRate ?? 1} style={cropStyle(cut.crop)} />;
+  const video = <OffthreadVideo src={staticFile(cut.src)} startFrom={Math.round(cut.inSec * fps)} playbackRate={cut.playbackRate ?? 1} style={{...cropStyle(cut.crop), filter: colorFilter(cut.color)}} />;
   if (!cut.zoom || cut.zoom.mode === 'none') return <AbsoluteFill style={{overflow: 'hidden'}}>{video}</AbsoluteFill>;
   return (
     <AbsoluteFill style={{overflow: 'hidden'}}>

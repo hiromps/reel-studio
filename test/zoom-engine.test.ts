@@ -54,3 +54,14 @@ it('noneと設定なしは同じDOM・スタイル・映像プロパティにな
   const none = {...data, cuts: data.cuts.map((c) => ({...c, zoom: {...viralZoom(0), mode: 'none' as const}}))};
   expect(renderToStaticMarkup(React.createElement(GourmetReel, none))).toBe(renderToStaticMarkup(React.createElement(GourmetReel, omitted)));
 });
+it('補正は映像だけに当たり、ズーム・切り出しと併用でき、全テロップは元の色を保つ', () => {
+  const color = {exposure: -1, brightness: 1.2, contrast: 1.1, saturation: 0.8};
+  const host = document.createElement('div');
+  host.innerHTML = renderToStaticMarkup(React.createElement(GourmetReel, {...data, cuts: data.cuts.map((c, i) => i === 0 ? {...c, color} : c)}));
+  expect(host.querySelector('video')!.style.filter).toBe('brightness(0.600000) contrast(1.100000) saturate(0.800000)');
+  expect(host.querySelector('video')!.style.transform).toBe('scale(1.1000)');
+  expect(host.querySelectorAll('video')[1].style.filter).toBe('');
+  for (const telop of host.querySelectorAll('[data-telop]')) {
+    for (let node: Element | null = telop; node; node = node.parentElement) expect((node as HTMLElement).style.filter).toBe('');
+  }
+});

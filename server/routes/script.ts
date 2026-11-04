@@ -52,6 +52,6 @@ scriptRouter.put('/script', (req, res) => {
   const dir = resolveProjectDirStrict(slugOf(req));
   const text = req.body?.text;
   if (typeof text !== 'string') return res.status(400).json({error: 'text（文字列）が必要'});
-  writeScript(dir, text);
+  try {writeScript(dir, text);} catch (e) {return res.status(400).json({error: (e as Error).message});}
   res.json({etag: fileEtag(scriptPath(dir)), ...info(text)});
 });

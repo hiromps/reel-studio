@@ -6,6 +6,7 @@ import {api, type ApiError} from '../api';
 import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
 import {UpdateCard} from '../components/UpdateCard';
+import {ScriptSkillCard} from '../components/ScriptSkillCard';
 import {AGENT_PROVIDER_LABEL, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentModelsView, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
@@ -15,6 +16,7 @@ import {DEFAULT_STUDY_VIDEOS, MAX_STUDY_VIDEOS, normalizeInstagramUser} from '@s
 import {AiJobStatus} from '../components/AiJobStatus';
 import {REFINABLE_LABEL, type PersonaRefineResult} from '@shared/persona-refine';
 import {useMosaicStatus} from '../components/MosaicPanel';
+import {ModalCloudSettings} from '../components/ModalCloud';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 type TestResult = {ok: boolean; message: string; version?: string | null; bin?: string};
@@ -30,7 +32,7 @@ const ID_RE = /^[a-z][a-z0-9-]{0,30}$/;
 const msg = (e: unknown): string => (e as ApiError)?.message ?? String(e);
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-export const SettingsPage: React.FC = () => {
+export const SettingsPage: React.FC<{onCreate?: () => void}> = ({onCreate}) => {
   const s = useStudio();
   const [view, setView] = useState<SettingsView | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -85,32 +87,50 @@ export const SettingsPage: React.FC = () => {
     );
 
   return (
-    <div className="page" data-tour="settings">
+    <div className="page settings-simple" data-tour="settings">
+      <header className="settings-intro">
+        <span className="pill">はじめに</span>
+        <h1>AIでリールをつくる準備</h1>
+        <p>使うAIと、台本の書き方を決めれば準備完了。その他は必要なときだけ設定できます。</p>
+        <div className="settings-overview"><span>1　AIを接続</span><span>2　台本スキルを登録</span><span>3　「AIで台本」から作成</span></div>
+        {onCreate && <button className="primary settings-create" onClick={onCreate}>{s.active ? 'AIで台本を作る' : '案件を選んでAIで作る'}</button>}
+      </header>
       {(view.problem || s.config?.personasProblem) && (
         <section className="card">
           {view.problem && <p className="warn-text">{view.problem}</p>}
           {s.config?.personasProblem && <p className="warn-text">{s.config.personasProblem}</p>}
         </section>
       )}
-      <FoldersCard view={view} save={save} />
-      <TtsCard view={view} save={save} />
       <AgentCard view={view} save={save} />
-      <InstagramCard view={view} save={save} />
-      <FontsCard view={view} save={save} reload={load} />
-      <MosaicSettingsCard view={view} save={save} />
-      <CloudCard view={view} save={save} />
-      <NotificationsCard />
-      <PersonasCard />
-      {/* クラウドの設定表示（PC のワーカーが送るもの・既定の組み立て）には update が無いことがあるので既定で補う */}
-      <UpdateCard notify={view.settings.update?.notify ?? 'popup'} onNotify={(notify) => void save({update: {notify}}, notify === 'popup' ? '新しい版をポップアップで知らせます' : '新しい版は知らせません（このカードから手動で更新）')} />
-      <p className="hint">
+      <ScriptSkillCard skill={view.settings.scriptSkill} skills={view.settings.scriptSkills} save={save} />
+      <h2 className="settings-more-title">必要なときだけ設定</h2>
+      <SettingsSection title="Modal Cloud GPU" description="クラウドGPUで画像・動画を生成する・予算と接続の設定">
+        <ModalCloudSettings />
+      </SettingsSection>
+      <SettingsSection title="音声・話し方" description="AIナレーションの声や、文章の雰囲気を変える">
+        <TtsCard view={view} save={save} /><PersonasCard />
+      </SettingsSection>
+      <SettingsSection title="お店の情報・動画の見た目" description="Instagramの情報取得、フォント、顔のモザイク">
+        <InstagramCard view={view} save={save} /><FontsCard view={view} save={save} reload={load} /><MosaicSettingsCard view={view} save={save} />
+      </SettingsSection>
+      <SettingsSection title="保存先・クラウド接続" description="データの置き場所や、スマートフォンからの利用">
+        <FoldersCard view={view} save={save} /><CloudCard view={view} save={save} />
+      </SettingsSection>
+      <SettingsSection title="アプリの更新・通知" description="新しいバージョンや、処理の完了を知らせる">
+        <UpdateCard notify={view.settings.update?.notify ?? 'popup'} onNotify={(notify) => void save({update: {notify}}, notify === 'popup' ? '新しい版をポップアップで知らせます' : '新しい版は知らせません（このカードから手動で更新）')} /><NotificationsCard />
+      </SettingsSection>
+      <details className="settings-diagnostics"><summary>設定ファイル・保管方法について</summary><p className="hint">
         設定ファイル: <span className="mono">{view.file}</span>
         {view.exists ? '' : '（まだ無い。何か保存すると作られます）'}／人格: <span className="mono">{view.dir.replace(/\\/g, '/')}/personas.json</span>
-        。鍵は平文で保存されます（Windows ではユーザープロファイルのアクセス権だけで守られます）。置き場は環境変数 REEL_STUDIO_HOME で変えられます
-      </p>
+        。Modalの認証情報は別ファイルに暗号化して保存します。その他の鍵は平文で保存されます（Windows ではユーザープロファイルのアクセス権だけで守られます）。置き場は環境変数 REEL_STUDIO_HOME で変えられます
+      </p></details>
     </div>
   );
 };
+
+export const SettingsSection: React.FC<{title: string; description: string; children: React.ReactNode}> = ({title, description, children}) => (
+  <details className="card settings-section"><summary><span><strong>{title}</strong><span>{description}</span></span></summary><div className="settings-section-body">{children}</div></details>
+);
 
 // ───────────────────────── データフォルダ ─────────────────────────
 
@@ -420,7 +440,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
   }, [refreshModels, typedKey, typedClaudeKey, form.codexBin]);
   const currentModel = form.provider === 'deepseek' ? form.deepseekModel : form.provider === 'codex' ? form.codexModel : form.model;
   const setCurrentModel = (model: string) => setForm((prev) => ({...prev, [prev.provider === 'deepseek' ? 'deepseekModel' : prev.provider === 'codex' ? 'codexModel' : 'model']: model}));
-  const validModel = models?.provider === form.provider && !!models.models.some((m) => m.id === currentModel);
+  const validModel = form.provider === 'codex' && !currentModel || models?.provider === form.provider && !!models.models.some((m) => m.id === currentModel);
   const dirty =
     typedKey.trim() !== '' ||
     typedClaudeKey.trim() !== '' ||
@@ -497,10 +517,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
   const c = view.claude;
   return (
     <section className="card" data-tour="settings-agent">
-      <h2>AI の接続先</h2>
-      <p className="hint">
-        Claude は Claude Code CLI、DeepSeek は Claude Code CLI 経由の API 接続、Codex は Codex CLI を使います。Claude と Codex は各 CLI で先にログインしてください。DeepSeek には API キーが必要です。
-      </p>
+      <div className="settings-card-heading"><span className="settings-step" aria-hidden="true">1</span><div><h2>使うAIを選ぶ</h2><p>AIが素材の分析や台本づくりを手伝います。</p></div></div>
       <div className="row">
         <span>いまの接続先:</span>
         <span className={`pill agent-badge agent-${provider}`} style={{cursor: 'default'}}>
@@ -511,13 +528,6 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
         {provider === 'deepseek' && !dsKey.present && <span className="pill err">API キーが未設定です</span>}
         {form.provider !== provider && <span className="pill warn">「AI の設定を保存」を押すと {AGENT_PROVIDER_LABEL[form.provider]} に切り替わります</span>}
       </div>
-      {form.provider !== 'codex' && <div className="row">
-        <span>
-          検出: <span className="mono">{c.bin}</span>
-        </span>
-        <span className={`pill${c.available ? '' : ' err'}`}>{c.available ? `見つかりました（${SOURCE_LABEL[c.source === 'path' ? 'default' : c.source === 'none' ? 'default' : c.source]}${c.source === 'path' ? '・PATH' : ''}）` : '見つかりません'}</span>
-        {c.version && <span className="pill">{c.version}</span>}
-      </div>}
       <div className="form">
         <label className="full" title="裏で走らせる claude をどこに繋ぐか。環境変数 REEL_STUDIO_AGENT_PROVIDER があればそちらが優先されます">
           接続先
@@ -527,6 +537,20 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
             <option value="codex">Codex（ログイン中のアカウント）</option>
           </select>
         </label>
+        <label className="full">
+          AIモデル
+          <select value={models?.models.some((m) => m.id === currentModel) ? currentModel : ''} onChange={(e) => setCurrentModel(e.target.value)} disabled={modelsLoading || !models?.models.length || view.env.agentModel} aria-busy={modelsLoading}>
+            {form.provider === 'codex' && <option value="">おすすめ（Codexの既定）</option>}
+            {modelsLoading && <option value="">取得中…</option>}
+            {!modelsLoading && form.provider !== 'codex' && !models?.models.some((m) => m.id === currentModel) && <option value="">モデルを選択</option>}
+            {models?.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+          {modelsError && <span className="warn-text" role="alert">{modelsError}</span>}
+        </label>
+        {form.provider !== 'deepseek' && <div className="full">
+          <button onClick={() => void (form.provider === 'codex' ? runCodexTest() : runTest())} disabled={testing || codexTesting}>{testing || codexTesting ? 'AIへの接続を確認中…' : 'AIへの接続を確認'}</button>
+          {(form.provider === 'codex' ? codexTest : test) && <p role="status">{(form.provider === 'codex' ? codexTest : test)?.message}</p>}
+        </div>}
         {deepseek && (
           <>
             <label className="full">
@@ -558,6 +582,8 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
             )}
           </>
         )}
+        <details className="full beginner-details"><summary>高度な設定（通常は変更不要）</summary><div className="form">
+        <p className="hint full">ClaudeとCodexはログイン済みのアカウントを使います。接続できない場合は、各CLIでログインしてください。検出したClaude：<span className="mono">{c.bin}</span></p>
         {form.provider === 'claude' && (
           <label className="full">
             Claude のモデル一覧用 API キー（任意）
@@ -593,18 +619,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
             <span className={`pill${test.ok ? '' : ' err'}`}>{test.message}</span>
           </span>
         )}
-        <label>
-          {AGENT_PROVIDER_LABEL[form.provider]} のモデル
-          <span className="btns">
-            <select value={models?.models.some((m) => m.id === currentModel) ? currentModel : ''} onChange={(e) => setCurrentModel(e.target.value)} disabled={modelsLoading || !models?.models.length || view.env.agentModel} aria-busy={modelsLoading}>
-              {modelsLoading && <option value="">取得中…</option>}
-              {!modelsLoading && !models?.models.some((m) => m.id === currentModel) && <option value="">モデルを選択</option>}
-              {models?.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-            <button type="button" className="small" onClick={() => void refreshModels()} disabled={modelsLoading}>一覧を更新</button>
-          </span>
-          {modelsError && <span className="hint" role="alert">{modelsError}</span>}
-        </label>
+        <div className="full"><button type="button" onClick={() => void refreshModels()} disabled={modelsLoading}>モデル一覧を更新</button></div>
         <label title="タグ付け 1 回で見せるクリップ数。多いと 1 回が長くなり、失敗時に巻き戻る範囲も広がる">
           タグ付けの 1 回あたりクリップ数
           <input type="number" min={1} max={50} value={form.tagBatchSize} onChange={(e) => setForm({...form, tagBatchSize: Number(e.target.value)})} />
@@ -617,6 +632,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
           上限時間（分）
           <input type="number" min={1} max={180} value={form.timeoutMin} onChange={(e) => setForm({...form, timeoutMin: Number(e.target.value)})} />
         </label>
+        </div></details>
       </div>
       <div className="row">
         {missingKey && <span className="pill err">DeepSeek の API キーを入れてから保存してください</span>}
@@ -1016,24 +1032,7 @@ const FontsCard: React.FC<{view: SettingsView; save: Save; reload: () => Promise
     setBusy(true);
     try {
       if (s.isCloud) {
-        // フォントは Function の本文上限（4.5MB）を超えるので、ブラウザから Blob へ直接上げ、
-        // そのあと PC に取り込ませる（素材アップロードと同じ二段構え）
-        const {put} = await import('@vercel/blob/client');
-        const uploaded: {url: string; name: string}[] = [];
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i];
-          setProgress({name: f.name, pct: 0, index: i + 1, count: files.length});
-          const t = await api.post<{token: string; pathname: string}>('/api/fonts/token', {filename: f.name});
-          const r = await put(t.data.pathname, f, {
-            access: 'public',
-            token: t.data.token,
-            contentType: f.type || 'application/octet-stream',
-            onUploadProgress: (p) => setProgress({name: f.name, pct: Math.round((p.loaded / (p.total || f.size)) * 100), index: i + 1, count: files.length}),
-          });
-          uploaded.push({url: r.url, name: f.name});
-        }
-        await api.post('/api/fonts/ingest', {files: uploaded});
-        s.toast(`${uploaded.length} 件を PC に取り込み中です（終わると一覧に出ます）`, 'ok');
+        throw new Error('ローカル保存モードです。PC の Reel Studio でフォントを取り込んでください');
       } else {
         for (const f of [...files]) await api.upload(`/api/fonts?filename=${encodeURIComponent(f.name)}`, f);
         s.toast(`${files.length} 件のフォントを取り込みました`, 'ok');

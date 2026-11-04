@@ -4,6 +4,7 @@ import {useStudio} from '../state/store';
 import {AiModelSelect} from '../hooks/useAiModel';
 import {useStringPref} from '../hooks/usePref';
 import {localDateTime} from '@shared/time';
+import {ScriptSkillStatus} from './ProjectScriptSkill';
 import {
   STYLE_FIELDS, STYLE_LABELS, VideoStyleDraftSchema, VideoStyleSnapshotSchema,
   renderVideoStyleSkill, type VideoStyleDraft, type VideoStyleEntry, type VideoStyleSnapshot,
@@ -159,6 +160,7 @@ export const VideoStyleCard: React.FC<{aiModel: string; onModel: (v: string) => 
       </details>}
 
       {applied && <div className="video-style-generate">
+        <ScriptSkillStatus />
         <label>コピー先の案件で伝えたいこと<textarea rows={2} value={request} disabled={busy || generating} onChange={(e) => setRequest(e.target.value)} placeholder="例：焼肉の型をカフェへ。看板スイーツの提供と断面を中心に、20秒で" /></label>
         <div className="row"><button className="primary" disabled={busy || generating || s.files.brief.dirty || !s.files.catalog.data || !s.supportsJob('ai-script-draft')} onClick={() => void generate()}>この案件の型で台本を作る</button>
         <span className="hint">Brief を保存して実行。台本は下の「台本から組み立てる」で確認し、素材の割り当てへ進めます。</span></div>

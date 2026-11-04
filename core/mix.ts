@@ -6,6 +6,9 @@ import {exec} from './exec';
 import {readNarration} from './project';
 import {studioConfig} from '../studio.config';
 import type {Narration} from '../shared/schema/narration';
+import {hasReelCuts} from './reel-cuts';
+import {writeJsonAtomic} from './json-io';
+import {reelAudioNeedsIds} from './tts';
 
 export type MixOptions = {
   /** 案件相対。既定 out/final.mp4 */
@@ -48,6 +51,7 @@ export const mixPreconditions = (dir: string, inputRel = 'out/final.mp4'): strin
   if (!n || (!n.segments.length && !n.sfx?.length)) return 'ナレーションと効果音がありません。先に音声または効果音を配置してください';
   if (!fs.existsSync(path.join(dir, inputRel))) return `${inputRel} が無いので合成できません。先に「本番レンダー」を実行してください`;
   const problems = missingMixAssets(dir, n);
+  if (hasReelCuts(dir) && reelAudioNeedsIds(dir, n).length) problems.push('共通JSONのナレーションまたは音声設定が変更されています。先に「音声を生成」を実行してください');
   return problems.length ? problems.join('\n') : null;
 };
 
@@ -59,7 +63,10 @@ export const mixNarration = async (dir: string, opt: MixOptions = {}): Promise<{
   const input = path.join(dir, inputRel);
   const output = path.join(dir, outputRel);
   // 効果音の置き場はスクリプトに環境変数で渡す（スクリプト側に既定の場所は無い）
-  const r = await exec(process.execPath, [mixScriptPath(), path.join(dir, 'narration.json'), path.join(dir, 'narration'), input, output], {
+  // A directly edited canonical JSON also controls the command-line mixer.
+  let spec = path.join(dir, 'narration.json');
+  if (hasReelCuts(dir)) {spec = path.join(dir, '.studio', 'reel-mix-narration.json'); writeJsonAtomic(spec, readNarration(dir));}
+  const r = await exec(process.execPath, [mixScriptPath(), spec, path.join(dir, 'narration'), input, output], {
     cwd: dir,
     env: {...process.env, REEL_SFX_DIR: studioConfig.sfxDir},
     onLine: opt.onLine,

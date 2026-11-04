@@ -8,6 +8,7 @@ import type {SfxLibrary} from '../shared/sfx';
 import type {DocName} from '../shared/project';
 import type {BuildFacts} from '../shared/build';
 import type {ProjectSnapshot} from '../cloud/db/schema';
+import type {ModalJob} from '../shared/modal';
 
 export type CloudConfig = {url: string; token: string};
 
@@ -29,7 +30,7 @@ export class CloudError extends Error {
 }
 
 export type HelloReply = {
-  blobToken: string | null;
+  mediaStorage: 'local';
   settingsPatch: {rev: number; patch: Record<string, unknown>} | null;
   personasRev: number;
   sfx: {rev: number; lib: SfxLibrary} | null;
@@ -45,6 +46,15 @@ export class CloudClient {
   get baseUrl(): string {
     return this.cfg.url;
   }
+  modalJob = (id: string) => this.call<ModalJob>('GET', `/modal/jobs/${encodeURIComponent(id)}`);
+  modalResult = async (id: string, signal?: AbortSignal): Promise<Response> => {
+    const response = await fetch(`${this.cfg.url}/api/worker/modal/jobs/${encodeURIComponent(id)}/result`, {
+      headers: {Authorization: `Bearer ${this.cfg.token}`}, redirect: 'error',
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) {await response.body?.cancel(); throw new CloudError(response.status, 'Modal生成物をクラウドから取得できません');}
+    return response;
+  };
 
   private async call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, timeoutMs = 30_000): Promise<T> {
     const res = await fetch(`${this.cfg.url}/api/worker${path}`, {
@@ -69,7 +79,7 @@ export class CloudClient {
   progress = (id: string, body: {progress?: {phase: string; done: number; total: number}; lines?: string[]}) => this.call<{cancelRequested: boolean}>('POST', `/jobs/${id}/progress`, body);
   finish = (id: string, body: {status: 'done' | 'failed' | 'cancelled'; result?: unknown; error?: string; lines?: string[]}) => this.call<{ok: true}>('POST', `/jobs/${id}/finish`, body);
 
-  pullDocs = (slug: string) => this.call<{docs: DocPull[]}>('GET', `/docs/${encodeURIComponent(slug)}`);
+  pullDocs = (slug: string, known: Record<string, string> = {}) => this.call<{docs: DocPull[]}>('POST', `/docs/${encodeURIComponent(slug)}/pull`, {known});
   pushDocs = (slug: string, docs: {name: DocName; data: unknown; baseRev?: number | null}[]) => this.call<{results: DocPushResult[]}>('POST', `/docs/${encodeURIComponent(slug)}`, {docs}, 60_000);
 
   pushProject = (slug: string, body: {info?: ProjectSnapshot; buildFacts?: BuildFacts; persona?: string; format?: string; shopName?: string}) =>

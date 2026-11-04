@@ -4,7 +4,6 @@
 //       → 「この型で台本を作って組み立てる」（ai-mimic）→ script.md と cuts / narration ができる
 // 写すのは構成・テンポ・テロップの型だけ。参考動画の映像・音声・文言そのものは使わない。
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {put} from '@vercel/blob/client';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import {AiModelSelect} from '../hooks/useAiModel';
@@ -137,17 +136,7 @@ export const ReferenceCard: React.FC<{
     setUploading({name: file.name, pct: s.isCloud ? 0 : null});
     try {
       if (s.isCloud) {
-        // Vercel の Function は本文 4.5MB までなので、素材と同じくブラウザから Blob へ直接上げる
-        const t = await api.post<{token: string; pathname: string}>('/api/uploads/token', {slug, filename: file.name, folder: '_reference'});
-        const r = await put(t.data.pathname, file, {
-          access: 'public',
-          token: t.data.token,
-          contentType: file.type || 'application/octet-stream',
-          multipart: file.size > 8 * 1024 * 1024,
-          onUploadProgress: (p) => setUploading({name: file.name, pct: p.total ? Math.round((p.loaded / p.total) * 100) : 0}),
-        });
-        const job = await s.addJob('ai-reference', {url: r.url, name: file.name, model: aiModel});
-        if (job) s.toast('PC が動画を取り込んで分析します（PC オフラインなら起動後に始まります）', 'ok');
+        throw new Error('ローカル保存モードです。PC の Reel Studio で参考動画を取り込んでください');
       } else {
         const r = await api.upload<Res>(`${base}/upload?filename=${encodeURIComponent(file.name)}`, file);
         afterImport(r.data.data, file.name);

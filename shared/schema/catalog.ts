@@ -2,6 +2,7 @@
 import {z} from 'zod';
 import {MosaicInfoSchema} from '../mosaic';
 import {CropSchema} from './cuts';
+import {ColorAdjustmentsSchema} from '../color';
 
 export const ClipKindSchema = z.enum([
   'exterior', // 外観
@@ -86,6 +87,7 @@ export type ClipUser = z.infer<typeof ClipUserSchema>;
 export const ClipSchema = z.object({
   id: z.string(), // catalog 内で安定。src が変わっても不変
   original: z.string(), // 元ファイル名（元フォルダは触らない）
+  generated: z.object({provider: z.literal('modal'), jobId: z.string().uuid()}).optional(),
   slug: z.string(), // 内容 slug（英数字・ハイフン）。リネーム後ファイル名 = NN_<slug>.<ext>
   src: z.string(), // public 相対（プロキシならプロキシのパス）
   proxyOf: z.string().optional(), // src がプロキシのとき、原本コピーの public 相対パス
@@ -101,6 +103,8 @@ export const ClipSchema = z.object({
    * 構成を組むときにカット（cuts.json）へ引き継がれ、レンダーで効く。
    */
   crop: CropSchema.optional(),
+  /** 素材の色・明るさ。構成の作成時にカットへ引き継ぐ。 */
+  color: ColorAdjustmentsSchema.optional(),
   /** 顔モザイクの結果（core/mosaic.ts）。無い＝まだ調べていない */
   mosaic: MosaicInfoSchema.optional(),
   /**

@@ -31,12 +31,12 @@ try {
   // Deliberately hide global Node/npm/FFmpeg and inherited credentials.
   const pathKey = Object.keys(env).find((key) => key.toUpperCase() === 'PATH') || 'PATH';
   env[pathKey] = [path.dirname(paths.node), paths.ffmpeg, path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')].join(path.delimiter);
-  for (const key of ['OPENAI_API_KEY', 'FISH_API_KEY', 'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'REEL_CLOUD_URL', 'REEL_WORKER_TOKEN']) delete env[key];
+  for (const key of ['OPENAI_API_KEY', 'FISH_API_KEY', 'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'REEL_CLOUD_URL', 'REEL_WORKER_TOKEN', 'MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET', 'REEL_MODAL_PROXY_TOKEN_ID', 'REEL_MODAL_PROXY_TOKEN_SECRET']) delete env[key];
   await run(paths.node, ['--import', 'tsx', path.join(paths.backend, 'desktop', 'check-runtime.ts')], env, paths.backend);
   await run(executable, ['--smoke-test'], {...env, REEL_DESKTOP_TEST_HOME: home}, path.dirname(executable));
   const runtime = JSON.parse(fs.readFileSync(path.join(home, 'runtime-smoke.json'), 'utf8'));
   const electron = JSON.parse(fs.readFileSync(path.join(home, 'electron-smoke.json'), 'utf8'));
-  const version = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8')).version;
+  const version = process.env.REEL_DESKTOP_EXPECTED_VERSION || JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8')).version;
   if (electron.appVersion !== version) throw new Error(`アプリの版が一致しません: ${electron.appVersion} / ${version}`);
   if (!runtime.ok || !electron.ok || !electron.packaged || !electron.url.startsWith('http://127.0.0.1:')) throw new Error('デスクトップアプリの起動結果が一致しません。');
   const report = {ok: true, testedAt: new Date().toISOString(), executable, home, runtime, electron};

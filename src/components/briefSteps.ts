@@ -30,10 +30,10 @@ export type RouteInfo = {
 export const ROUTE_INFO: Record<BriefRoute, RouteInfo> = {
   script: {
     id: 'script',
-    title: '台本から組み立てる',
-    when: '台本がある（自分で書いた・Claude に書かせた・既存の動画を書き起こした）',
-    makes: '台本の区間ごとに素材を割り当て、テロップとナレーションを台本どおりに入れます（cuts と narration が一度にできる）',
-    then: 'Timeline で確認・微調整 → Render の「仕上げ」',
+    title: 'AIで台本を作る',
+    when: '希望を文章で伝えて作りたい。手元の台本も使えます',
+    makes: '素材とお店の情報から台本を作り、確認した台本に映像を合わせます',
+    then: '台本を確認 → 映像を組み立てる → 編集・書き出し',
     tour: 'script',
   },
   reference: {

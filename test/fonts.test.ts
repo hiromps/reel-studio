@@ -91,25 +91,32 @@ describe('fonts: 置き場', () => {
   });
 });
 
-describe('fonts: スマホから上げたフォントの取り込み（fonts ジョブ）', () => {
+describe('fonts: ローカル参照からの取り込み（fonts ジョブ）', () => {
   const ctx = {onLine: () => undefined, onProgress: () => undefined, signal: new AbortController().signal};
 
-  it('Blob から落として置き場に入れる', async () => {
+  it('ローカルファイルから置き場に入れ、Storage へ接続しない', async () => {
     const body = fontBytes('otf', 3000);
-    const fetchMock = vi.fn(async () => new Response(new Uint8Array(body)));
+    const file = path.join(home, 'incoming.otf');
+    fs.writeFileSync(file, body);
+    const fetchMock = vi.fn(() => { throw new Error('Storageへ接続しました'); });
     vi.stubGlobal('fetch', fetchMock);
-    const r = (await runFontJob({files: [{url: 'https://blob.example/x', name: 'Phone.otf'}]}, ctx)) as {saved: string[]};
+    const r = (await runFontJob({files: [{url: file, name: 'Phone.otf'}]}, ctx)) as {saved: string[]};
     expect(r.saved).toEqual(['Phone.otf']);
     expect(listFonts().map((f) => f.file)).toEqual(['Phone.otf']);
     expect(fs.statSync(path.join(fontsDir(), 'Phone.otf')).size).toBe(3000);
+    expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
   it('フォントでないものは取り込まない', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>404</html>')));
-    await expect(runFontJob({files: [{url: 'https://blob.example/x', name: 'Bad.ttf'}]}, ctx)).rejects.toThrow(/フォントファイルではない/);
+    const file = path.join(home, 'bad.ttf'); fs.writeFileSync(file, '<html>404</html>');
+    await expect(runFontJob({files: [{url: file, name: 'Bad.ttf'}]}, ctx)).rejects.toThrow(/フォントファイルではない/);
     expect(listFonts()).toEqual([]);
     vi.unstubAllGlobals();
+  });
+
+  it('移行前のStorage URLを通常ジョブで取得しない', async () => {
+    await expect(runFontJob({files: [{url: 'https://blob.example/x', name: 'Bad.ttf'}]}, ctx)).rejects.toThrow('移行');
   });
 
   it('削除も同じジョブで受ける。既定に選んでいたら既定も外す', async () => {

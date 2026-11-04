@@ -2,7 +2,7 @@
 
 ## 利用者の使い方
 
-1. `Reel-Studio-0.4.2-Setup.exe` を実行します。
+1. `Reel-Studio-0.4.12-Setup.exe` を実行します。
 2. インストール先を選び、完了後に「Reel Studio」を起動します。
 3. デスクトップまたはスタートメニューの「Reel Studio」から次回も起動できます。
 
@@ -14,7 +14,21 @@ AIによる台本作成には設定画面で接続先と認証を設定してく
 
 ## 更新とアンインストール
 
-アプリを終了し、新しい版のインストーラーを実行してください。案件と設定は保持します。ソース版のGit更新はインストーラー版では使いません。自動更新サービスは未設定です。
+「Reel Studio 更新.cmd」を実行すると、GitHub Releasesの正式公開版・このフォルダ・インストール済みの版を比較し、新しい版だけを適用します。最新版ならビルドや再インストールをせず終了します。ソースをGitで上書き・退避する操作は行いません。実行中のアプリがあれば、編集を保存して閉じるまで待ってから自動で続けます。二重実行も先の更新の完了を待ちます。
+
+配布済みEXEがある版は、SHA256とサイズを検証してからインストールします。ソースだけの公開版は、専用キャッシュへ取得し、必要な部品の準備・アプリの作成・書き出し検証・インストールまで自動で実行します（数分かかります）。手元のソースの版が公開版より新しい場合も、素材・鍵・依存部品を除いたコピーを専用キャッシュへ作ってからビルドします。開発中の `node_modules` は書き換えません。設定と案件は引き継ぎ、他の版へのダウングレードはしません。
+
+更新処理自体はインストール先の外へコピーして実行するため、Windowsのファイル使用中エラーを防ぎます。インストール済みの新しい更新処理を次回以降も使います。Git・グローバルNode.js・管理者権限は不要です。途中の通信切断は再試行し、検証できないファイルをインストールしません。オフラインで最新版を確認できない場合はその旨を表示するので、接続復旧後に同じコマンドを再実行してください。
+
+設定・人格の保護されたバックアップと結果は、ビルドしたソースの `.runtime/desktop-update-backups/` と `.runtime/desktop-update-result.json` に保存します。EXEを直接適用する場合の作業先は `%LOCALAPPDATA%\Reel Studio Updater\current` です。
+
+```powershell
+npm run desktop:update                 # 最新版を確認し、必要な場合だけ更新
+npm run desktop:update -- --check-only # 最新版と更新先の確認のみ
+npm run desktop:update -- --local-build # 手元の内容を同じ版でも作成・適用
+npm run desktop:update -- --build-only # インストーラーの作成・検証まで
+npm run update                         # GitHubからソースを更新（未コミット変更があれば停止）
+```
 
 Windowsの「インストールされているアプリ」からアンインストールできます。案件・素材・設定は削除しません。不要になったデータは利用者が保存先から削除してください。
 
@@ -30,7 +44,9 @@ npm run desktop:installer
 npm run desktop:verify
 ```
 
-成果物は `desktop-out/Reel-Studio-0.4.2-Setup.exe` です。`dist`は内部の編集画面であり、利用者への配布物はこのEXEです。`.runtime/desktop-stage` と `desktop-out/win-unpacked` はビルド・検証用です。
+成果物は `desktop-out/Reel-Studio-<version>-Setup.exe` です。`dist`は内部の編集画面であり、利用者への配布物はこのEXEです。`.runtime/desktop-stage` と `desktop-out/win-unpacked` はビルド・検証用です。
+
+更新配信の対象は `hiromps/reel-studio` の正式なGitHub Releaseです。タグ `vX.Y.Z` と `package.json` の版を合わせて公開してください。EXE配布では `Reel-Studio-X.Y.Z-Setup.exe` とSHA256を添付します（GitHub APIのdigestまたは同名の `.sha256` を使用）。EXEがない版は公開タグのソースから自動作成します。下書き・プレリリースは対象にしません。未公開の版は別PCから検知できません。
 
 `desktop:verify` は外部のNode.js・npm・FFmpegが見えないPATHを使い、日本語と空白を含む独立した保存先で新規案件を作ります。日本語テロップ、カット・速度・クロップ・キーフレームズーム・AI差分の適用、1080×1920の動画出力、音声合成、パッケージ化されたElectron起動、ローカルAPIの未認証拒否を確認します。既存の案件・設定・APIキーは使いません。結果は `desktop-out/verification.json` です。
 

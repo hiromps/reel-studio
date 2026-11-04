@@ -4,28 +4,42 @@
 // ワーカーが kv に置いたスナップショットを返す。PC でしかできない操作（フォルダ選択ダイアログ）は
 // 501 を返し、画面はクラウドではそのボタンを出さない。
 import {Router} from 'express';
-import {createHash, randomUUID} from 'node:crypto';
-import {generateClientTokenFromReadWriteToken} from '@vercel/blob/client';
+import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import {copyLocalMedia, localMediaRoot, requireLocalMedia} from '../../core/local-media';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
 import {agentStatusOf, AGENT_PROVIDERS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider, type AgentStatus, type SettingsView} from '../../shared/schema/settings';
 import {fetchClaudeModels, fetchDeepseekModels} from '../../shared/agent-models';
+import {scriptSkillCatalog} from '../../shared/script-skill';
 import {probeInstagramMcp} from '../../shared/instagram-mcp';
 import {probeDeepseekKey} from '../../shared/deepseek';
-import {FONT_EXTS, FONT_MAX_BYTES, isFontFileName, safeFontFile} from '../../shared/schema/fonts';
+import {safeFontFile} from '../../shared/schema/fonts';
 import {SfxSoundSchema, type SfxLibrary} from '../../shared/sfx';
 import type {LibraryIndexEntry} from '../../shared/reference';
 import {JOB_TYPES} from '../../shared/jobs';
 import {normalizeSlug} from '../../shared/project';
 import {NarrationLibraryEntrySchema, type NarrationLibraryEntry} from '../../shared/narration-library';
 import {NarrationSegmentSchema} from '../../shared/schema';
-import {blobPath, putBlob} from '../blob';
 import {fishEnv, listVoices, probeFishKey, synthPreview} from '../fish';
 import {countSubscriptions, publicKey, pushAvailable, removeSubscription, saveSubscription, sendToAll} from '../push';
 import {addJob, findAsset, kvGet, kvSet, listJobs, listProjects, putAsset, replacePersonas} from '../store';
 import {WORKER_ONLINE_MS, type WorkerStatus} from '../worker-status';
+import {defaultEmotionTags, EmotionTagsSchema} from '../../shared/emotion-tags';
 
 export const miscRouter = Router();
+miscRouter.get('/emotion-tags', async (_req, res) => {
+  const view = await kvGet<{emotionTags?: unknown}>('settings-view');
+  const config = EmotionTagsSchema.safeParse(view?.emotionTags);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(config.success ? config.data : defaultEmotionTags());
+});
+
+miscRouter.use(['/narration-library', '/sfx/file', '/tts/preview'], (_req, res, next) => {
+  if (process.env.VERCEL) return res.status(409).json({error: '音声ファイルは PC に保存されています。PC の Reel Studio で操作してください'});
+  next();
+});
 
 const narrationLibrary = async (): Promise<NarrationLibraryEntry[]> => (await kvGet<{entries: NarrationLibraryEntry[]}>('narration-library'))?.entries ?? [];
 
@@ -40,18 +54,17 @@ miscRouter.post('/narration-library', async (req, res) => {
   const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
   if (!project || !segment.success || !/^[a-zA-Z0-9_-]+$/.test(segment.data.id) || !segment.data.durSec || (segment.data as {needsTts?: boolean}).needsTts || !segment.data.text.trim() || !title || title.length > 80) return res.status(400).json({error: '生成済みの音声と保存名を指定してください'});
   const source = await findAsset(project, 'narration', 'full', `${segment.data.id}.wav`);
-  if (!source) return res.status(409).json({error: '音声がまだクラウドに同期されていません。PC で「最新に」を実行してから保存してください'});
-  const response = await fetch(source.url);
-  if (!response.ok) return res.status(502).json({error: '生成済みの音声を取得できません'});
-  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!source) return res.status(409).json({error: '音声のローカル参照がありません。PC の Reel Studio で保存してください'});
+  const sourceFile = requireLocalMedia(source.url);
   const entry = NarrationLibraryEntrySchema.parse({
     id: randomUUID(), title, text: segment.data.text, voice: String(req.body?.narration?.voice ?? ''),
     voiceTitle: req.body?.narration?.voiceTitle, speed: req.body?.narration?.speed,
     latency: req.body?.narration?.latency, durSec: segment.data.durSec, trimSec: segment.data.trimSec, createdAt: new Date().toISOString(),
   });
   const relPath = `${entry.id}.wav`;
-  const blob = await putBlob(blobPath('_global', 'narration', 'full', relPath), bytes, 'audio/wav');
-  await putAsset({slug: '_global', kind: 'narration', mode: 'full', relPath, url: blob.url, bytes: bytes.length, hash: createHash('sha1').update(bytes).digest('hex').slice(0, 20), contentType: 'audio/wav'});
+  const file = path.join(localMediaRoot(), '_global', 'full', 'narration', relPath);
+  copyLocalMedia(sourceFile, file);
+  await putAsset({slug: '_global', kind: 'narration', mode: 'full', relPath, url: file, bytes: fs.statSync(file).size, hash: source.hash, contentType: 'audio/wav'});
   await kvSet('narration-library', {entries: [entry, ...await narrationLibrary()]});
   res.json({entry});
 });
@@ -61,7 +74,7 @@ miscRouter.get('/narration-library/:id/audio', async (req, res) => {
   if (!entry) return res.status(404).json({error: '音声が見つかりません'});
   const asset = await findAsset('_global', 'narration', 'full', `${entry.id}.wav`);
   if (!asset) return res.status(404).json({error: '音声ファイルが見つかりません'});
-  res.redirect(307, asset.url);
+  res.sendFile(requireLocalMedia(asset.url), {headers: {'Cache-Control': 'private, no-cache'}, acceptRanges: true});
 });
 
 miscRouter.post('/narration-library/:id/use', async (req, res) => {
@@ -93,7 +106,7 @@ const agentStatusOfView = (s: SettingsView | null, claude: boolean): AgentStatus
 };
 
 miscRouter.get('/config', async (_req, res) => {
-  const [w, s] = [await kvGet<WorkerStatus>('worker'), await kvGet<SettingsView>('settings-view')];
+  const [w, s] = [await kvGet<WorkerStatus>('worker'), await settingsViewCloud()];
   const online = !!w && Date.now() - new Date(w.lastSeen).getTime() < WORKER_ONLINE_MS;
   res.json({
     // クラウドでは案件の実体は PC にある。画面には「PC 側のパス」をそのまま見せる
@@ -119,6 +132,7 @@ miscRouter.get('/config', async (_req, res) => {
     instagramMcp: !!s?.settings.instagram?.mcpKey?.present,
     // PC で取り込んだ自前フォント（Timeline のフォント選択が使う）。実体は PC にある
     fonts: s?.fonts ?? [],
+    scriptSkills: scriptSkillCatalog(s.settings),
     telopFont: s?.settings.telop?.font ?? null,
     startedAt: w?.lastSeen ?? new Date().toISOString(),
     uploadsFolders: w?.uploadsFolders ?? [],
@@ -211,11 +225,17 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
       env: {fishApiKey: false, fishModelId: false, claudeBin: false, agentModel: false, agentProvider: false, deepseekApiKey: false, mosaicPython: false, cloudUrl: false, cloudToken: false, instagramMcpUrl: false, instagramMcpKey: false, instagramAccount: false},
       claude: {bin: '', available: false, source: 'none', version: null},
     } as SettingsView);
+  // 台本スキルは同期待ちでも保存済みの内容を返す（旧スナップショットで画面を戻さない）。
+  const pending = await kvGet<{patch: Record<string, unknown>}>('settings-patch');
+  const pendingSkill = SettingsPatchSchema.shape.scriptSkill.safeParse(pending?.patch.scriptSkill);
+  const pendingLibrary = SettingsPatchSchema.shape.scriptSkills.safeParse(pending?.patch.scriptSkills);
+  const scriptSkill = pendingSkill.success && pendingSkill.data !== undefined ? pendingSkill.data ?? undefined : base.settings.scriptSkill;
+  const scriptSkills = pendingLibrary.success && pendingLibrary.data !== undefined ? pendingLibrary.data : base.settings.scriptSkills;
   const env = fishEnv();
   return {
     ...base,
     // 音声生成の鍵はクラウド側（Vercel の環境変数）を使う。PC の鍵は PC のジョブが使う
-    settings: {...base.settings, tts: {...base.settings.tts, apiKey: env ? {present: true, masked: '••••（Vercel）', source: 'env'} : base.settings.tts.apiKey}},
+    settings: {...base.settings, scriptSkill, scriptSkills, tts: {...base.settings.tts, apiKey: env ? {present: true, masked: '••••（Vercel）', source: 'env'} : base.settings.tts.apiKey}},
     env: {...base.env, fishApiKey: !!env},
     claude: base.claude.available ? base.claude : {...base.claude, version: w?.claudeVersion ?? base.claude.version, available: !!w?.claude},
   };
@@ -316,41 +336,11 @@ miscRouter.post('/settings/test/mosaic', async (_req, res) => {
 
 // ───────────────────────── テロップのフォント ─────────────────────────
 
-/**
- * 一覧はワーカーが送ってきた見え方（/config の fonts）に出る。
- *
- * 実体は PC の <設定の置き場>/fonts/ にあるので、スマホからの取り込みは素材と同じ二段構え:
- * フォントは数 MB〜数十 MB あり Vercel の Function（本文 4.5MB）を通せないため、
- * **ブラウザから Blob へ直接**上げ、そのあと fonts ジョブを積んで PC に取り込ませる。
- */
-miscRouter.post('/fonts/token', async (req, res) => {
-  const name = safeFontFile(typeof req.body?.filename === 'string' ? req.body.filename : '');
-  if (!name) return res.status(400).json({error: 'filename が必要'});
-  if (!isFontFileName(name)) return res.status(400).json({error: `対応していない拡張子です（${FONT_EXTS.join(' / ')} のいずれか）: ${name}`});
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return res.status(503).json({error: 'BLOB_READ_WRITE_TOKEN が未設定です'});
-  const pathname = blobPath('_global', 'fonts', 'full', `_inbox/${Date.now()}_${name}`);
-  try {
-    const clientToken = await generateClientTokenFromReadWriteToken({
-      token,
-      pathname,
-      allowedContentTypes: ['font/*', 'application/octet-stream', 'application/x-font-ttf', 'application/vnd.ms-opentype'],
-      validUntil: Date.now() + 30 * 60 * 1000,
-      addRandomSuffix: true,
-      maximumSizeInBytes: FONT_MAX_BYTES,
-    });
-    res.json({token: clientToken, pathname});
-  } catch (e) {
-    res.status(500).json({error: (e as Error).message});
-  }
-});
+// クラウドからのバイナリ取り込みはローカルアプリへ案内する。
+miscRouter.post('/fonts/token', (_req, res) => res.status(409).json({error: 'ローカル保存モードです。PC の Reel Studio を開いて取り込んでください'}));
 
 /** 上げ終わったフォントを PC の置き場に入れさせる */
-miscRouter.post('/fonts/ingest', async (req, res) => {
-  const files = Array.isArray(req.body?.files) ? (req.body.files as {url: string; name: string}[]) : [];
-  if (!files.length) return res.status(400).json({error: 'files が必要'});
-  res.json(await addJob('fonts', '_studio', {files}));
-});
+miscRouter.post('/fonts/ingest', (_req, res) => res.status(409).json({error: 'ローカル保存モードです。PC の Reel Studio を開いて取り込んでください'}));
 
 /** 置き場から消させる（実体は PC にあるので、こちらもジョブで頼む） */
 miscRouter.delete('/fonts/:file', async (req, res) => {
@@ -404,12 +394,12 @@ miscRouter.put('/sfx/sound', async (req, res) => {
   res.json(cur.lib);
 });
 
-/** 試聴。PC から上がっている音源（Blob）へ飛ばす */
+/** 永続ローカルサーバーでのみ音源を配信する。 */
 miscRouter.get('/sfx/file/*', async (req, res) => {
   const rel = (req.params as Record<string, string>)[0] ?? '';
   const asset = await findAsset('_global', 'sfx', 'full', rel);
   if (!asset) return res.status(404).json({error: 'この音源はまだ PC から上がっていません'});
-  res.redirect(307, asset.url);
+  res.sendFile(requireLocalMedia(asset.url), {headers: {'Cache-Control': 'private, no-cache'}, acceptRanges: true});
 });
 
 // ───────────────────────── 音声生成 ─────────────────────────
@@ -467,40 +457,8 @@ miscRouter.post('/push/test', async (_req, res) => {
 
 // ───────────────────────── スマホからの素材アップロード ─────────────────────────
 
-/**
- * Vercel Functions の本文上限（4.5MB）では動画を送れないので、ブラウザから Blob に直接上げる。
- * ここが出すのは「その 1 ファイルだけ書き込める」短命のトークン。
- * 上げ終わったら ingest ジョブを積み、PC が Blob から取り込んで uploads/ に置く。
- */
-miscRouter.post('/uploads/token', async (req, res) => {
-  const slug = typeof req.body?.slug === 'string' ? normalizeSlug(req.body.slug) : '';
-  const name = typeof req.body?.filename === 'string' ? req.body.filename.replace(/[\\/]/g, '_').trim() : '';
-  const folder = typeof req.body?.folder === 'string' ? req.body.folder.replace(/[\\/]/g, '_').trim() : '';
-  if (!slug || !name) return res.status(400).json({error: 'slug と filename が必要'});
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return res.status(503).json({error: 'BLOB_READ_WRITE_TOKEN が未設定です'});
-  const pathname = blobPath(slug, 'uploads', 'full', `_inbox/${Date.now()}_${name}`);
-  try {
-    const clientToken = await generateClientTokenFromReadWriteToken({
-      token,
-      pathname,
-      allowedContentTypes: ['video/*', 'image/*', 'application/octet-stream'],
-      // 1 時間で失効（大きな動画でも上げ切れる長さ）
-      validUntil: Date.now() + 60 * 60 * 1000,
-      addRandomSuffix: true,
-      maximumSizeInBytes: 4 * 1024 * 1024 * 1024,
-    });
-    res.json({token: clientToken, pathname, folder});
-  } catch (e) {
-    res.status(500).json({error: (e as Error).message});
-  }
-});
+// 旧 API で Storage への書き込みが復活しないよう明示的に拒否する。
+miscRouter.post('/uploads/token', (_req, res) => res.status(409).json({error: 'ローカル保存モードです。PC の Reel Studio を開いて取り込んでください'}));
 
 /** 上げ終わったファイルを PC に取り込ませる */
-miscRouter.post('/uploads/ingest', async (req, res) => {
-  const slug = typeof req.body?.slug === 'string' ? normalizeSlug(req.body.slug) : '';
-  const files = Array.isArray(req.body?.files) ? (req.body.files as {url: string; name: string}[]) : [];
-  const folder = typeof req.body?.folder === 'string' ? req.body.folder : '';
-  if (!slug || !files.length) return res.status(400).json({error: 'slug と files が必要'});
-  res.json(await addJob('ingest', slug, {files, folder}));
-});
+miscRouter.post('/uploads/ingest', (_req, res) => res.status(409).json({error: 'ローカル保存モードです。PC の Reel Studio を開いて取り込んでください'}));

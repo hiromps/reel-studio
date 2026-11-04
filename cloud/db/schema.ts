@@ -3,8 +3,7 @@
 // 方針：
 // - **契約ファイル（catalog / brief / cuts / narration / caption）はここが正**。PC 側の work/ は
 //   ジョブを実行するための作業コピーで、ワーカーが着手前に引き寄せ、完了後に書き戻す。
-// - **原本の素材（4K）はここに載せない**。載るのはサムネ・軽量プロキシ（540x960）・完成動画だけ
-//   （assets）。素材そのものは PC の uploads/ にある。
+// - バイナリは一切載せない。assets はローカルパスとメタデータだけ。
 // - PC でしか分からないこと（engine の差分・node_modules・out/ の有無）は projects.info に
 //   ワーカーが置いたスナップショットを読む。
 import {boolean, integer, jsonb, pgTable, primaryKey, text, timestamp} from 'drizzle-orm/pg-core';
@@ -78,10 +77,8 @@ export const jobLogs = pgTable(
   (t) => [primaryKey({columns: [t.jobId, t.seq]})],
 );
 
-/**
- * Blob に上がっているメディアの索引。URL は `/p/<slug>/<mode>/<kind>/<relPath>` で引かれ、
- * 実体（Blob）へ 307 で飛ばす。mode=full が無ければ light にフォールバックする
- * （原本 4K は上げないので、素材は実質 light しか存在しない）。
+/** メディアのローカルパスとメタデータの索引。バイナリは保存しない。
+ * 旧 url カラムを互換利用し、既存の外部 URL は専用スクリプトで移行する。
  */
 export const assets = pgTable(
   'assets',
@@ -92,6 +89,7 @@ export const assets = pgTable(
     /** full | light */
     mode: text('mode').notNull().default('full'),
     relPath: text('rel_path').notNull(),
+    /** 旧カラム名を互換維持。新規値は絶対ローカルパスであり、外部 URL は移行対象。 */
     url: text('url').notNull(),
     bytes: integer('bytes').notNull().default(0),
     hash: text('hash').notNull().default(''),

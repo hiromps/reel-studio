@@ -131,6 +131,20 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onUpdat
             閉じる（Esc）
           </button>
         </div>
+        {!done && clip && <div className="triage-decision-bar">
+          <div className="triage-actions" role="group" aria-label="素材の判定">
+            <button type="button" className="triage-drop" onClick={drop} title="不要にして次の素材へ（X / ←）">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg><span>不要</span><kbd>X</kbd>
+            </button>
+            <button type="button" className={`triage-hook${clip.user.hook ? ' selected' : ''}`} onClick={toggleHook} aria-pressed={clip.user.hook} title="冒頭に使いたい映像の候補にする（H）">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" /></svg><span>フック候補</span><kbd>H</kbd>
+            </button>
+            <button type="button" className="primary triage-keep" onClick={keep} title="必要にして次の素材へ（K / →）">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg><span>必要</span><kbd>K</kbd>
+            </button>
+          </div>
+          <p>「必要」「不要」で次の素材へ。フック候補は、冒頭に使いたい映像の目印です。</p>
+        </div>}
         <div className="modal-body triage-body">
           {done || !clip ? (
             <div className="triage-done">
@@ -190,17 +204,6 @@ export const TriageMode: React.FC<Props> = ({clips, mediaBase, onDecide, onUpdat
                 </div>
               </div>
 
-              <div className="triage-actions">
-                <button className="danger" onClick={drop}>
-                  ✕ 不要
-                </button>
-                <button className={clip.user.hook ? 'primary' : ''} onClick={toggleHook}>
-                  ★ フック候補
-                </button>
-                <button className="primary" onClick={keep}>
-                  ✓ 必要
-                </button>
-              </div>
               <div className="triage-foot">
                 <button className="small" onClick={back} disabled={i === 0}>
                   ← 1 つ戻る

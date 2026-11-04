@@ -11,6 +11,7 @@ import {activeDir, resolveInProject, resolvePublic, resolveStudio, state} from '
 import {resolveProjectDirStrict} from '../../core/project';
 import {fontsDir} from '../../core/fonts';
 import {isFontFileName, safeFontFile} from '../../shared/schema/fonts';
+import {migratedMedia} from '../../core/local-media';
 
 export const mediaRouter = Router();
 
@@ -45,6 +46,24 @@ const dirOf = (req: Request): string | null => {
   }
 };
 const isLight = (req: Request) => (req.params as Record<string, string>).mode === 'light';
+
+// 既存の案件ファイルを優先する。移行データだけのときはローカルの索引を参照する。
+mediaRouter.get('/p/:slug/:mode/:kind/*', (req, res, next) => {
+  const {slug, mode, kind} = req.params;
+  const relative = rel(req);
+  if (slug === '_global' && kind === 'fonts') {
+    const file = safeFontFile(relative);
+    if (file && fs.existsSync(path.join(fontsDir(), file))) return next();
+  }
+  const dir = dirOf(req);
+  const current = kind === 'uploads' || kind === 'fonts' ? resolvePublic(dir, `${kind}/${relative}`, isLight(req))
+    : kind === 'studio' ? resolveStudio(dir, relative)
+    : kind === 'out' || kind === 'qc' || kind === 'narration' ? resolveInProject(dir, kind, relative) : null;
+  if (current) return next();
+  const imported = migratedMedia(slug, mode, kind, relative);
+  if (!imported) return next();
+  serve(res, imported, 'private, no-cache', downloadAs(req));
+});
 
 // ── 案件に属さないもの（_global）。クラウド版と URL の形を揃えてある ──────
 // 取り込んだフォントの原本（<設定の置き場>/fonts/）。Settings の見本表示が読む

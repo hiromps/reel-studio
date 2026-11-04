@@ -5,13 +5,16 @@
 //   server/routes/files.ts の GET/PUT           →  readDoc / writeDoc（ETag は rev-hash）
 //   server/jobs.ts の JobQueue                  →  addJob / listJobs / …（実行は PC ワーカー）
 import {randomUUID} from 'node:crypto';
-import {and, asc, desc, eq, gt, inArray, isNull, sql} from 'drizzle-orm';
+import {and, asc, desc, eq, gt, inArray, isNull, or, sql} from 'drizzle-orm';
+import {assertMetadataOnly, isLocalMediaPath} from '../shared/media';
 import {stableHash} from '../shared/hash';
 import {CONTRACT_FILES, DOC_NAMES, parseProjectMeta, withArchived, type DocName, type ProjectInfo, type ProjectMeta} from '../shared/project';
 import {isReferencePresent} from '../shared/reference';
 import {canStartJob, type JobType} from '../shared/jobs';
 import {db, rowsOf} from './db/client';
 import {assets, docs, jobLogs, jobs, kv, personas, projects, type ProjectSnapshot} from './db/schema';
+import {REEL_DOC_NAMES, updateReelBundle, type ReelDocName} from '../shared/reel-bundle';
+import {ReelCutsSchema} from '../shared/schema/reel-cuts';
 
 export type Actor = 'cloud' | 'worker';
 
@@ -46,14 +49,23 @@ export const isDocName = (v: string): v is DocName => (DOC_NAMES as readonly str
 
 export type DocRow = {name: DocName; data: unknown; rev: number; hash: string; etag: string; updatedBy: string; updatedAt: string};
 
+const docColumns = {name: docs.name, data: docs.data, rev: docs.rev, hash: docs.hash, updatedBy: docs.updatedBy, updatedAt: docs.updatedAt};
+export const readDocVersion = async (slug: string, name: DocName): Promise<string | null> => {
+  const [row] = await db().select({rev: docs.rev, hash: docs.hash}).from(docs).where(and(eq(docs.slug, slug), eq(docs.name, name))).limit(1);
+  return row ? docEtag(row.rev, row.hash) : null;
+};
+
 export const readDoc = async (slug: string, name: DocName): Promise<DocRow | null> => {
-  const [row] = await db().select().from(docs).where(and(eq(docs.slug, slug), eq(docs.name, name))).limit(1);
+  const [row] = await db().select(docColumns).from(docs).where(and(eq(docs.slug, slug), eq(docs.name, name))).limit(1);
   if (!row) return null;
   return {name, data: row.data, rev: row.rev, hash: row.hash, etag: docEtag(row.rev, row.hash), updatedBy: row.updatedBy, updatedAt: new Date(row.updatedAt).toISOString()};
 };
 
-export const readDocs = async (slug: string): Promise<DocRow[]> => {
-  const rows = await db().select().from(docs).where(eq(docs.slug, slug));
+export const readDocs = async (slug: string, known: Record<string, string> = {}): Promise<DocRow[]> => {
+  const matches = Object.entries(known).filter(([name, hash]) => isDocName(name) && typeof hash === 'string').map(([name, hash]) => and(eq(docs.name, name), eq(docs.hash, hash))!);
+  // CASE を DB で評価する。本文を取得してから JS で捨てると Egress は減らない。
+  const data = matches.length ? sql`CASE WHEN ${or(...matches)} THEN NULL ELSE ${docs.data} END` : docs.data;
+  const rows = await db().select({...docColumns, data}).from(docs).where(eq(docs.slug, slug));
   return rows.map((r) => ({
     name: r.name as DocName,
     data: r.data,
@@ -65,13 +77,17 @@ export const readDocs = async (slug: string): Promise<DocRow[]> => {
   }));
 };
 
-export type WriteDocResult = {ok: true; etag: string; rev: number; hash: string} | {ok: false; conflict: DocRow};
+export type WriteDocResult = {ok: true; etag: string; rev: number; hash: string; relatedEtags?: Record<string, {before: string | null; after: string}>} | {ok: false; conflict: DocRow};
 
 /**
  * 契約ファイルを書く。expectRev を渡すと、その版から進んでいたら 409 相当（conflict）にする。
  * 1 文の UPSERT なので、同時に 2 つ来ても片方しか通らない。
  */
 export const writeDoc = async (slug: string, name: DocName, data: unknown, opt: {expectRev?: number | null; by: Actor}): Promise<WriteDocResult> => {
+  assertMetadataOnly(data);
+  if (name === 'reelCuts' || (opt.by === 'cloud' && (REEL_DOC_NAMES as readonly string[]).includes(name) && await readDocVersion(slug, 'reelCuts'))) {
+    return writeReelDoc(slug, name as ReelDocName, data, opt);
+  }
   const hash = stableHash(data);
   const expect = opt.expectRev ?? null;
   const rows = rowsOf<{rev: number; hash: string}>(
@@ -94,11 +110,44 @@ export const writeDoc = async (slug: string, name: DocName, data: unknown, opt: 
   return {ok: true, etag: docEtag(row.rev, row.hash), rev: row.rev, hash: row.hash};
 };
 
+/** Serialize the common array and its compatibility views in one transaction. */
+const writeReelDoc = async (slug: string, name: ReelDocName, input: unknown, opt: {expectRev?: number | null; by: Actor}): Promise<WriteDocResult> => db().transaction(async (tx) => {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`reel-cuts:${slug}`}))`);
+  const rows = await tx.select(docColumns).from(docs).where(and(eq(docs.slug, slug), inArray(docs.name, [...REEL_DOC_NAMES]))).for('update');
+  const current = rows.find((r) => r.name === name);
+  if (opt.expectRev !== undefined && opt.expectRev !== null && current && current.rev !== opt.expectRev) {
+    return {ok: false, conflict: {name, data: current.data, rev: current.rev, hash: current.hash, etag: docEtag(current.rev, current.hash), updatedBy: current.updatedBy, updatedAt: new Date(current.updatedAt).toISOString()}};
+  }
+  const data = name === 'reelCuts' ? ReelCutsSchema.parse(input).map((c) => ({...c, id: c.id ?? randomUUID()})) : input;
+  const bundle = updateReelBundle(name, data, Object.fromEntries(rows.map((r) => [r.name, r.data])));
+  for (const key of REEL_DOC_NAMES) {
+    const value = bundle[key];
+    assertMetadataOnly(value);
+    const hash = stableHash(value);
+    await tx.execute(sql`
+      INSERT INTO docs (slug, name, data, rev, hash, updated_by, updated_at)
+      VALUES (${slug}, ${key}, ${JSON.stringify(value)}::jsonb, 1, ${hash}, ${opt.by}, now())
+      ON CONFLICT (slug, name) DO UPDATE SET data = EXCLUDED.data, rev = docs.rev + 1,
+        hash = EXCLUDED.hash, updated_by = EXCLUDED.updated_by, updated_at = now()
+    `);
+  }
+  await tx.update(projects).set({updatedAt: new Date()}).where(eq(projects.slug, slug));
+  const rev = (current?.rev ?? 0) + 1;
+  const hash = stableHash(bundle[name]);
+  const relatedEtags = Object.fromEntries(REEL_DOC_NAMES.map(key => {
+    const old = rows.find(r => r.name === key);
+    return [key, {before: old ? docEtag(old.rev, old.hash) : null, after: docEtag((old?.rev ?? 0) + 1, stableHash(bundle[key]))}];
+  }));
+  return {ok: true, rev, hash, etag: docEtag(rev, hash), relatedEtags};
+});
+
 export const deleteDocs = async (slug: string): Promise<void> => {
   await db().delete(docs).where(eq(docs.slug, slug));
 };
 
 // ───────────────────────── 案件 ─────────────────────────
+
+const projectColumns = {slug: projects.slug, persona: projects.persona, shopName: projects.shopName, format: projects.format, info: projects.info, createdAt: projects.createdAt, updatedAt: projects.updatedAt, deletedAt: projects.deletedAt};
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {dir: '', engine: {stale: true, family: 'unknown', files: []}, nodeModules: false, out: {draft: false, final: false, narration: false}};
 
@@ -121,14 +170,14 @@ const toProjectInfo = (row: typeof projects.$inferSelect, docRows: {name: string
 };
 
 export const listProjects = async (): Promise<ProjectInfo[]> => {
-  const rows = await db().select().from(projects).where(isNull(projects.deletedAt));
+  const rows = await db().select(projectColumns).from(projects).where(isNull(projects.deletedAt));
   if (!rows.length) return [];
   const slugs = rows.map((r) => r.slug);
   const docRows = await db().select({slug: docs.slug, name: docs.name, updatedAt: docs.updatedAt}).from(docs).where(inArray(docs.slug, slugs));
   // 一覧から隠したかどうか・参考動画があるか。data を引くのはこの 2 つの doc だけにする
   // （catalog や cuts を一覧のたびに持ってこない。reference は墓標＝source: null を「無い」と数えるため中身が要る）
   const smallRows = await db()
-    .select({slug: docs.slug, name: docs.name, data: docs.data})
+    .select({slug: docs.slug, name: docs.name, data: sql`CASE WHEN ${docs.name} = 'reference' THEN jsonb_build_object('source', ${docs.data}->'source') ELSE jsonb_build_object('archivedAt', ${docs.data}->'archivedAt') END`})
     .from(docs)
     .where(and(inArray(docs.name, ['meta', 'reference']), inArray(docs.slug, slugs)));
   const metaBySlug = new Map(smallRows.filter((m) => m.name === 'meta').map((m) => [m.slug, parseProjectMeta(m.data)]));
@@ -139,11 +188,12 @@ export const listProjects = async (): Promise<ProjectInfo[]> => {
 };
 
 export const projectInfo = async (slug: string): Promise<ProjectInfo | null> => {
-  const [row] = await db().select().from(projects).where(eq(projects.slug, slug)).limit(1);
+  const [row] = await db().select(projectColumns).from(projects).where(eq(projects.slug, slug)).limit(1);
   if (!row || row.deletedAt) return null;
   const docRows = await db().select({name: docs.name, updatedAt: docs.updatedAt}).from(docs).where(eq(docs.slug, slug));
   const meta = await readProjectMeta(slug);
-  const reference = isReferencePresent((await readDoc(slug, 'reference'))?.data);
+  const [referenceRow] = await db().select({present: sql<boolean>`jsonb_typeof(${docs.data}->'source') = 'object'`}).from(docs).where(and(eq(docs.slug, slug), eq(docs.name, 'reference'))).limit(1);
+  const reference = referenceRow?.present === true;
   return toProjectInfo(row, docRows, meta, reference);
 };
 
@@ -187,7 +237,8 @@ export const softDeleteProject = async (slug: string): Promise<void> => {
 
 // ───────────────────────── ジョブ ─────────────────────────
 
-const toCloudJob = (row: typeof jobs.$inferSelect, logTail: string[] = []): CloudJob => ({
+const jobColumns = {id: jobs.id, type: jobs.type, slug: jobs.slug, params: jobs.params, status: jobs.status, createdAt: jobs.createdAt, startedAt: jobs.startedAt, endedAt: jobs.endedAt, progress: jobs.progress, result: jobs.result, error: jobs.error};
+const toCloudJob = (row: Pick<typeof jobs.$inferSelect, keyof typeof jobColumns>, logTail: string[] = []): CloudJob => ({
   id: row.id,
   type: row.type,
   slug: row.slug,
@@ -205,13 +256,14 @@ const toCloudJob = (row: typeof jobs.$inferSelect, logTail: string[] = []): Clou
 const JOB_KEEP = 50;
 
 export const addJob = async (type: JobType, slug: string, params: Record<string, unknown> = {}): Promise<CloudJob> => {
+  assertMetadataOnly(params);
   const id = randomUUID().slice(0, 8);
   const [row] = await db().insert(jobs).values({id, slug, type, params}).returning();
   return toCloudJob(row);
 };
 
 export const listJobs = async (limit = JOB_KEEP): Promise<CloudJob[]> => {
-  const rows = await db().select().from(jobs).orderBy(desc(jobs.createdAt)).limit(limit);
+  const rows = await db().select(jobColumns).from(jobs).orderBy(desc(jobs.createdAt)).limit(limit);
   if (!rows.length) return [];
   // 一覧に出す末尾ログ（5 行）だけまとめて引く
   const tails = await db().execute(sql`
@@ -226,9 +278,12 @@ export const listJobs = async (limit = JOB_KEEP): Promise<CloudJob[]> => {
 };
 
 export const getJob = async (id: string): Promise<CloudJob | null> => {
-  const [row] = await db().select().from(jobs).where(eq(jobs.id, id)).limit(1);
+  const [row] = await db().select(jobColumns).from(jobs).where(eq(jobs.id, id)).limit(1);
   return row ? toCloudJob(row) : null;
 };
+
+/** SSE の毎回の問い合わせは状態とログ連番だけ。詳細 JSON は変化したジョブのみ取得する。 */
+export const listJobStates = async (limit = 30) => db().select({id: jobs.id, status: jobs.status, progress: jobs.progress, logSeq: jobs.logSeq}).from(jobs).orderBy(desc(jobs.createdAt)).limit(limit);
 
 export const jobLogLines = async (id: string, since = 0): Promise<{lines: string[]; seq: number}> => {
   const rows = await db()
@@ -266,7 +321,7 @@ export const pruneJobs = async (keep = JOB_KEEP * 4): Promise<void> => {
  * 取得は `WHERE status='queued'` 付きの UPDATE なので、二重取得は起きない。
  */
 export const claimJob = async (running: {slug: string; type: string}[], maxConcurrent: number): Promise<CloudJob | null> => {
-  const candidates = await db().select().from(jobs).where(eq(jobs.status, 'queued')).orderBy(asc(jobs.createdAt)).limit(20);
+  const candidates = await db().select({id: jobs.id, slug: jobs.slug, type: jobs.type}).from(jobs).where(eq(jobs.status, 'queued')).orderBy(asc(jobs.createdAt)).limit(20);
   for (const c of candidates) {
     if (!canStartJob({slug: c.slug, type: c.type}, running, maxConcurrent)) continue;
     const [row] = await db()
@@ -301,6 +356,7 @@ export const reportProgress = async (id: string, r: ProgressReport): Promise<{ca
 };
 
 export const finishJob = async (id: string, r: {status: 'done' | 'failed' | 'cancelled'; result?: unknown; error?: string}): Promise<void> => {
+  assertMetadataOnly(r.result);
   await db()
     .update(jobs)
     .set({status: r.status, endedAt: new Date(), result: (r.result ?? null) as object | null, error: r.error ?? null})
@@ -337,8 +393,8 @@ export const findAsset = async (slug: string, kind: string, mode: string, relPat
 export const listAssets = async (slug: string): Promise<{kind: string; mode: string; relPath: string; hash: string; bytes: number; url: string}[]> =>
   db().select({kind: assets.kind, mode: assets.mode, relPath: assets.relPath, hash: assets.hash, bytes: assets.bytes, url: assets.url}).from(assets).where(eq(assets.slug, slug));
 
-export const putAsset = async (a: {slug: string; kind: string; mode: string; relPath: string; url: string; bytes: number; hash: string; contentType: string}): Promise<{replacedUrl: string | null}> => {
-  const prev = await findAsset(a.slug, a.kind, a.mode, a.relPath);
+export const putAsset = async (a: {slug: string; kind: string; mode: string; relPath: string; url: string; bytes: number; hash: string; contentType: string}): Promise<void> => {
+  if (!isLocalMediaPath(a.url)) throw new Error('メディアには絶対ローカルパスが必要です');
   await db()
     .insert(assets)
     .values(a)
@@ -346,7 +402,6 @@ export const putAsset = async (a: {slug: string; kind: string; mode: string; rel
       target: [assets.slug, assets.kind, assets.mode, assets.relPath],
       set: {url: a.url, bytes: a.bytes, hash: a.hash, contentType: a.contentType, updatedAt: new Date()},
     });
-  return {replacedUrl: prev && prev.url !== a.url ? prev.url : null};
 };
 
 export const deleteAssets = async (slug: string): Promise<string[]> => {
@@ -359,6 +414,7 @@ export const deleteAssets = async (slug: string): Promise<string[]> => {
 export const listPersonaRows = async (): Promise<unknown[]> => (await db().select({data: personas.data}).from(personas)).map((r) => r.data);
 
 export const replacePersonas = async (list: {id: string; data: unknown}[]): Promise<void> => {
+  for (const item of list) assertMetadataOnly(item.data);
   await db().delete(personas);
   if (list.length) await db().insert(personas).values(list.map((p) => ({id: p.id, data: p.data as object})));
 };
@@ -369,6 +425,7 @@ export const kvGet = async <T>(key: string): Promise<T | null> => {
 };
 
 export const kvSet = async (key: string, data: unknown): Promise<void> => {
+  assertMetadataOnly(data);
   await db()
     .insert(kv)
     .values({key, data: data as object})

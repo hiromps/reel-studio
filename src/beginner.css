@@ -1,0 +1,54 @@
+.settings-simple {max-width: 1020px; width: 100%; margin-inline: auto;}
+.settings-intro {padding: 12px 4px 8px;}
+.settings-intro h1 {font-size: clamp(24px, 3vw, 32px); line-height: 1.4; margin: 10px 0; text-wrap: balance;}
+.settings-intro p {font-size: 15px; line-height: 1.8; max-width: 52em; margin: 0 0 16px;}
+.settings-overview {display: flex; flex-wrap: wrap; gap: 10px 24px; color: var(--tint-blue-fg); font-size: 13px;}
+.settings-create {margin-top: 18px; padding: 12px 20px;}
+.settings-simple select, .settings-simple input:not([type=checkbox]):not([type=radio]):not([type=hidden]) {min-height: 44px;}
+.skill-upload {margin-top: 8px; align-items: center;}
+.skill-upload > span {font-size: 12px; overflow-wrap: anywhere;}
+.triage .modal-head {flex-shrink: 0; flex-wrap: wrap;}
+.settings-card-heading {display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px;}
+.settings-card-heading h2 {font-size: 18px; letter-spacing: 0; color: var(--fg); margin: 1px 0 6px;}
+.settings-card-heading p {margin: 0; line-height: 1.6;}
+.settings-card-heading > .pill {margin-left: auto; flex-shrink: 0;}
+.settings-step {display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: var(--tint-blue); color: var(--tint-blue-fg); font-weight: 700;}
+.settings-simple .form {gap: 16px; margin-block: 14px;}
+.settings-simple label, .project-skill-card label {color: var(--fg);}
+.settings-simple .primary, .script-request .primary, .triage-actions .primary {background: var(--tint-blue-fg); color: var(--panel);}
+.settings-simple .primary:hover, .script-request .primary:hover, .triage-actions .primary:hover {background: var(--tint-blue-fg);}
+.settings-simple .hint {color: var(--fg); opacity: 0.8; line-height: 1.7;}
+.settings-simple button, .project-skill-card button {min-height: 44px;}
+.settings-simple .btns {flex-wrap: wrap; gap: 10px;}
+.settings-more-title {font-size: 14px; font-weight: 600; margin: 16px 4px 0;}
+.settings-section > summary {cursor: pointer; padding: 2px; min-height: 58px; align-content: center;}
+.settings-section > summary > span {display: inline-flex; flex-direction: column; gap: 5px; vertical-align: middle;}
+.settings-section > summary strong {font-size: 15px; font-weight: 650;}
+.settings-section > summary > span > span {font-size: 12px;}
+.settings-section-body {display: grid; gap: 16px; padding-top: 16px;}
+.settings-section-body > .card {box-shadow: none; background: var(--panel2);}
+.settings-diagnostics {padding: 12px 4px; overflow-wrap: anywhere;}
+.beginner-details {margin-top: 14px;}
+.beginner-details > summary, .skill-preview summary, .skill-manage summary {cursor: pointer; min-height: 44px; align-content: center;}
+.beginner-details > .form {margin-top: 16px;}
+.skill-preview {background: var(--panel2); border-radius: var(--radius-sm); padding: 16px; overflow-wrap: anywhere;}
+.skill-preview > p {line-height: 1.7; margin: 8px 0;}
+.skill-preview textarea {width: 100%;}
+.skill-manage {align-self: center;}
+.skill-manage[open] {width: 100%;}
+.skill-status {display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-radius: var(--radius-sm); color: var(--tint-blue-fg); background: var(--tint-blue); line-height: 1.6; overflow-wrap: anywhere;}
+.project-skill-card {border-color: var(--accent);}
+.project-skill-card h2 {font-size: 17px; letter-spacing: 0; color: var(--fg);}
+.project-skill-card > label {max-width: 100%;}
+.project-skill-card select {width: 100%; min-height: 44px;}
+.project-skill-card p {line-height: 1.7;}
+.skill-content {white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; padding: 12px; background: var(--panel2);}
+@media (max-width: 560px) {
+  .settings-simple {gap: 12px;}
+  .settings-overview {gap: 8px 16px;}
+  .settings-card-heading {gap: 10px;}
+  .settings-simple .form {grid-template-columns: 1fr;}
+  .settings-simple .btns > button {flex: 1 1 auto;}
+  .settings-section > summary > span {max-width: calc(100% - 24px);}
+  .triage-decision-bar > p {font-size: 11px;}
+}

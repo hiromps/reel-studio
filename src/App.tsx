@@ -13,22 +13,31 @@ import {UpdatePrompt} from './components/UpdatePrompt';
 import {InstallHint} from './components/InstallHint';
 import {nextStepOf} from './components/nextStep';
 import {visibleProjects} from './components/projectList';
-import {useStringPref} from './hooks/usePref';
+import {useStringPref, writePref} from './hooks/usePref';
 import {AI_JOB_LABEL} from './components/AiJobStatus';
 import {readTheme, saveTheme, type Theme} from './theme';
 import {AGENT_PROVIDER_LABEL, type AgentStatus} from '@shared/schema/settings';
+import {version} from '../package.json';
+import {PwaUpdateNotice} from './components/PwaUpdateNotice';
 
 const TABS: {id: TourTab; label: string; sub: string}[] = [
-  {id: 'projects', label: 'Projects', sub: '案件'},
-  {id: 'materials', label: 'Materials', sub: '素材'},
-  {id: 'brief', label: 'Brief', sub: '企画'},
-  {id: 'timeline', label: 'Timeline', sub: '編集'},
-  {id: 'render', label: 'Render', sub: '書き出し'},
-  {id: 'settings', label: 'Settings', sub: '設定'},
+  {id: 'projects', label: '案件', sub: '一覧'},
+  {id: 'materials', label: '素材', sub: '取り込み・選別'},
+  {id: 'brief', label: 'AIで台本', sub: '企画・作成'},
+  {id: 'timeline', label: '編集', sub: '仕上げ'},
+  {id: 'render', label: '書き出し', sub: '動画を保存'},
+  {id: 'settings', label: '設定', sub: 'AI・スキル'},
 ];
 
 /** スマホの下部ナビに出す記号（画像を増やさずに済ませる） */
-const TAB_ICON: Record<TourTab, string> = {projects: '◰', materials: '▤', brief: '✎', timeline: '⟷', render: '▶', settings: '⚙'};
+const TAB_ICON: Record<TourTab, React.ReactNode> = {
+  projects: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></>,
+  materials: <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m8 14 3-3 5 6M14 7h.01"/></>,
+  brief: <><path d="M14 3H5v18h14V8Z M14 3v5h5M8 12h8M8 16h6"/></>,
+  timeline: <><path d="M3 6h18M3 12h18M3 18h18M7 3v6M15 9v6M10 15v6"/></>,
+  render: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></>,
+  settings: <><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></>,
+};
 type Tab = TourTab;
 const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v);
 
@@ -145,11 +154,11 @@ export const App: React.FC = () => {
           <span className="brand-mark" aria-hidden="true">
             <img src="/icons/reel-studio.svg" alt="" width="26" height="26" />
           </span>
-          Reel Studio
+          <span className="brand-name">Reel Studio <span className="app-version">v{version}</span></span>
         </div>
-        <nav className="tabs" data-tour="tabs">
+        <nav className="tabs" data-tour="tabs" aria-label="メインメニュー">
           {TABS.map(({id, label, sub}, n) => (
-            <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => go(id)} title={`${sub}（Ctrl+${n + 1}）`}>
+            <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined} title={`${sub}（Ctrl+${n + 1}）`}>
               <span className="tab-no">{n + 1}</span>
               {label}
               <span className="tab-sub">{sub}</span>
@@ -163,7 +172,7 @@ export const App: React.FC = () => {
           {theme === 'dark' ? '☀' : '☾'}
         </button>
         <div className="status">
-          <select data-tour="project-select" value={s.active ?? ''} onChange={(e) => e.target.value && s.setActive(e.target.value)} title="編集中の案件">
+          <select data-tour="project-select" value={s.active ?? ''} onChange={(e) => e.target.value && s.setActive(e.target.value)} title="編集中の案件" aria-label="編集中の案件">
             <option value="">（案件を選択）</option>
             {/* 投稿済みにして隠した案件は出さない。ただし開いている案件だけは必ず残す（選択が空欄になるのを防ぐ） */}
             {visibleProjects(s.projects, {active: s.active, showArchived: false}).map((p) => (
@@ -237,17 +246,17 @@ export const App: React.FC = () => {
         {tab === 'timeline' && <EditorPage key={s.active ?? ''} onTab={go} />}
         {tab === 'render' && <RenderPage key={s.active ?? ''} onTab={go} />}
         {/* Settings は案件に依存しないので key を付けない（案件を切り替えても入力中の値を捨てない） */}
-        {tab === 'settings' && <SettingsPage />}
+        {tab === 'settings' && <SettingsPage onCreate={() => {if (s.active) writePref(`reel-studio.brief.route.${s.active}`, 'script'); go(s.active ? 'brief' : 'projects');}} />}
       </main>
 
       {/* スマホ用の下部ナビ。desktop では CSS で隠れる（上のタブがそのまま使われる） */}
-      <nav className="bottomnav">
+      <nav className="bottomnav" aria-label="モバイルメニュー">
         {TABS.map(({id, label, sub}) => (
-          <button key={id} className={tab === id ? 'bn active' : 'bn'} onClick={() => go(id)} aria-label={`${label}（${sub}）`}>
+          <button key={id} className={tab === id ? 'bn active' : 'bn'} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined} aria-label={`${label}（${sub}）`}>
             <span className="bn-icon" aria-hidden="true">
-              {TAB_ICON[id]}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{TAB_ICON[id]}</svg>
             </span>
-            <span className="bn-label">{sub}</span>
+            <span className="bn-label">{label}</span>
           </button>
         ))}
       </nav>
@@ -274,6 +283,7 @@ export const App: React.FC = () => {
       <Tour open={tour} tab={tab} onTab={go} onClose={closeTour} />
       {/* 新しい版のお知らせ（PC で動かしているときだけ。クラウド版では何も出さない） */}
       <UpdatePrompt held={tour || help} />
+      <PwaUpdateNotice hasUnsavedChanges={dirty.length > 0} />
     </div>
   );
 };

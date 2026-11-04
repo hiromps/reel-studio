@@ -1,6 +1,8 @@
 import React from 'react';
+import {VerticalText, verticalTextCells} from './VerticalText';
 import {AbsoluteFill, OffthreadVideo, staticFile, useVideoConfig} from 'remotion';
 import {cropStyle} from './GourmetReel';
+import {colorFilter, type ColorAdjustments} from './color';
 import type {Crop, ReelData} from './GourmetReel';
 import {TelopFont, useTelopFont} from './telops';
 
@@ -18,7 +20,7 @@ export type ThumbnailDef = {
   side?: string;
   title?: string;
   font?: string;
-  bg?: {src: string; atSec: number; crop?: Crop} | null;
+  bg?: {src: string; atSec: number; crop?: Crop; color?: ColorAdjustments} | null;
 };
 
 export type ThumbnailProps = ReelData & {thumbnail?: ThumbnailDef};
@@ -67,7 +69,7 @@ const Texts: React.FC<{en: string; side: string; title: string}> = ({en, side, t
   const fontFamily = useTelopFont();
   // 長いときだけ縮める（短いときは型の大きさのまま）。英大文字は 1 文字 ≒ 0.72em
   const enSize = Math.min(LAYOUT.enFontSize, Math.floor(LAYOUT.enMaxWidth / Math.max(1, len(en) * 0.76)));
-  const sideSize = Math.min(LAYOUT.sideFontSize, Math.floor(LAYOUT.sideMaxHeight / Math.max(1, len(side))));
+  const sideSize = Math.min(LAYOUT.sideFontSize, Math.floor(LAYOUT.sideMaxHeight / Math.max(1, verticalTextCells(side))));
   const titleLines = title.split(/\r?\n/).filter((l) => l.trim());
   const longest = Math.max(1, ...titleLines.map(len));
   const titleSize = Math.min(LAYOUT.titleFontSize, Math.floor(LAYOUT.titleMaxWidth / longest));
@@ -86,12 +88,12 @@ const Texts: React.FC<{en: string; side: string; title: string}> = ({en, side, t
             left: LAYOUT.sideLeft,
             ...base(fontFamily, sideSize),
             writingMode: 'vertical-rl',
-            // 数字・英字・× も 1 文字ずつ正立で縦に積む
+            // 半角数字だけ縦中横。英字・× は従来どおり正立。
             textOrientation: 'upright',
             letterSpacing: '0.02em',
           }}
         >
-          {side}
+          <VerticalText text={side} />
         </div>
       ) : null}
       {titleLines.length ? (
@@ -113,13 +115,13 @@ export const ReelThumbnail: React.FC<ThumbnailProps> = (data) => {
   // フォント。"builtin"＝同梱の明朝（shared/thumbnail.ts の THUMBNAIL_BUILTIN_FONT と同じ値）。
   // Reel Studio からは必ずどちらかが明示で来る。thumbnail が無い（エンジン単体で開いた）ときだけテロップのフォントを使う
   const fontFile = data.thumbnail ? (t.font && t.font !== BUILTIN_FONT ? t.font : undefined) : data.font;
-  const bg = t.bg ??(first ? {src: first.src, atSec: (first.inSec + first.outSec) / 2, crop: first.crop} : null);
+  const bg = t.bg ??(first ? {src: first.src, atSec: (first.inSec + first.outSec) / 2, crop: first.crop, color: first.color} : null);
   return (
     <TelopFont file={fontFile}>
       <AbsoluteFill style={{backgroundColor: 'black'}}>
         {bg ? (
           <AbsoluteFill style={{overflow: 'hidden'}}>
-            <OffthreadVideo src={staticFile(bg.src)} startFrom={Math.round(bg.atSec * fps)} muted style={cropStyle(bg.crop)} />
+            <OffthreadVideo src={staticFile(bg.src)} startFrom={Math.round(bg.atSec * fps)} muted style={{...cropStyle(bg.crop), filter: colorFilter(bg.color)}} />
           </AbsoluteFill>
         ) : null}
         <Texts en={t.en ?? ''} side={t.side ?? ''} title={t.title ?? ''} />

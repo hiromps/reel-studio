@@ -37,6 +37,9 @@ import {readEditorClipboard, writeEditorClipboard} from './clipboard';
 import {NarrationLibrary} from './NarrationLibrary';
 import {TelopNarrationDialog} from './TelopNarrationDialog';
 import {ResizeHandle} from './ResizeHandle';
+import {EditorMoreActions} from './EditorMoreActions';
+import {EmotionCutsDialog} from './EmotionCutsDialog';
+import {useNarrationRegeneration} from '../hooks/useNarrationRegeneration';
 import type {NarrationLibraryEntry} from '@shared/narration-library';
 
 /** 狭い画面のシートの見出し（いま何を触っているか） */
@@ -52,6 +55,7 @@ const emptyLib: SfxLibrary = {version: 1, sounds: []};
 
 export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials' | 'render') => void}> = ({onTab}) => {
   const s = useStudio();
+  const narrationRegeneration = useNarrationRegeneration();
   const [lib, setLib] = useState<SfxLibrary | null>(null);
   const m = useEditorModel(lib);
   const {cuts, narration, catalog, brief, selection, setSelection, frame, setFrame} = m;
@@ -79,6 +83,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [telopNarrationOpen, setTelopNarrationOpen] = useState(false);
+  const [emotionOpen, setEmotionOpen] = useState(false);
 
   // 効果音ライブラリ（S 段の幅と、インスペクタの音源一覧に使う）
   useEffect(() => {
@@ -97,12 +102,17 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     };
     measure();
     window.addEventListener('resize', measure);
+    const observer = new ResizeObserver(measure);
+    if (rootRef.current) observer.observe(rootRef.current);
+    const header = document.querySelector('.topbar');
+    if (header) observer.observe(header);
     const t = setTimeout(measure, 50);
     return () => {
       window.removeEventListener('resize', measure);
+      observer.disconnect();
       clearTimeout(t);
     };
-  }, [s.active]);
+  }, [s.active, !!cuts]);
   // プレビューは中央列の高さと幅に収める（9:16）
   useLayoutEffect(() => {
     const el = centerRef.current;
@@ -183,8 +193,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const dirtyCuts = s.files.cuts.dirty;
   const dirtyNarr = s.files.narration.dirty;
   const saveAll = useCallback(async () => {
-    if (s.files.catalog.dirty) await s.saveFile('catalog');
-    if (s.files.cuts.dirty) await s.saveFile('cuts');
+    if (s.files.catalog.dirty && !(await s.saveFile('catalog'))) return;
+    if (s.files.cuts.dirty && !(await s.saveFile('cuts'))) return;
     if (s.files.narration.dirty) await s.saveFile('narration');
   }, [s]);
 
@@ -346,7 +356,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       },
     },
     {key: 'Escape', handler: () => { setSelection(null); setMultiSelection([]); }},
-  ], !telopNarrationOpen);
+  ], !telopNarrationOpen && !emotionOpen);
 
   // ---- 素材ビンからのドラッグ ----
   const binDrag = useBinDrag<string>({
@@ -492,7 +502,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       </div>
     );
 
-  const height = `calc(100vh - ${rootTop + 8}px)`;
+  const height = `calc(100dvh - ${rootTop + 8}px - var(--nav-space, 0px))`;
   const binMax = Math.min(500, Math.max(180, Math.floor(editorWidth * 0.3)));
   const binWidth = Math.max(160, Math.min(binMax, layoutSafe.bin));
   const inspectorMax = Math.min(620, Math.max(260, Math.floor(editorWidth * 0.42)));
@@ -511,11 +521,6 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         <button className="primary" onClick={() => void saveAll()} disabled={!dirtyCuts && !dirtyNarr && !s.files.catalog.dirty} title="変更を保存（Ctrl+S）" data-tour="save">
           保存{dirtyCuts || dirtyNarr || s.files.catalog.dirty ? ' *' : ''}
         </button>
-        <span className="btns" aria-label="コピーと貼り付け">
-          <button className="small" onClick={copySelected} disabled={!copyableItems.length} title="選択したカットまたはテロップをコピー（Ctrl+C）">コピー</button>
-          <button className="small" onClick={() => void pasteSelected()} disabled={!readEditorClipboard()} title="コピーした項目を貼り付け（Ctrl+V）">貼り付け</button>
-        </span>
-        <span className="hint" title="Ctrl/⌘クリックで追加、Shiftクリックで範囲選択">Ctrl/⌘・Shift で複数選択</span>
         <span className="btns">
           <button onClick={m.undo} disabled={!m.canUndo} title="取り消し（Ctrl+Z）">
             ↶
@@ -524,6 +529,18 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             ↷
           </button>
         </span>
+        <AiMenu orderLocked={cuts?.meta?.orderLocked === true} onJobRequest={m.captureAiJob} placeholders={placeholders} cutCount={cuts?.cuts.length ?? 0} hasCuts={!!cuts} hasOrderCheck={!!m.orderCheck} />
+        <button className="small emotion-open" disabled={!narration} onClick={() => {
+          preview.current?.pause(); onTab('render');
+          window.setTimeout(() => document.getElementById('narration-audio')?.scrollIntoView({block: 'start'}), 0);
+        }}>音声の感情</button>
+        <EditorMoreActions>
+        <button className="small" disabled={!cuts} onClick={() => {preview.current?.pause(); setEmotionOpen(true);}}>カット別の感情（共通JSON）</button>
+        <span className="btns" aria-label="コピーと貼り付け">
+          <button className="small" onClick={copySelected} disabled={!copyableItems.length} title="選択したカットまたはテロップをコピー（Ctrl+C）">コピー</button>
+          <button className="small" onClick={() => void pasteSelected()} disabled={!readEditorClipboard()} title="コピーした項目を貼り付け（Ctrl+V）">貼り付け</button>
+        </span>
+        <span className="hint" title="Ctrl/⌘クリックで追加、Shiftクリックで範囲選択">Ctrl/⌘・Shift で複数選択</span>
         <button
           onClick={() => {
             void s.loadFile('cuts');
@@ -549,7 +566,6 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           m.patchReel({meta: {...cuts.meta, orderLocked: locked}});
           s.toast(locked ? '自動処理による並び順変更をロックしました。保存（Ctrl+S）すると案件に記憶されます。手動編集はできます' : '並び順のロックを解除しました。保存（Ctrl+S）してください', 'ok');
         }} />}
-        <AiMenu orderLocked={cuts?.meta?.orderLocked === true} onJobRequest={m.captureAiJob} placeholders={placeholders} cutCount={cuts?.cuts.length ?? 0} hasCuts={!!cuts} hasOrderCheck={!!m.orderCheck} />
         <button className="small" onClick={() => s.addJob('tts')} disabled={!narration || !!ttsBlockedBy || needsTts === 0} title={ttsBlockedBy ?? (needsTts === 0 ? 'すべてのブロックに音声があります' : `${needsTts} ブロックの音声を Fish Audio で作ります`)}>
           {ttsBusy ? '音声を生成中…' : `音声を生成（${needsTts}）`}
         </button>
@@ -590,6 +606,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         <button className="small" onClick={() => onTab('render')} title="書き出し・納品へ">
           Render →
         </button>
+        </EditorMoreActions>
       </div>
 
       {aiJob && <AiJobStatus job={aiJob} onCancel={(id) => void s.cancelJob(id)} compact />}
@@ -648,7 +665,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           )}
           {sel?.kind === 'cut' && <CutInspector m={m} index={sel.index} onSeekCut={seekCut} focusTelop={focusTelop} onSplit={splitClip} />}
           {sel?.kind === 'telop' && <TelopInspector m={m} group={sel.group} onSeekCut={seekCut} />}
-          {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => void s.addJob('tts', {ids: [id], force: true})} onSaveToLibrary={() => setLibraryOpen(true)} ttsBlockedBy={ttsBlockedBy} />}
+          {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => {stopAudio(); void narrationRegeneration.regenerate(id);}} onSaveToLibrary={() => setLibraryOpen(true)} ttsBlockedBy={narrationRegeneration.blocked} />}
           {sel?.kind === 'sfx' && <SfxInspector m={m} index={sel.index} onSeekCut={seekCut} lib={lib} onPlay={playSfx} />}
           {sel?.kind === 'thumbnail' && <ThumbnailSection m={m} large />}
           {!sel && <ReelInspector m={m} />}
@@ -783,6 +800,18 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
       </div>
 
       {telopNarrationOpen && <TelopNarrationDialog key={s.active} defaults={{voice: m.persona?.narration.voiceId ?? '', voiceTitle: m.persona?.narration.voiceTitle, speed: m.persona?.narration.speed}} capture={m.captureAiJob} onClose={() => setTelopNarrationOpen(false)} />}
+      {emotionOpen && cuts && <EmotionCutsDialog key={s.active} cuts={cuts} narration={narration}
+        initialSelection={selectedItems.flatMap(item => item?.kind === 'cut' && cuts.cuts[item.index]?.id ? [cuts.cuts[item.index].id!] : [])}
+        voice={narration?.voice || m.persona?.narration.voiceId || ''} onClose={() => setEmotionOpen(false)}
+        onChange={(ids, emotion) => {
+          const changed = cuts.cuts.filter(c => ids.includes(c.id ?? '') && c.emotion_tag !== emotion);
+          if (!changed.length) return;
+          m.pushHistory();
+          const changedIds = new Set(changed.map(c => c.id));
+          m.setCuts({...cuts, cuts: cuts.cuts.map(c => changedIds.has(c.id) ? {...c, emotion_tag: emotion} : c)});
+          if (narration) m.setNarr({...narration, segments: narration.segments.map(seg => changed.some(c => seg.id === `oc_${c.id}`)
+            ? {...seg, emotion_tag: emotion, needsTts: true, durSec: undefined} : seg)});
+        }} />}
 
       {binDrag.drag && (
         <div className="dnd-ghost" style={{left: binDrag.drag.x, top: binDrag.drag.y}}>

@@ -3,6 +3,7 @@
 import React, {useMemo, useState} from 'react';
 import type {Catalog, Clip} from '@shared/schema';
 import {KIND_LABEL} from './labels';
+import {colorFilter} from '@shared/color';
 
 export type BinFilter = 'all' | 'unused' | 'hook' | 'untagged';
 
@@ -78,7 +79,7 @@ export const Bin: React.FC<Props> = ({catalog, mediaBase, usage, draggingId, han
               {...handleProps(c.id)}
             >
               <div className="bin-thumb">
-                {c.thumbs.sheet && mediaBase ? <img src={`${mediaBase}/studio/${c.thumbs.sheet}`} alt="" loading="lazy" draggable={false} /> : <div className="thumb-none">no thumb</div>}
+                {c.thumbs.sheet && mediaBase ? <img src={`${mediaBase}/studio/${c.thumbs.sheet}`} style={{filter: colorFilter(c.color)}} alt="" loading="lazy" draggable={false} /> : <div className="thumb-none">no thumb</div>}
                 <span className="bin-id">{c.id}</span>
                 <span className="bin-dur">{c.probe.durationSec.toFixed(1)}s</span>
                 {used > 0 && <span className="bin-used">×{used}</span>}

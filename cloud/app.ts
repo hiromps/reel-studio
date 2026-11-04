@@ -1,7 +1,7 @@
 // クラウド版の Express アプリ。Vercel Functions（api/[...path].ts）がこれを 1 本だけマウントする。
 //
 // ローカル版（server/index.ts）との違い:
-// - ファイルシステムの代わりに Supabase の Postgres（契約ファイル・ジョブ）と Vercel Blob（メディア）を使う
+// - ファイルシステムの代わりに Supabase の Postgres（台本・メタデータ・ジョブ）を使い、メディアは PC に保持する
 // - 重い処理は自分でやらず、ジョブとして積んで PC のワーカーに実行させる
 // - 公開されるので、すべての経路に認証が要る（画面は Cookie、ワーカーは Bearer）
 import express from 'express';
@@ -16,6 +16,7 @@ import {miscRouter} from './routes/misc';
 import {planRouter} from './routes/plan';
 import {projectsRouter} from './routes/projects';
 import {workerRouter} from './routes/worker';
+import {cloudModalRouter} from './routes/modal';
 
 // Express 4 は async ハンドラの reject を拾わない。拾われないと Node が unhandledRejection でプロセスごと落ち、
 // Vercel では同じインスタンスで動いている他のリクエストまで巻き添えで 60 秒後に 504 になる（原因もログに残らない）。
@@ -39,7 +40,7 @@ if (!(layerProto as {__asyncPatched?: boolean}).__asyncPatched) {
 export const createApp = (): express.Express => {
   const app = express();
   app.set('trust proxy', true);
-  // Vercel Functions の本文上限は 4.5MB。動画はブラウザから Blob へ直接上げるのでここは通らない
+  // クラウド API は JSON のみ。バイナリ取り込みはローカルサーバーで行う
   app.use(express.json({limit: '4mb'}));
 
   // ── ログイン ──────────────────────────────────────────────
@@ -74,6 +75,7 @@ export const createApp = (): express.Express => {
   // 人格は判断（検証・キャプション点検・構成プラン）に要るので、先に DB から読んでレジストリに載せる
   app.use('/api', requireUser, (req, res, next) => void ensurePersonas().then(next).catch(next));
   app.use('/api/projects', projectsRouter);
+  app.use('/api/modal', cloudModalRouter);
   app.use('/api/projects/:slug', docsRouter);
   app.use('/api/projects/:slug', planRouter);
   app.use('/api/jobs', jobsRouter);

@@ -123,7 +123,10 @@ async function startup() {
   if (smoke) {
     const health = await fetch(`${origin}/api/health`, {headers: {'X-Reel-Desktop-Token': token}}).then((res) => res.json());
     const rejected = await fetch(`${origin}/api/health`).then((res) => res.status);
-    fs.writeFileSync(path.join(home, 'electron-smoke.json'), JSON.stringify({ok: health.ok && rejected === 403, packaged: app.isPackaged, appVersion: app.getVersion(), url: mainWindow.webContents.getURL(), node: health.node, unauthenticatedStatus: rejected}, null, 2));
+    const modalSession = await fetch(`${origin}/api/modal/session`, {headers: {'X-Reel-Desktop-Token': token, 'X-Reel-Modal-Client': 'reel-studio'}}).then(res => res.json());
+    const modal = await fetch(`${origin}/api/modal/settings`, {headers: {'X-Reel-Desktop-Token': token, 'X-Reel-Modal-Session': modalSession.token}}).then(res => res.json());
+    const modalReady = modal.gpu === 'RTX-PRO-6000' && modal.encryption.includes('DPAPI') && !JSON.stringify(modal).includes('ws-desktop-verification');
+    fs.writeFileSync(path.join(home, 'electron-smoke.json'), JSON.stringify({ok: health.ok && rejected === 403 && modalReady, modalCloudGpu: modalReady, packaged: app.isPackaged, appVersion: app.getVersion(), url: mainWindow.webContents.getURL(), node: health.node, unauthenticatedStatus: rejected}, null, 2));
     quitting = true;
     app.quit();
   }

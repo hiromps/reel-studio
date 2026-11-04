@@ -8,6 +8,8 @@ import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
 import {ZoomControls} from '../components/ZoomControls';
+import {ColorControls} from '../components/ColorControls';
+import {colorFilter, DEFAULT_COLOR, isDefaultColor} from '@shared/color';
 import {applyZoomSettings} from '@shared/zoom';
 import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
 import {fallbackDuration, fixedTrimRange, trimZoomView, type TrimRange} from '../components/trim';
@@ -18,6 +20,8 @@ import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
 import {ThumbnailSection} from './ThumbnailSection';
 import {TelopFontSelect} from './TelopFontSelect';
+import {useEmotionTags} from '../hooks/useEmotionTags';
+import {NarrationEmotion} from '../components/NarrationEmotion';
 
 type Common = {m: EditorModel; onSeekCut: (i: number) => void};
 
@@ -239,7 +243,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
       >
         <div className="insp-cut-head">
           <div className="insp-thumb">
-            <CutThumb slug={s.active} src={c.src} inSec={c.inSec} width={200} fallback={clip?.thumbs.sheet && s.mediaBase ? `${s.mediaBase}/studio/${clip.thumbs.sheet}` : null} />
+            <CutThumb slug={s.active} src={c.src} color={c.color} inSec={c.inSec} width={200} fallback={clip?.thumbs.sheet && s.mediaBase ? `${s.mediaBase}/studio/${clip.thumbs.sheet}` : null} />
           </div>
           <div className="insp-cut-meta">
             <div><b>素材 {clip?.id ?? c.src}</b> {clip?.user.ng && <span className="hint">NG 指定</span>}</div>
@@ -269,7 +273,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
             <div className="replace-results" role="group" aria-label="差し替え候補">
               {replaceMatches.map((k) => (
                 <button key={k.id} className={`replace-option${replaceId === k.id ? ' selected' : ''}`} onClick={() => setReplaceId(k.id)} aria-pressed={replaceId === k.id}>
-                  {k.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${k.thumbs.sheet}`} alt="" loading="lazy" /> : <span className="thumb-none">no thumb</span>}
+                  {k.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${k.thumbs.sheet}`} style={{filter: colorFilter(k.color)}} alt="" loading="lazy" /> : <span className="thumb-none">no thumb</span>}
                   <span><b>{k.id}</b> {k.tags?.description ?? k.slug}<small>{k.probe.durationSec.toFixed(1)}秒 {k.user.ng ? '・NG指定' : ''}{k.src === c.src ? '・現在の素材' : ''}</small></span>
                 </button>
               ))}
@@ -277,7 +281,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
             </div>
             {replacement && (
               <div className="replace-confirm">
-                {s.mediaBase && <video key={replacement.src} src={`${s.mediaBase}/${replacement.src}`} controls muted playsInline preload="none" aria-label={`${replacement.id} の確認映像`} />}
+                {s.mediaBase && <video key={replacement.src} src={`${s.mediaBase}/${replacement.src}`} style={{filter: colorFilter(replacement.color)}} controls muted playsInline preload="none" aria-label={`${replacement.id} の確認映像`} />}
                 <div>
                   <span>カット {index + 1}：{clip?.id ?? c.src} → <b>{replacement.id}</b>{replacement.user.ng ? '（NG指定のまま使用）' : ''}</span>
                   <button className="small primary" onClick={confirmReplace} disabled={replacement.src === c.src}>この素材に差し替える</button>
@@ -332,7 +336,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
               view={{inSec: quickZoomStart, outSec: Math.min(sourceDuration, quickZoomStart + quickZoomSec)}}
               onChange={(r) => setQuickStart(r.inSec)}
             />
-            <video ref={quickVideoRef} src={s.mediaBase ? `${s.mediaBase}/${c.src}` : undefined} autoPlay muted playsInline preload="metadata" onLoadedMetadata={(e) => {e.currentTarget.playbackRate = c.playbackRate ?? 1; e.currentTarget.currentTime = quick.inSec;}} onTimeUpdate={(e) => {
+            <video ref={quickVideoRef} src={s.mediaBase ? `${s.mediaBase}/${c.src}` : undefined} style={{filter: colorFilter(c.color)}} autoPlay muted playsInline preload="metadata" onLoadedMetadata={(e) => {e.currentTarget.playbackRate = c.playbackRate ?? 1; e.currentTarget.currentTime = quick.inSec;}} onTimeUpdate={(e) => {
               if (e.currentTarget.currentTime >= quick.outSec - 0.02 || e.currentTarget.currentTime < quick.inSec - 0.05) e.currentTarget.currentTime = quick.inSec;
             }} aria-label="0.8秒の候補を再生" />
             <label>
@@ -355,6 +359,13 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
           <ZoomControls zoom={c.zoom} onStart={pushHistory} onChange={(zoom) => patchCut(index, {zoom}, {history: false})} />
           <button className="small" onClick={() => m.patchReel({cuts: cuts.cuts.map((cut) => ({...cut, zoom: c.zoom ? {...c.zoom} : undefined}))})}>このズームを全カットに適用</button>
         </details>
+        <details className="insp-color" open>
+          <summary>色・明るさ{isDefaultColor(c.color) ? '' : '（調整あり）'}</summary>
+          <ColorControls key={c.id ?? index} color={c.color} onStart={pushHistory} onChange={(color) => patchCut(index, {color}, {history: false})} />
+          <p className="hint">このカットの映像に反映され、プレビューと書き出しに適用されます。</p>
+          {clip && <button className="small" disabled={JSON.stringify(c.color ?? DEFAULT_COLOR) === JSON.stringify(clip.color ?? DEFAULT_COLOR)} onClick={() => patchCut(index, {color: clip.color ? {...clip.color} : undefined})}>素材の補正を取り込む</button>}
+          <button className="small" onClick={() => m.patchReel({cuts: cuts.cuts.map((cut) => ({...cut, color: c.color ? {...c.color} : undefined}))})}>この補正を全カットに適用</button>
+        </details>
         <details className="insp-crop" open={!isDefaultCrop(c.crop)}>
           <summary>
             切り出し（拡大・位置）{isDefaultCrop(c.crop) ? '' : ` ${(c.crop?.zoom ?? 1).toFixed(2)}×`}
@@ -362,6 +373,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
           <CropBox
             src={s.mediaBase ? `${s.mediaBase}/${c.src}` : null}
             crop={c.crop ?? DEFAULT_CROP}
+            color={c.color}
             onChange={(crop) => {
               pushHistory();
               patchCut(index, {crop: isDefaultCrop(crop) ? undefined : crop});
@@ -624,6 +636,7 @@ export const NarrationInspector: React.FC<
 > = ({m, index, onPlay, playing, onRegenerate, onSaveToLibrary, ttsBlockedBy}) => {
   const {narration, patchSeg, removeSeg, pushHistory, setNarr, estimateSec, ranges} = m;
   const [draft, setDraft] = useState<string | null>(null);
+  const emotionOptions = useEmotionTags();
   const seg = narration?.segments[index];
   useEffect(() => setDraft(null), [index, seg?.text]);
   if (!narration || !seg) return null;
@@ -657,6 +670,8 @@ export const NarrationInspector: React.FC<
         本文（1 ブロック 1 文。変えると音声は作り直しになります）
         <textarea value={text} onChange={(e) => setDraft(e.target.value.replace(/[\r\n]+/g, ' '))} onBlur={commitText} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), (e.target as HTMLTextAreaElement).blur())} style={{minHeight: 64}} />
       </label>
+      <NarrationEmotion segment={seg} options={emotionOptions} disabled={!!ttsBlockedBy}
+        onChange={emotion_tag => patchSeg(index, {emotion_tag, needsTts: true, durSec: undefined})} />
       <div className="row">
         <span className="counter" title={seg.durSec ? '実測' : '見積もり'}>
           {[...seg.text].length}字 / {estimateSec(seg).toFixed(1)}s{seg.durSec ? '' : '（見積）'}
@@ -703,11 +718,11 @@ export const NarrationInspector: React.FC<
       {fullSec > 0 && !needsTts && <input type="range" aria-label="ナレーションの使用する長さ" min={Math.min(0.1, fullSec)} max={fullSec} step={0.01} value={usedSec} onChange={(e) => setTrim(Number(e.target.value))} style={{width: '100%'}} />}
       {seg.trimSec && <span className="hint">出力に反映するには保存後、ナレーション合成を再実行してください。</span>}
       <div className="row">
-        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec)} disabled={playing === seg.id || !seg.text.trim()} title={needsTts ? 'まだ音声が無いので、いまの速度で作って鳴らします（保存しません）' : '使用する長さだけ試聴します'}>
+        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec)} disabled={playing === seg.id || !seg.text.trim() || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
           {playing === seg.id ? '再生中…' : '▶ 聴く'}
         </button>
-        <button className="small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim()} title={ttsBlockedBy ?? 'このブロックだけ作り直す（同じ文でも長さがばらつくので、納得いく読みが出るまで引き直せます）'}>
-          この 1 本だけ生成
+        <button className="primary small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim() || !emotionOptions.ready} title={ttsBlockedBy ?? '変更を保存し、選択した感情でこの音声だけを生成します'}>
+          保存してこの感情で生成
         </button>
         <button className="small" onClick={onSaveToLibrary} disabled={needsTts} title={needsTts ? '先に音声を生成してください' : 'この音声を名前付きで保存して別案件でも使う'}>
           音声を保存

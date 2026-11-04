@@ -18,6 +18,7 @@ import {listFonts} from '../core/fonts';
 import {JOB_TYPES} from './jobs';
 import {projectsRouter} from './routes/projects';
 import {filesRouter} from './routes/files';
+import {reelCutsRouter} from './routes/reel-cuts';
 import {planRouter} from './routes/plan';
 import {captionRouter} from './routes/caption';
 import {sfxRouter} from './routes/sfx';
@@ -33,13 +34,17 @@ import {framesRouter} from './routes/frames';
 import {buildRouter} from './routes/build';
 import {jobsRouter, eventsHandler} from './routes/jobs';
 import {mediaRouter} from './routes/media';
+import {uploadsRouter} from './routes/uploads';
 import {settingsRouter} from './routes/settings';
+import {modalRouter} from './routes/modal';
 import {fontsRouter} from './routes/fonts';
 import {versionRouter} from './routes/version';
 import {personasRouter} from './routes/personas';
 import {loadPersonasFromDisk, personasProblem} from '../core/personas-store';
 import {listPersonas} from '../shared/personas';
+import {scriptSkillCatalog} from '../shared/script-skill';
 import {state} from './state';
+import {loadEmotionTags} from '../core/emotion-tags';
 import {watchProject} from './watch';
 import {resolveProjectDir} from '../core/project';
 
@@ -89,6 +94,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({limit: '30mb'}));
+app.get('/api/emotion-tags', (_req, res) => {res.setHeader('Cache-Control', 'no-store'); res.json(loadEmotionTags());});
 
 app.get('/api/health', async (_req, res) => {
   const ver = async (cmd: string) => {
@@ -130,6 +136,7 @@ app.get('/api/config', async (_req, res) => {
     agent: agentStatusOf(agentProvider(), studioConfig.agent.model, {claude: claudeAvailable(), codex: codexAvailable(), codexLoggedIn: agentProvider() === 'codex' ? await codexLoggedIn() : undefined, deepseekKey: !!deepseekApiKey()}),
     // 取り込み済みの自前フォントと、新しく作る動画で使う既定（Timeline のフォント選択が使う）
     fonts: listFonts(),
+    scriptSkills: scriptSkillCatalog(loadSettings()),
     telopFont: loadSettings().telop.font ?? null,
     startedAt: new Date(startedAtMs).toISOString(),
     uploadsFolders: fs.existsSync(studioConfig.uploadsRoot) ? fs.readdirSync(studioConfig.uploadsRoot).filter((d) => fs.statSync(path.join(studioConfig.uploadsRoot, d)).isDirectory()) : [],
@@ -154,6 +161,7 @@ app.post('/api/pick-folder', async (req, res) => {
 
 app.use('/api/projects', projectsRouter);
 app.use('/api/projects/:slug/files', filesRouter);
+app.use('/api/projects/:slug', reelCutsRouter);
 app.use('/api/projects/:slug', planRouter);
 app.use('/api/projects/:slug', captionRouter);
 app.use('/api/projects/:slug', hooksRouter);
@@ -168,7 +176,9 @@ app.use('/api/video-styles', videoStylesRouter);
 app.use('/api/narration-library', narrationLibraryRouter);
 app.use('/api/tts', ttsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/modal', modalRouter);
 app.use('/api/fonts', fontsRouter);
+app.use('/api/uploads', uploadsRouter);
 app.use('/api/version', versionRouter);
 app.use('/api/personas', personasRouter);
 app.use('/api/jobs', jobsRouter);

@@ -71,11 +71,13 @@ async function main() {
   fs.mkdirSync(licenses, {recursive: true});
   const pkg = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8'));
   for (const dir of ['core', 'shared', 'server', 'worker', 'cloud', 'scripts']) copy(path.join(appRoot, dir), path.join(backend, dir), ['node_modules', 'out', 'dist']);
+  copy(path.join(appRoot, 'modal_backend'), path.join(backend, 'modal_backend'), ['__pycache__']);
   for (const file of ['studio.config.ts', 'tsconfig.json', 'LICENSE', 'package-lock.json']) fs.copyFileSync(path.join(appRoot, file), path.join(backend, file));
   copy(path.join(appRoot, 'dist'), path.join(backend, 'dist'));
   copy(path.join(appRoot, 'engine'), path.join(backend, 'engine'), ['node_modules', 'out', '.studio']);
   fs.mkdirSync(path.join(backend, 'desktop'), {recursive: true});
   fs.copyFileSync(path.join(appRoot, 'desktop/check-runtime.ts'), path.join(backend, 'desktop/check-runtime.ts'));
+  fs.copyFileSync(path.join(appRoot, 'desktop/runtime.cjs'), path.join(backend, 'desktop/runtime.cjs'));
   fs.writeFileSync(path.join(backend, 'package.json'), JSON.stringify({...pkg, main: undefined, scripts: {}, devDependencies: undefined, bin: undefined}, null, 2));
   console.log('アプリと動画エンジンの実行用部品を準備しています…');
   runNpm(['ci', '--omit=dev', '--no-audit', '--no-fund'], backend);

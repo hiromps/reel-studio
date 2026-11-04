@@ -1,10 +1,5 @@
-// スマホで撮った動画をそのまま案件に入れる（クラウド版だけで出る）。
-//
-// Vercel の Function は本文 4.5MB までなので、動画はサーバーを経由せず **ブラウザから Blob へ直接**
-// 上げる。上げ終わったら ingest ジョブを積み、PC が受け取って uploads/<フォルダ>/ に置く。
-// そのあとは今までどおり「カタログ実行」で読み込む。
+// 素材をローカルサーバーへ直接送り、uploads に保存する。
 import React, {useRef, useState} from 'react';
-import {put} from '@vercel/blob/client';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 
@@ -24,26 +19,18 @@ export const UploadMaterials: React.FC<{folder: string; onFolder: (name: string)
   const run = async (files: File[]) => {
     if (!s.active) return;
     setBusy(true);
-    const uploaded: {url: string; name: string}[] = [];
     try {
+      if (s.isCloud) throw new Error('ローカル保存モードです。PC の Reel Studio で素材を取り込んでください');
+      let savedFolder = folder;
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         setProgress({name: f.name, done: 0, total: f.size, index: i + 1, count: files.length});
-        const t = await api.post<{token: string; pathname: string}>('/api/uploads/token', {slug: s.active, filename: f.name, folder});
-        const r = await put(t.data.pathname, f, {
-          access: 'public',
-          // サーバーが出した短命トークンをそのまま使う（この 1 ファイルだけ書ける）
-          token: t.data.token,
-          contentType: f.type || 'application/octet-stream',
-          // 動画は大きい。分割して並列で上げ、落ちた部分だけ再送する
-          multipart: f.size > 8 * 1024 * 1024,
-          onUploadProgress: (p) => setProgress({name: f.name, done: p.loaded, total: p.total || f.size, index: i + 1, count: files.length}),
-        });
-        uploaded.push({url: r.url, name: f.name});
+        const r = await api.upload<{folder: string}>(`/api/uploads/local?slug=${encodeURIComponent(s.active)}&folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(f.name)}`, f);
+        savedFolder = r.data.folder;
+        setProgress({name: f.name, done: f.size, total: f.size, index: i + 1, count: files.length});
       }
-      const job = await api.post<{id: string}>('/api/uploads/ingest', {slug: s.active, files: uploaded, folder});
-      s.toast(`${uploaded.length} 本を PC に取り込み中です（ジョブ ${job.data.id}）`, 'ok');
-      if (folder) onFolder(folder);
+      onFolder(savedFolder);
+      s.toast(`${files.length} 本をローカルに保存しました`, 'ok');
     } catch (e) {
       s.toast(`アップロードに失敗: ${(e as Error).message}`, 'error');
     } finally {
@@ -58,15 +45,16 @@ export const UploadMaterials: React.FC<{folder: string; onFolder: (name: string)
   return (
     <div className="upload-materials">
       <p className="hint">
-        スマホで撮った動画をここから入れられます。上げた動画は PC の <code>uploads/{folder || '（案件名）'}/</code> に置かれ、そのあと「カタログ実行」で読み込みます。
+        選んだ動画を PC の <code>uploads/{folder || '（案件名）'}/</code> に保存し、「カタログ実行」で読み込みます。
+        {s.isCloud && '取り込みは PC の Reel Studio で行ってください。'}
       </p>
       <div className="row">
         <label className="grow">
           置き場（uploads の下に作るフォルダ名）
           <input value={folder} onChange={(e) => onFolder(e.target.value)} placeholder="店名など" spellCheck={false} disabled={busy} />
         </label>
-        <button className="primary" onClick={() => input.current?.click()} disabled={busy || !s.active}>
-          {busy ? 'アップロード中…' : '📱 動画を選ぶ'}
+        <button className="primary" onClick={() => input.current?.click()} disabled={busy || !s.active || s.isCloud}>
+          {busy ? '取り込み中…' : '動画を選ぶ'}
         </button>
         <input ref={input} type="file" accept="video/*" multiple hidden onChange={(e) => pick(e.target.files)} />
       </div>

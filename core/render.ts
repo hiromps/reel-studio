@@ -15,6 +15,7 @@ import {countFrames, ffprobe} from './ffprobe';
 import {makeQcTile} from './thumbnails';
 import {loadCatalog} from './catalog';
 import {engineDiff, engineFamily, syncEngine, readCuts, readBrief, writeCuts, npmInstall} from './project';
+import {hasReelCuts} from './reel-cuts';
 import {ensureProjectFont, type FontDelivery} from './fonts';
 import {pendingAliases, applyAliases} from './alias';
 import {loadSettings} from './settings';
@@ -349,6 +350,12 @@ export async function renderStill(projectDir: string, opt: {cut?: number; frame?
   if (engineDiff(projectDir).stale) syncEngine(projectDir);
   ensureProjectFont(projectDir, (cuts as {font?: string}).font);
   const args = ['still', 'GourmetReel', outAbs, `--frame=${frame}`, `--gl=${opt.gl ?? 'swiftshader'}`, '--overwrite'];
+  if (hasReelCuts(projectDir)) {
+    const props = path.join(projectDir, '.studio', 'reel-still-props.json');
+    fs.mkdirSync(path.dirname(props), {recursive: true});
+    fs.writeFileSync(props, JSON.stringify(cuts));
+    args.push(`--props=${props}`);
+  }
   const r = await exec(process.execPath, [remotionCli(projectDir), ...args], {cwd: projectDir, onLine: (l) => opt.onLine?.(l)});
   if (r.code !== 0 || !fs.existsSync(outAbs)) throw new Error(`still に失敗 (exit ${r.code}):\n${r.stderr.split(/\r?\n/).slice(-20).join('\n')}`);
   return {out: outAbs, frame};

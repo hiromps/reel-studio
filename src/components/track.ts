@@ -144,7 +144,7 @@ export const newCutId = (cuts: Cut[]): string => {
 };
 
 /** 素材からカットを 1 つ作る。テロップは付けない（空文字の main を付けると絵コンテのグループ判定で 1 かたまりに見えてしまう） */
-export const makeCut = (clip: Clip, range: {inSec: number; outSec: number}, id: string): Cut => ({id, src: clip.src, inSec: range.inSec, outSec: range.outSec});
+export const makeCut = (clip: Clip, range: {inSec: number; outSec: number}, id: string): Cut => ({id, src: clip.src, inSec: range.inSec, outSec: range.outSec, ...(clip.color ? {color: {...clip.color}} : {})});
 
 /** cuts.json がまだ無い案件で、最初のカットから作る。font は Settings で選んだ既定のフォント */
 export const createReel = (fps: number, theme: ThemeName | undefined, first: Cut, font?: string | null): ReelData => ({
@@ -190,6 +190,8 @@ export const replaceCutSource = (data: ReelData, index: number, clip: Clip): Ree
   const next = {...current, src: clip.src, inSec: preferred.inSec, outSec: round3(preferred.inSec + length)};
   if (clip.crop) next.crop = clip.crop;
   else delete next.crop;
+  if (clip.color) next.color = {...clip.color};
+  else delete next.color;
   delete next.subs;
   return {
     ...data,

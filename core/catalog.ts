@@ -31,6 +31,9 @@ export const listMaterials = (dir: string): string[] =>
     .sort(naturalCompare);
 
 export type CatalogOptions = {
+  /** 生成素材の追加。既存クリップと元の素材フォルダを保持する。 */
+  append?: boolean;
+  generated?: Clip['generated'];
   materialsDir: string;
   projectDir: string;
   slug: string;
@@ -199,6 +202,7 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
     clips.push({
       id,
       original: file,
+      generated: prev?.generated ?? opt.generated,
       slug,
       src: rel,
       proxyOf: undefined,
@@ -209,6 +213,7 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
       speech,
       scenes,
       user: prev?.user ?? {hook: false, ng: false, orderHint: null, lock: false},
+      color: prev?.color,
       mosaic: prev?.mosaic,
       // サムネイルを作り直していなければ、測った見た目（似た構図の判定・鮮明さ）もそのまま使える
       look: thumbs === prev?.thumbs ? prev?.look : undefined,
@@ -217,18 +222,19 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
   opt.onProgress?.(files.length, files.length, 'done');
 
   // 素材フォルダから消えたクリップは残さない（tags は backups に残る）
-  const removed = (existing?.clips ?? []).filter((c) => !files.includes(c.original));
+  const retained = (existing?.clips ?? []).filter(c => !files.includes(c.original) && (opt.append || c.generated?.provider === 'modal'));
+  const removed = opt.append ? [] : (existing?.clips ?? []).filter((c) => !files.includes(c.original) && !c.generated);
   for (const c of removed) log(`  removed from catalog: ${c.original}`);
 
   const catalog: Catalog = CatalogSchema.parse({
     version: 1,
     slug: opt.slug,
-    materialsDir: opt.materialsDir,
-    dominantFps: mode(clips.map((c) => nominalFps(c.probe.fps))),
+    materialsDir: opt.append && existing ? existing.materialsDir : opt.materialsDir,
+    dominantFps: opt.append && existing ? existing.dominantFps : mode(clips.map((c) => nominalFps(c.probe.fps))),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     facts: existing?.facts ?? [],
-    clips,
+    clips: [...retained, ...clips],
   });
   saveCatalog(opt.projectDir, catalog);
   if (opt.thumbs !== false) {

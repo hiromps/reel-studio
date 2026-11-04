@@ -49,6 +49,8 @@
 //   reel mosaic list --project P                                                   （クリップごとのモザイクの状態）
 //   reel mosaic apply --project P (--ids 01,02 | --all | --kinds person,interior) [--threshold 0.6] [--cells 8] [--mask-scale 1.3] [--detect-short 720] [--detect-every 1] [--hold-sec 0.1]
 //   reel mosaic revert --project P (--ids 01,02 | --all)                           （元のファイルに戻す）
+//   reel cuts validate --file <array.json> | import --file <array.json> --project P
+//   reel cuts show --project P | script --project P | config [--out <config.json>]
 import fs from 'node:fs';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
@@ -92,6 +94,10 @@ import {readJsonLoose} from '../core/json-io';
 import {applyMosaic, mosaicStatus, revertMosaic, setupMosaic} from '../core/mosaic';
 import {mosaicLabel, spansText} from '../shared/mosaic';
 import {ClipKindSchema} from '../shared/schema/catalog';
+import {ReelCutsSchema} from '../shared/schema/reel-cuts';
+import {defaultReelCutsConfig} from '../shared/reel-cuts';
+import {readReelCuts, readReelScript, writeReelCuts} from '../core/reel-cuts';
+import {writeJsonAtomic} from '../core/json-io';
 
 type Flags = Record<string, string | boolean>;
 const parseArgs = (argv: string[]): {cmd: string; pos: string[]; flags: Flags} => {
@@ -144,6 +150,26 @@ async function main() {
   // 人格は ~/.reel-studio/personas.json が正（無ければ同梱のサンプルで seed）
   loadPersonasFromDisk();
   switch (cmd) {
+    case 'cuts': {
+      const sub = pos[0] ?? 'show';
+      if (sub === 'config') {
+        const file = str(flags, 'out');
+        if (file) {writeJsonAtomic(path.resolve(file), defaultReelCutsConfig()); return out(path.resolve(file));}
+        return out(JSON.stringify(defaultReelCutsConfig(), null, 2));
+      }
+      if (sub === 'validate' || sub === 'import') {
+        const file = str(flags, 'file');
+        if (!file) throw new Error('--file <カット配列JSON> が必要です');
+        const cuts = ReelCutsSchema.parse(readJsonLoose(path.resolve(file)));
+        if (sub === 'validate') return out(`検証OK: ${cuts.length} カット`);
+        const saved = writeReelCuts(projectFromFlags(flags), cuts);
+        return out(`共通JSONを保存しました: ${saved.length} カット（編集・台本・音声が同じデータを参照）`);
+      }
+      const dir = projectFromFlags(flags);
+      if (sub === 'show') return out(JSON.stringify(readReelCuts(dir), null, 2));
+      if (sub === 'script') return out(readReelScript(dir) ?? '共通カットJSONはありません');
+      throw new Error('reel cuts validate|import|show|script|config');
+    }
     case 'help':
     case '--help':
     case '-h':

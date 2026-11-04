@@ -1,0 +1,33 @@
+# Only application source and build inputs belong in a cloud deployment.
+/*
+!/.vercelignore
+!/api
+!/assets
+!/cloud
+!/core
+!/engine
+!/public
+!/scripts
+!/shared
+!/src
+!/index.html
+!/package.json
+!/package-lock.json
+!/studio.config.ts
+!/tsconfig.json
+!/vercel.json
+!/vite.config.ts
+
+# Also exclude generated/private files inside the allowed source directories.
+**/node_modules
+**/.env
+**/.env.*
+**/*.log
+**/*.tmp
+**/*.part
+/engine/out
+/engine/narration
+/engine/qc
+/engine/.studio
+/engine/public/uploads
+/scripts/__pycache__

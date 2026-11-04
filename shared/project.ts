@@ -67,7 +67,7 @@ export type ContractName = (typeof CONTRACT_FILES)[number];
  * caption.txt / script.md / hooks.json（いずれも画面が読み書きする）を足したもの。
  * テキストのもの（caption / script）は `{text: string}` の形で入れる。
  */
-export const DOC_NAMES = [...CONTRACT_FILES, 'caption', 'script', 'hooks', 'scriptPlan', 'meta', 'reference'] as const;
+export const DOC_NAMES = [...CONTRACT_FILES, 'caption', 'script', 'hooks', 'scriptPlan', 'meta', 'reference', 'reelCuts'] as const;
 export type DocName = (typeof DOC_NAMES)[number];
 
 /** docs の名前 → 案件フォルダ内のパス（ワーカーの同期が使う） */
@@ -85,6 +85,7 @@ export const DOC_FILES: Record<DocName, string> = {
   meta: '.studio/meta.json',
   // 参考動画の型の分析（shared/reference.ts）。動画そのものとコマは .studio/reference/ にあり、クラウドにはコマだけ上がる
   reference: 'reference.json',
+  reelCuts: 'reel-cuts.json',
 };
 
 /** 中身が素のテキストのもの（docs には {text} で入る） */

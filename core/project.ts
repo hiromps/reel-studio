@@ -27,6 +27,7 @@ import {readJsonFile, readJsonLoose, writeJsonAtomic, backupFile} from './json-i
 import {exec} from './exec';
 import {isReferencePresent} from '../shared/reference';
 import {installBundledEngine} from './bundled-engine';
+import {hasReelCuts, readReelCuts, writeReelCuts, readReelEditor, readReelNarration, saveReelEditor, saveReelNarration} from './reel-cuts';
 
 // 案件の「形」は shared/project.ts が正（クラウド側からも読めるように fs 非依存で置いてある）。
 // ここからは今までどおり core/project.ts の名前で使えるよう再輸出する。
@@ -381,6 +382,7 @@ export const cloneProject = (srcRef: string, newSlug: string, opt: CloneOptions 
         }),
       });
     }
+    if (hasReelCuts(src)) writeReelCuts(dir, readReelCuts(src));
   }
 
   log(`${path.basename(src)} から ${path.basename(dir)} を作りました`);
@@ -413,9 +415,9 @@ export const npmInstall = async (dir: string, onLine?: (l: string) => void): Pro
 };
 
 // ── 契約ファイルの読み書き ──
-export const readCuts = (dir: string): ReelData => readJsonFile(path.join(dir, 'cuts.json'), ReelDataSchema);
+export const readCuts = (dir: string): ReelData => readReelEditor(dir) ?? readJsonFile(path.join(dir, 'cuts.json'), ReelDataSchema);
 export const readBrief = (dir: string): Brief | null => (fs.existsSync(path.join(dir, 'brief.json')) ? readJsonFile(path.join(dir, 'brief.json'), BriefSchema) : null);
-export const readNarration = (dir: string): Narration | null => (fs.existsSync(path.join(dir, 'narration.json')) ? readJsonFile(path.join(dir, 'narration.json'), NarrationSchema) : null);
+export const readNarration = (dir: string): Narration | null => readReelNarration(dir) ?? (fs.existsSync(path.join(dir, 'narration.json')) ? readJsonFile(path.join(dir, 'narration.json'), NarrationSchema) : null);
 export const backupsDir = (dir: string) => path.join(dir, studioConfig.studioDirName, 'backups');
 /**
  * cuts.json の並びに合わせて brief.order.fixed を更新する。
@@ -470,12 +472,12 @@ export const writeCuts = (dir: string, data: ReelData, opt: {preserveOrder?: boo
     }
     if (current.meta?.orderLocked !== undefined) data = {...data, meta: {...data.meta, orderLocked: current.meta.orderLocked}};
   }
-  const r = writeJsonAtomic(path.join(dir, 'cuts.json'), data, {backupDir: backupsDir(dir)});
+  const r = hasReelCuts(dir) ? saveReelEditor(dir, data) : writeJsonAtomic(path.join(dir, 'cuts.json'), data, {backupDir: backupsDir(dir)});
   syncFixedOrder(dir, data);
   return r;
 };
 export const writeBrief = (dir: string, data: Brief) => writeJsonAtomic(path.join(dir, 'brief.json'), BriefSchema.parse(data), {backupDir: backupsDir(dir)});
-export const writeNarration = (dir: string, data: Narration) => writeJsonAtomic(path.join(dir, 'narration.json'), NarrationSchema.parse(data), {backupDir: backupsDir(dir)});
+export const writeNarration = (dir: string, data: Narration) => hasReelCuts(dir) ? saveReelNarration(dir, NarrationSchema.parse(data)) : writeJsonAtomic(path.join(dir, 'narration.json'), NarrationSchema.parse(data), {backupDir: backupsDir(dir)});
 
 // キャプションだけは JSON ではなく、そのまま Instagram に貼れる素のテキストで持つ（work/ の既存案件と同じ）
 export const captionPath = (dir: string) => path.join(dir, 'caption.txt');

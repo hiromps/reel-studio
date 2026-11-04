@@ -242,7 +242,7 @@ export const Storyboard: React.FC<Props> = ({
               >
                 <div className="sb-gbar" style={{background: color ?? 'transparent'}} />
                 <div className="sb-thumb">
-                  <CutThumb slug={slug} src={c.src} inSec={c.inSec} width={prefs.size === 'l' ? 320 : 240} fallback={sheetUrl(mediaBase, clip)} />
+                  <CutThumb slug={slug} src={c.src} color={c.color} inSec={c.inSec} width={prefs.size === 'l' ? 320 : 240} fallback={sheetUrl(mediaBase, clip)} />
                   <span className="sb-no">{i + 1}</span>
                   <span className="sb-dur">{cutDurationSec(c).toFixed(1)}s</span>
                   <span className="sb-flags">

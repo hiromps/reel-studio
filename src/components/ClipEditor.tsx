@@ -7,6 +7,7 @@ import React, {useEffect, useState} from 'react';
 import type {Clip, UsableRange} from '@shared/schema';
 import {DEFAULT_CROP} from '@shared/schema/cuts';
 import {CropBox} from './CropBox';
+import {ColorControls} from './ColorControls';
 import {TrimBar} from './TrimBar';
 import {mediaVersion} from './MosaicPanel';
 import {primaryRangeIndex, rangeForBar, withRange, withRangeLabel, withoutPrimaryRange} from './triage';
@@ -126,6 +127,7 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
           key={clip.id}
           src={mediaBase ? `${mediaBase}/${clip.src}${mediaVersion(clip)}` : null}
           crop={clip.crop ?? DEFAULT_CROP}
+          color={clip.color}
           onChange={(crop) => onUpdate(clip.id, (c) => ({...c, crop}), `crop:${clip.id}`)}
           probe={clip.probe}
           videoRef={videoRef}
@@ -154,6 +156,12 @@ export const ClipEditor: React.FC<Props> = ({clip, mediaBase, onUpdate, videoRef
           )}
         </CropBox>
       </div>
+
+      <details className="clip-color" open>
+        <summary>色・明るさ</summary>
+        <ColorControls color={clip.color} onChange={(color, field) => onUpdate(clip.id, (c) => ({...c, color}), field ? `color:${clip.id}:${field}` : undefined)} />
+        <p className="hint">プレビューに即反映。保存すると、新しく作るカットに引き継がれます。既存カットは Timeline の「素材の補正を取り込む」で反映できます。</p>
+      </details>
 
       {/* 使える区間（トリミング）。帯を掴むとその場で区間ができる */}
       <div className="clip-trim">

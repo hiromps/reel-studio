@@ -1,0 +1,118 @@
+/* Shared viewport rules for the web app and installed PWA. */
+:root {
+  --mobile-nav-height: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-space: 0px;
+}
+html { scroll-padding-block: calc(var(--topbar-h, 64px) + 12px) calc(var(--nav-space) + 16px); }
+.app { min-height: 100dvh; min-inline-size: 0; }
+.main, .page, .card, .stack, .row, .form, .jobs, .materials, .settings-simple { min-inline-size: 0; }
+.row > label, .form > label, .row > .grow, .btns, .status { min-inline-size: 0; }
+input:not([type='checkbox']):not([type='radio']), select, textarea { max-inline-size: 100%; }
+.card p, .hint, .notice, .offlinebar, .installhint, .toast, .settings-diagnostics { overflow-wrap: anywhere; }
+.app-version { font-size: 11px; font-weight: 500; color: var(--muted); }
+.brand-name { display: inline-flex; align-items: baseline; gap: 6px; }
+.bn-icon svg { display: block; width: 22px; height: 22px; }
+.ed-more-toggle { display: none; }
+.ed-secondary { display: contents; }
+.login-wrap { min-height: 100dvh; }
+.pwa-update {
+  position: fixed; z-index: 70; inset-inline: 12px; bottom: calc(var(--nav-space) + 12px);
+  width: min(480px, calc(100% - 24px)); margin-inline: auto;
+  padding: 16px; border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--panel); box-shadow: var(--shadow-md); overflow-wrap: anywhere;
+}
+.pwa-update p { margin: 6px 0 12px; line-height: 1.6; }
+.pwa-update .btns { flex-wrap: wrap; }
+.pwa-update button { min-height: 44px; }
+
+/* Compact navigation also fits portrait tablets and smaller laptop windows. */
+@media (max-width: 1100px) {
+  :root { --nav-space: calc(var(--mobile-nav-height) + var(--safe-bottom)); }
+  button, button.small { min-height: 44px; }
+  input:not([type='checkbox']):not([type='radio']), select, textarea { font-size: 16px; }
+  .ed-more-toggle { display: inline-flex; align-items: center; }
+  .ed-toolbar > .ai-menu, .ed-toolbar > .ed-more-toggle, .ed-toolbar > .ed-secondary { order: 1; }
+  .ed-secondary { display: none; }
+  .ed-secondary.open { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; min-width: 0; }
+  .ed-secondary > .hint { display: none; }
+  .ed-secondary > button { max-width: 100%; white-space: normal; }
+  .ed-toolbar:has(.ed-secondary.open) { position: relative; top: auto; }
+  .ed-toolbar > .btns button { min-width: 44px; }
+  .app { padding-bottom: calc(var(--nav-space) + 12px); }
+  .topbar { flex-wrap: wrap; gap: 8px; padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); }
+  .topbar .tabs { display: none; }
+  .topbar .brand { order: 0; }
+  .topbar .help-btn { display: inline-grid; order: 1; margin-left: auto; }
+  .topbar .theme-btn { order: 1; margin-left: 0; }
+  .topbar .icon-btn { width: 44px; height: 44px; }
+  .topbar .status { order: 2; flex-wrap: wrap; flex: 1 1 100%; gap: 8px; width: 100%; margin: 0; }
+  .status select { flex: 1 1 160px; min-width: 0; max-width: 100%; min-height: 44px; }
+  .status .pull-btn { min-height: 44px; }
+  .status .agent-badge { max-width: 100%; white-space: normal; text-align: left; }
+  .status .pill { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .bottomnav {
+    position: fixed; z-index: 40; left: 0; right: 0; bottom: 0;
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px;
+    min-height: var(--nav-space); padding: 4px max(4px, env(safe-area-inset-right)) calc(4px + var(--safe-bottom)) max(4px, env(safe-area-inset-left));
+    border-top: 1px solid var(--line); background: var(--panel); box-shadow: 0 -4px 16px var(--shadow-lg-c);
+  }
+  .bottomnav .bn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 54px; padding: 4px 0; color: var(--muted); background: transparent; border: 0; box-shadow: none; border-radius: 10px; }
+  .bottomnav .bn.active { color: var(--accent); background: var(--accent-soft); }
+  .bottomnav .bn-label { font-size: 12px; line-height: 1.3; white-space: nowrap; }
+  .toasts { bottom: calc(var(--nav-space) + 12px); max-width: calc(100% - 24px); }
+}
+
+@media (max-width: 860px) {
+  :root { font-size: 14px; }
+  .main { padding: 10px max(10px, env(safe-area-inset-right)) 12px max(10px, env(safe-area-inset-left)); }
+  .card { padding: 14px; }
+  .row > label, .form > label { max-width: 100%; }
+  label > input:not([type='checkbox']):not([type='radio']), label > select, .field > input, .field > select { min-width: 0; width: 100%; }
+  .row > button, .btns > button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .btns { flex-wrap: wrap; }
+  .btns > input { min-width: 0 !important; max-width: 100%; }
+  .row > input[style], .row > select[style] { min-width: 0 !important; max-width: 100%; }
+  .row > label > span, .row > label > .btns { min-width: 0; max-width: 100%; }
+  .row > label > .btns > button { flex-shrink: 1; }
+  .offlinebar, .installhint { align-items: flex-start; gap: 8px; padding: 10px 12px; }
+  .offlinebar > span:last-child, .installhint > span { min-width: 0; }
+  .installhint > button { flex-shrink: 0; }
+  .nextbar { margin-inline: 10px; }
+  .nextbar > button, .nextbar .nextbar-x { min-height: 44px; }
+  .nextbar .nextbar-x { min-width: 44px; }
+  .settings-card-heading { flex-wrap: wrap; }
+  .settings-card-heading > div { flex: 1 1 150px; min-width: 0; }
+  .settings-card-heading > .pill { margin-left: 44px; }
+  .modal-root { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, var(--safe-bottom)) max(10px, env(safe-area-inset-left)); }
+  .modal { min-width: 0; max-width: 100%; max-height: 100%; }
+  .modal-body { min-width: 0; }
+  .card.detail.open { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+  .ed-inspector.sel { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+  .ed-center { min-width: 0; }
+  .ed-toolbar, .tl-toolbar, .tl-toolbar-side, .canvas-pill { min-width: 0; max-width: 100%; }
+  .ed-toolbar { top: var(--topbar-h, 0px); }
+  .ed-toolbar > .btns { max-width: 100%; }
+  .login { margin: auto; }
+  input, select, textarea, button, summary { scroll-margin-block: 100px; }
+}
+
+@media (max-width: 560px) {
+  .brand-name { gap: 5px; }
+  .app-version { font-size: 10px; }
+  .card { border-radius: 12px; padding: 12px; }
+  .settings-card-heading > .pill { margin-left: 0; }
+  .nextbar { flex-wrap: wrap; }
+  .nextbar-text { flex: 1 1 calc(100% - 52px); -webkit-line-clamp: 3; }
+  .nextbar > button:not(.nextbar-x) { flex: 1 1 auto; order: 1; }
+  .nextbar .nextbar-x { order: 0; }
+  .pwa-update { padding: 12px; }
+}
+
+@media (max-width: 1100px) and (orientation: landscape) and (max-height: 540px) {
+  .topbar { position: relative; }
+  .topbar .status { flex: 1 1 380px; order: 1; width: auto; }
+  .ed-center { height: 55dvh; min-height: 140px; }
+  .ed-toolbar { top: 0; }
+  .login-wrap { align-items: flex-start; }
+}

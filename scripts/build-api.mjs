@@ -25,6 +25,10 @@ const r = await build({
   // Vercel の Node ランタイムに合わせる（プロジェクト設定の Node.js Version）
   target: 'node22',
   format: 'cjs',
+  // ローカル保存用 core/settings も同梱する。core/ と api/ は同じ深さなので
+  // settings の appRoot は CJS の配置からも正しく解決できる。
+  define: {'import.meta.url': '__reelBundleUrl'},
+  banner: {js: 'const __reelBundleUrl = require("node:url").pathToFileURL(__filename).href;'},
   // JSON（shared/format-specs/*.json）も畳み込む
   loader: {'.json': 'json'},
   // node の組み込みだけ外に残す

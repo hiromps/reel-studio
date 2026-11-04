@@ -9,6 +9,9 @@ import type {DocName} from '@shared/project';
 import {readProjectMeta, setProjectArchived} from '../core/project';
 import {syncDocs} from '../worker/sync';
 import type {CloudClient, DocPull, DocPushResult} from '../worker/client';
+import {writeReelCuts} from '../core/reel-cuts';
+import {createReelCut} from '../shared/reel-cuts';
+import {updateReelBundle, REEL_DOC_NAMES} from '../shared/reel-bundle';
 
 let dir: string;
 const cuts = (n: number) => ({fps: 60, cuts: [{src: 'uploads/01.mp4', inSec: 0, outSec: n}]});
@@ -25,8 +28,8 @@ class FakeCloud {
     this.docs.set(name, {data, rev, hash: stableHash(data)});
   }
 
-  pullDocs = async (): Promise<{docs: DocPull[]}> => ({
-    docs: [...this.docs.entries()].map(([name, d]) => ({name, data: d.data, rev: d.rev, hash: d.hash, updatedBy: 'cloud', updatedAt: new Date().toISOString()})),
+  pullDocs = async (_slug: string, known: Record<string, string> = {}): Promise<{docs: DocPull[]}> => ({
+    docs: [...this.docs.entries()].map(([name, d]) => ({name, data: known[name] === d.hash ? null : d.data, rev: d.rev, hash: d.hash, updatedBy: 'cloud', updatedAt: new Date().toISOString()})),
   });
 
   pushDocs = async (_slug: string, items: {name: DocName; data: unknown; baseRev?: number | null}[]): Promise<{results: DocPushResult[]}> => {
@@ -63,7 +66,38 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(path.dirname(dir), {recursive: true, force: true}));
 
+it('共通カットをメタデータとして双方向同期し、同じJSONを再送しない', async () => {
+  fs.mkdirSync(path.join(dir, 'public', 'uploads'), {recursive: true});
+  fs.writeFileSync(path.join(dir, 'public', 'uploads', 'dish.mp4'), 'local-video');
+  writeReelCuts(dir, [createReelCut('uploads/dish.mp4', undefined, {id: 'one', line: 'お肉の旨みがすごいです'})]);
+  const cloud = new FakeCloud();
+  const first = await syncDocs(cloud.asClient(), dir);
+  expect(first.pushed).toContain('reelCuts');
+  expect(cloud.docs.get('reelCuts')?.data).toMatchObject([{clip_path: 'uploads/dish.mp4', line: 'お肉の旨みがすごいです'}]);
+  const current = Object.fromEntries(REEL_DOC_NAMES.map((n) => [n, cloud.docs.get(n)?.data]));
+  const next = structuredClone(current.reelCuts as any[]); next[0].line = 'お肉がとろけます';
+  const bundle = updateReelBundle('reelCuts', next, current);
+  for (const name of REEL_DOC_NAMES) cloud.put(name, bundle[name], (cloud.docs.get(name)?.rev ?? 0) + 1);
+  expect((await syncDocs(cloud.asClient(), dir)).pulled).toContain('reelCuts');
+  expect(read('reel-cuts.json')[0].line).toBe('お肉がとろけます');
+  expect((await syncDocs(cloud.asClient(), dir)).pushed).toEqual([]);
+});
+
 describe('ワーカーの契約ファイル同期', () => {
+  it('本文を省略した同期を繰り返してもローカルの編集を失わず、削除されたコピーを復元する', async () => {
+    const cloud = new FakeCloud();
+    cloud.put('cuts', cuts(2));
+    await syncDocs(cloud.asClient(), dir);
+    expect((await syncDocs(cloud.asClient(), dir)).pulled).toEqual([]);
+    expect(read('cuts.json')).toEqual(cuts(2));
+    write('cuts.json', cuts(3));
+    expect((await syncDocs(cloud.asClient(), dir)).pushed).toEqual(['cuts']);
+    expect(cloud.docs.get('cuts')?.data).toEqual(cuts(3));
+    fs.unlinkSync(path.join(dir, 'cuts.json'));
+    expect((await syncDocs(cloud.asClient(), dir)).pulled).toEqual(['cuts']);
+    expect(read('cuts.json')).toEqual(cuts(3));
+  });
+
   it('PC にしか無いものはクラウドへ押し上げる', async () => {
     const cloud = new FakeCloud();
     write('cuts.json', cuts(2));

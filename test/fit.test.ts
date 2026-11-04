@@ -133,6 +133,23 @@ describe('fitCutsToNarration', () => {
     expect(r.notes.some((n) => n.includes('長いカット'))).toBe(true);
   });
 
+  it('補いの素材にはその素材の補正を使い、元のカットの補正を漏らさない', () => {
+    const original = {exposure: -1, brightness: 1, contrast: 1, saturation: 0};
+    const supplement = {exposure: 0.5, brightness: 1.2, contrast: 1.1, saturation: 1.3};
+    const clips = library(12).map((c) => c.id === '03' ? {...c, color: supplement} : c);
+    const r = fitCutsToNarration(reel([cut('c01', 's05.mp4', 0, 6, 'A', {color: original})]), narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6, clips});
+    expect(r.cuts.cuts.map((c) => c.src)).toEqual(['s05.mp4', 's03.mp4', 's04.mp4', 's06.mp4']);
+    expect(r.cuts.cuts.map((c) => c.color)).toEqual([original, supplement, undefined, undefined]);
+  });
+
+  it.each([undefined, {exposure: 0.5, brightness: 1, contrast: 1.1, saturation: 1.3}])('似た構図をまとめて画を差し替えるときは残す画の補正を使う（%j）', (color) => {
+    const clips = library(12, [clipAt('01', 'z01.mp4', {look: 100, sharp: 2700, kind: 'serving'}), clipAt('02', 'z02.mp4', {look: 105, sharp: 3100, kind: 'serving'}), clipAt('03', 'z03.mp4', {look: 110, sharp: 2100, kind: 'serving'}), clipAt('04', 'z04.mp4', {look: 200})]);
+    const data = reel([cut('c01', 'z01.mp4', 0, 1, 'H', {color: {exposure: -1, brightness: 1, contrast: 1, saturation: 0}}), cut('c02', 'z03.mp4', 0, 1, 'H'), cut('c03', 'z02.mp4', 0, 1, 'P', {color}), cut('c04', 'z04.mp4', 0, 1, 'P')]);
+    const r = fitCutsToNarration(data, narr([{id: 'n1', at: 0, durSec: 3.1, text: 'あ'}]), {clipDurationOf: clip6, clips});
+    expect(r.cuts.cuts[0].src).toBe('z02.mp4');
+    expect(r.cuts.cuts[0].color).toEqual(color);
+  });
+
   it('近くに続く似た構図はまとめ、最も鮮明な素材を残す（カニ蔵の卓上全景）', () => {
     // 01・02・03 は指紋がほぼ同じ（卓上全景）。鮮明さは 02 が一番。04 は別の構図
     const clips = library(12, [

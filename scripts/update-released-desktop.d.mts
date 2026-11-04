@@ -1,0 +1,12 @@
+export type ReleaseAsset = {name: string; state: string; size: number; digest?: string | null; browser_download_url: string};
+export type DesktopRelease = {tag_name: string; draft: boolean; prerelease: boolean; assets: ReleaseAsset[]};
+export const DESKTOP_REPOSITORY: string;
+export function releaseVersion(value: string): string;
+export function compareVersions(a: string, b: string): number;
+export function chooseDesktopUpdate(installed: string | null, local: string | null, remote: string | null): 'current' | 'local' | 'release';
+export function releaseFiles(release: DesktopRelease): {version: string; name: string; asset?: ReleaseAsset; checksum?: ReleaseAsset; digest?: string};
+export function fetchTrusted(url: string, options?: RequestInit & {fetcher?: typeof fetch}): Promise<Response>;
+export function latestDesktopRelease(fetcher?: typeof fetch): Promise<DesktopRelease | null>;
+export function downloadReleaseFile(url: string, file: string, options?: {sha256?: string; size?: number; maxBytes?: number; fetcher?: typeof fetch}): Promise<string>;
+export function snapshotDesktopSource(workspace: string, parent: string): string;
+export function updateReleasedDesktop(options?: {workspace?: string; checkOnly?: boolean}): Promise<{status: string; version?: string; source?: string; installed?: string; remote?: string | null; local?: string | null}>;

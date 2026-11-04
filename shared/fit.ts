@@ -334,6 +334,8 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
       delete swapped.playbackRate;
       if (rep.cut.crop) swapped.crop = rep.cut.crop;
       else delete swapped.crop;
+      if (rep.cut.color) swapped.color = {...rep.cut.color};
+      else delete swapped.color;
       host.cut = swapped;
     }
     // まとめたカットのバッジ（エリア名など）は残すカットへ移す（消えると冒頭のエリア名が出ない）
@@ -497,6 +499,8 @@ export const fitCutsToNarration = (cuts: ReelData, narration: Narration, opt: Fi
       delete cut.badge;
       if (pick.crop) cut.crop = pick.crop;
       else delete cut.crop;
+      if (pick.color) cut.color = {...pick.color};
+      else delete cut.color;
       target.portions.push({item: {...host, cut, ghost: undefined}, from, to: round3(span.outSec), primary: true, supp: true, slot: true});
       markUsed(pick.src);
       placedSrcs.add(pick.src);

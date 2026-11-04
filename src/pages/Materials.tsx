@@ -18,6 +18,8 @@ import {useHotkeys} from '../hooks/useHotkeys';
 import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
+import {colorFilter, isDefaultColor} from '@shared/color';
+import {ModalGenerateCard} from '../components/ModalCloud';
 
 const KINDS: ClipKind[] = ['exterior', 'signage', 'interior', 'menu', 'cooking', 'serving', 'eating', 'sizzle', 'person', 'conversation', 'detail', 'other'];
 
@@ -209,11 +211,12 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
 
   return (
     <div className="page">
+      <ModalGenerateCard />
       <section className="card" data-tour="materials-folder">
         <h2>素材フォルダ</h2>
         <p className="hint">撮った動画が入っているフォルダを選びます。中の動画をすべて読み込み、長さ・解像度を調べて案件フォルダにコピーします（元のフォルダは変更しません）。</p>
         {/* クラウド版：スマホから動画を上げる（PC のフォルダは直接見えないため） */}
-        {s.isCloud && <UploadMaterials folder={uploadFolder} onFolder={setUploadFolder} />}
+        <UploadMaterials folder={uploadFolder} onFolder={setUploadFolder} />
         <div className="row">
           {/* フォルダ選択ダイアログは PC 上でしか開けない */}
           {!s.isCloud && (
@@ -364,7 +367,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                 const used = usage.get(c.src) ?? 0;
                 return (
                   <div key={c.id} className={`clip-card${c.id === selected ? ' selected' : ''}${c.user.ng ? ' ng' : ''}`} onClick={() => setSelected(c.id)}>
-                    {c.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${c.thumbs.sheet}${mediaVersion(c)}`} alt={c.slug} loading="lazy" draggable={false} /> : <div style={{height: 90}} />}
+                    {c.thumbs.sheet && s.mediaBase ? <img src={`${s.mediaBase}/studio/${c.thumbs.sheet}${mediaVersion(c)}`} style={{filter: colorFilter(c.color)}} alt={c.slug} loading="lazy" draggable={false} /> : <div style={{height: 90}} />}
                     <div className="meta">
                       <span>
                         <b>{c.id}</b> {c.probe.durationSec.toFixed(1)}s
@@ -384,6 +387,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                         <span className="badge untagged">未タグ</span>
                       )}
                       {c.user.lock && <span className="badge">lock</span>}
+                      {!isDefaultColor(c.color) && <span className="badge">色調整</span>}
                       {c.mosaic?.applied && <span className="badge mosaic">モザイク</span>}
                       {c.mosaic && !c.mosaic.applied && <span className="badge">顔なし</span>}
                       {used > 0 && <span className="badge used">使用中{used > 1 ? ` ×${used}` : ''}</span>}
@@ -419,6 +423,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                     <img
                       key={p}
                       src={`${s.mediaBase}/studio/${p}${mediaVersion(clip)}`}
+                      style={{filter: colorFilter(clip.color)}}
                       alt=""
                       title={`${i}s`}
                       onClick={() => {

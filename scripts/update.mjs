@@ -11,6 +11,19 @@ import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {updateDesktop} from './update-desktop.mjs';
+import {updateReleasedDesktop} from './update-released-desktop.mjs';
+
+const updateArgs = new Set(process.argv.slice(2));
+if (updateArgs.has('--desktop') && !updateArgs.has('--source')) {
+  try {
+    if (updateArgs.has('--local-build') || updateArgs.has('--build-only')) await updateDesktop({checkOnly: updateArgs.has('--check-only'), buildOnly: updateArgs.has('--build-only')});
+    else await updateReleasedDesktop({checkOnly: updateArgs.has('--check-only'), workspace: process.argv.find(arg => arg.startsWith('--workspace='))?.slice('--workspace='.length) || undefined});
+  }
+  catch (error) { console.error(`デスクトップ版の更新に失敗: ${error.message}`); process.exitCode = 1; }
+  // The desktop update must never fall through to git pull / dirty-tree checks.
+  process.exit(process.exitCode ?? 0);
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const isWin = process.platform === 'win32';
@@ -53,8 +66,10 @@ const dirty = git(['status', '--porcelain']).out;
 if (dirty) {
   fail('手元に未コミットの変更があるため、更新を止めました。');
   console.log(dirty.split('\n').slice(0, 20).map((l) => `  ${l}`).join('\n'));
-  console.log(`\n  退避してから更新する: ${C.dim}git stash && npm run update && git stash pop${C.reset}`);
-  console.log(`  変更を捨てて更新する: ${C.dim}git checkout . && npm run update${C.reset}\n`);
+  console.log('  この更新はGitで管理するソース版向けです。インストール済みのデスクトップアプリは、新しいインストーラーで更新してください。');
+  console.log('  手元で追加した機能はGitHubの更新に含まれない場合があります。変更を消さず、先にバックアップまたはコミットしてください。');
+  console.log(`\n  未追跡ファイルも含めて退避する: ${C.dim}git stash push -u -m "before-reel-update" && npm run update && git stash pop${C.reset}`);
+  console.log('  更新に失敗した場合、退避した変更はstashに残ります。git stash listで確認できます。\n');
   process.exit(1);
 }
 

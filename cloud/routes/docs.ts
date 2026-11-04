@@ -11,7 +11,9 @@ import {parseSections, reviewScriptProposal, scriptPlanToNarration, scriptTotalS
 import {normalizeSlug, type ContractName, type DocName} from '../../shared/project';
 import {emptyReference} from '../../shared/reference';
 import {loadCtx, scriptEnv, scriptProposalView, validate, type Ctx} from '../project-context';
-import {addJob, readDoc, revOfEtag, upsertProject, writeDoc} from '../store';
+import {addJob, readDoc, readDocVersion, revOfEtag, upsertProject, writeDoc} from '../store';
+import {ReelCutsSchema} from '../../shared/schema/reel-cuts';
+import {defaultReelCutsConfig} from '../../shared/reel-cuts';
 
 export const docsRouter = Router({mergeParams: true});
 
@@ -21,6 +23,24 @@ const schemas: Record<ContractName, ZodTypeAny> = {catalog: CatalogSchema, brief
 const isContract = (v: string): v is ContractName => v in schemas;
 
 const noCache = (res: import('express').Response) => res.setHeader('Cache-Control', 'no-cache');
+
+docsRouter.get('/reel-cuts', async (req, res) => {
+  const row = await readDoc(slugOf(req), 'reelCuts');
+  noCache(res);
+  if (row) res.setHeader('ETag', row.etag);
+  res.json({etag: row?.etag ?? null, data: row?.data ?? null, config: defaultReelCutsConfig()});
+});
+docsRouter.put('/reel-cuts', async (req, res) => {
+  const parsed = ReelCutsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({error: 'カット配列の検証に失敗', issues: parsed.error.issues});
+  const slug = slugOf(req);
+  try {
+    const r = await writeDoc(slug, 'reelCuts', parsed.data, {expectRev: revOfEtag(req.header('If-Match')), by: 'cloud'});
+    if (!r.ok) return res.status(409).json({error: '共通JSONが外部で変更されました', etag: r.conflict.etag, data: r.conflict.data});
+    res.setHeader('ETag', r.etag);
+    res.json({etag: r.etag, data: (await readDoc(slug, 'reelCuts'))?.data});
+  } catch (e) {res.status(400).json({error: (e as Error).message});}
+});
 
 docsRouter.post('/clipboard/import-clips', (_req, res) => {
   res.status(501).json({error: '別案件へのクリップ素材の取り込みは PC 版の Reel Studio で行ってください'});
@@ -35,6 +55,11 @@ docsRouter.post('/clipboard/copy-narration-audio', (_req, res) => {
 docsRouter.get('/files/:name', async (req, res) => {
   const name = req.params.name;
   if (!isContract(name)) return res.status(400).json({error: 'name は catalog|brief|cuts|narration'});
+  const incoming = req.header('If-None-Match')?.replace(/^W\//, '').replace(/^"|"$/g, '');
+  if (incoming) {
+    const version = await readDocVersion(slugOf(req), name);
+    if (version === incoming) return res.setHeader('ETag', version).status(304).end();
+  }
   const row = await readDoc(slugOf(req), name);
   noCache(res);
   // 無いものは 404 ではなく data:null（narration が無いのは普通。ブラウザのコンソールを汚さない）
@@ -58,7 +83,7 @@ docsRouter.put('/files/:name', async (req, res) => {
     await upsertProject(slug, {persona: b.persona ?? null, format: b.format ?? null, shopName: b.shop?.name ?? null});
   }
   const validation = name === 'cuts' ? validate(await loadCtx(slug), {cuts: parsed.data}) : undefined;
-  res.json({etag: r.etag, validation});
+  res.json({etag: r.etag, validation, relatedEtags: r.relatedEtags});
 });
 
 // ───────────────────────── caption.txt ─────────────────────────
@@ -125,6 +150,7 @@ docsRouter.get('/script/plan', async (req, res) => {
 docsRouter.post('/script/plan/apply', async (req, res) => {
   const slug = slugOf(req);
   const ctx = await loadCtx(slug);
+  if (ctx.rows.has('reelCuts')) return res.status(400).json({error: '共通カット案件の構成は reel-cuts.json または編集画面から変更してください'});
   const proposal = ctx.scriptPlan;
   if (!proposal) return res.status(400).json({error: '書き込む割り当ての案がありません（先に「割り当てを見るだけ」を実行してください）', view: null});
   try {
@@ -186,7 +212,7 @@ docsRouter.put('/hooks', async (req, res) => {
 
 // ───────────────────────── reference.json（参考動画の型の分析） ─────────────────────────
 // 動画そのものは PC の .studio/reference/ にあり、クラウドには分析結果とコマだけが上がる。
-// スマホからの取り込みは素材と同じ二段構え（Blob へ直接上げて ai-reference ジョブに url を渡す。cloud/routes/misc.ts の /uploads/token）。
+// 参考動画の取り込みは PC のローカルアプリで行う。
 
 docsRouter.get('/reference', async (req, res) => {
   const ctx = await loadCtx(slugOf(req));
@@ -198,7 +224,7 @@ docsRouter.get('/reference', async (req, res) => {
 
 /** PC 上のファイルを指す取り込みは PC でしかできない */
 docsRouter.post('/reference/import', (_req, res) => {
-  res.status(501).json({error: '動画ファイルの指定は PC 上の Reel Studio で行ってください（スマホからは「動画を選ぶ」でアップロードできます）'});
+  res.status(501).json({error: '動画ファイルの指定は PC 上の Reel Studio で行ってください'});
 });
 
 /** 別の案件の分析を使う。コマの実体が PC にあるので、複製は PC のジョブで行う */
@@ -228,4 +254,4 @@ docsRouter.delete('/reference', async (req, res) => {
   res.json({etag: null, data: null});
 });
 
-export const DOC_ROUTE_NAMES: readonly DocName[] = ['catalog', 'brief', 'cuts', 'narration', 'caption', 'script', 'hooks', 'scriptPlan', 'reference'];
+export const DOC_ROUTE_NAMES: readonly DocName[] = ['catalog', 'brief', 'cuts', 'narration', 'caption', 'script', 'hooks', 'scriptPlan', 'reference', 'reelCuts'];

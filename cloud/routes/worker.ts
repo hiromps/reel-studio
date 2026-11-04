@@ -2,19 +2,22 @@
 // 認証は Authorization: Bearer <WORKER_TOKEN>（cloud/auth.ts:requireWorker）。
 //
 // やりとりの流れ:
-//   hello   … 死活と環境を送り、Blob の書き込みトークンと「PC に反映すべき変更」を受け取る
+//   hello   … 死活と環境を送り、ローカル保存モードと「PC に反映すべき変更」を受け取る
 //   claim   … いま始められるジョブを 1 つもらう
 //   progress… 進捗とログを送る（返りの cancelRequested が true なら自分で中断する）
 //   finish  … 結果を送る
 //   docs    … 契約ファイルの取得（pull）と書き戻し（push。rev で衝突を検出）
 //   assets  … 生成物（サムネ・軽量プロキシ・完成動画）の登録
 import {Router} from 'express';
+import {z} from 'zod';
+import {cloudModalResultHandler} from './modal';
+import {cloudModalJson} from '../modal';
 import type {SettingsView} from '../../shared/schema/settings';
 import type {SfxLibrary} from '../../shared/sfx';
 import {PersonaSchema, type Persona} from '../../shared/personas';
 import {DOC_NAMES, normalizeSlug, type DocName} from '../../shared/project';
 import type {BuildFacts} from '../../shared/build';
-import {delBlob, isAssetKind, isAssetMode} from '../blob';
+import {isAssetKind, isAssetMode, isLocalMediaPath} from '../../shared/media';
 import {notifyJobFinished} from '../push';
 import type {ProjectSnapshot} from '../db/schema';
 import {
@@ -40,6 +43,12 @@ import type {WorkerStatus} from '../worker-status';
 import {VideoStyleEntrySchema} from '../../shared/video-style';
 
 export const workerRouter = Router();
+workerRouter.get('/modal/jobs/:id', async (req, res) => {
+  if (!z.string().uuid().safeParse(req.params.id).success) return res.status(400).json({error: 'ModalジョブIDが不正です'});
+  try {res.json(await cloudModalJson(`/jobs/${req.params.id}`));}
+  catch {res.status(502).json({error: 'Modalの生成結果を確認できませんでした'});}
+});
+workerRouter.get('/modal/jobs/:id/result', cloudModalResultHandler);
 workerRouter.post('/video-styles', async (req, res) => {
   const parsed = VideoStyleEntrySchema.array().safeParse(req.body?.entries);
   if (!parsed.success) return res.status(400).json({error: '動画の型の形式が不正です'});
@@ -74,8 +83,8 @@ workerRouter.post('/hello', async (req, res) => {
     kvGet<{rev: number; lib: SfxLibrary; updatedBy?: string}>('sfx'),
   ]);
   res.json({
-    // Blob への書き込みトークンは PC に置かせない（TLS 越しに毎回渡す）
-    blobToken: process.env.BLOB_READ_WRITE_TOKEN ?? null,
+    // バイナリは PC のみ。Storage の鍵は渡さない。
+    mediaStorage: 'local',
     settingsPatch: patch ?? null,
     personasRev: personasRev?.rev ?? 0,
     sfx: sfx && sfx.updatedBy === 'cloud' ? {rev: sfx.rev, lib: sfx.lib} : null,
@@ -160,6 +169,14 @@ workerRouter.get('/docs/:slug', async (req, res) => {
   res.json({docs: rows.map((r) => ({name: r.name, data: r.data, rev: r.rev, hash: r.hash, updatedBy: r.updatedBy, updatedAt: r.updatedAt}))});
 });
 
+/** ローカルと同じ hash の本文は DB から取得しない。 */
+workerRouter.post('/docs/:slug/pull', async (req, res) => {
+  const known = req.body?.known;
+  if (!known || typeof known !== 'object' || Array.isArray(known) || Object.keys(known).length > DOC_NAMES.length) return res.status(400).json({error: 'known が不正です'});
+  const rows = await readDocs(normalizeSlug(req.params.slug), known);
+  res.json({docs: rows});
+});
+
 /**
  * PC からの書き戻し。baseRev を付けると、その版から進んでいたら conflict を返す
  * （ワーカーはそれを .studio/conflicts/ に退避してからクラウド側を採用する）。
@@ -200,7 +217,6 @@ workerRouter.delete('/project/:slug', async (req, res) => {
   const slug = normalizeSlug(req.params.slug);
   await softDeleteProject(slug);
   const urls = await deleteAssets(slug);
-  for (const u of urls) void delBlob(u, process.env.BLOB_READ_WRITE_TOKEN);
   res.json({ok: true, removedAssets: urls.length});
 });
 
@@ -217,11 +233,11 @@ workerRouter.post('/assets/:slug', async (req, res) => {
   const bad: string[] = [];
   let saved = 0;
   for (const a of items) {
-    if (!isAssetKind(a.kind) || !isAssetMode(a.mode) || !a.relPath || !a.url) {
+    if (!isAssetKind(a.kind) || !isAssetMode(a.mode) || !a.relPath || !a.url || !isLocalMediaPath(a.url)) {
       bad.push(`${a.kind}/${a.mode}/${a.relPath}`);
       continue;
     }
-    const {replacedUrl} = await putAsset({
+    await putAsset({
       slug,
       kind: a.kind,
       mode: a.mode,
@@ -231,8 +247,6 @@ workerRouter.post('/assets/:slug', async (req, res) => {
       hash: a.hash ?? '',
       contentType: a.contentType ?? 'application/octet-stream',
     });
-    // 差し替えた古い実体は消す（Blob は上書きせず毎回新しい URL になる）
-    if (replacedUrl) void delBlob(replacedUrl, process.env.BLOB_READ_WRITE_TOKEN);
     saved++;
   }
   res.json({ok: true, saved, bad});

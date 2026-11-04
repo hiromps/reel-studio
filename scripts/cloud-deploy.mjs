@@ -65,6 +65,10 @@ for (const p of ['cloud/app.ts', 'api/[...path].js', 'worker/index.ts']) {
 }
 
 // ── 2. Vercel のプロジェクトに紐づいているか
+if (!fs.existsSync(path.join(root, '.vercelignore'))) {
+  fail('.vercelignore がありません。PC の素材・実行環境を送信しないため、除外設定を復元してから実行してください。');
+  process.exit(1);
+}
 const linkFile = path.join(root, '.vercel', 'project.json');
 if (!fs.existsSync(linkFile)) {
   fail('Vercel のプロジェクトに紐づいていません。先に `npm run cloud:setup` を実行してください。');
@@ -96,7 +100,7 @@ if (checkOnly) {
 }
 npm(['run', 'build'], 'ビルドしています（画面 + API のバンドル）');
 log('本番にデプロイしています…');
-const dep = vercel(['deploy', '--prod', '--yes'], {inherit: true});
+const dep = vercel(['deploy', '--prod', '--yes', '--archive=tgz'], {inherit: true});
 if (dep.code !== 0) throw new Error('デプロイに失敗しました');
 
 console.log('');

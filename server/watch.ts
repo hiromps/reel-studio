@@ -8,6 +8,7 @@ import path from 'node:path';
 import chokidar, {type FSWatcher} from 'chokidar';
 import {CONTRACT_FILES} from '../core/project';
 import {fileEtag} from '../core/json-io';
+import {reelCutsPath, reelProjectionEtag} from '../core/reel-cuts';
 
 export const watcher = new EventEmitter();
 
@@ -26,11 +27,15 @@ const touch = (dir: string) => {
 
 export const watchProject = (dir: string) => {
   if (watchers.has(dir)) return touch(dir);
-  const files = CONTRACT_FILES.map((n) => path.join(dir, `${n}.json`));
+  const files = [...CONTRACT_FILES.map((n) => path.join(dir, `${n}.json`)), reelCutsPath(dir)];
   const w = chokidar.watch(files, {ignoreInitial: true, awaitWriteFinish: {stabilityThreshold: 200, pollInterval: 50}});
   const emit = (file: string) => {
+    if (path.basename(file) === 'reel-cuts.json') {
+      for (const name of ['cuts', 'narration']) watcher.emit('changed', {slug: path.basename(dir), name, etag: reelProjectionEtag(dir, name) ?? fileEtag(path.join(dir, `${name}.json`))});
+      return;
+    }
     const name = path.basename(file, '.json');
-    watcher.emit('changed', {slug: path.basename(dir), name, etag: fileEtag(file)});
+    watcher.emit('changed', {slug: path.basename(dir), name, etag: reelProjectionEtag(dir, name) ?? fileEtag(file)});
   };
   w.on('change', emit).on('add', emit).on('unlink', emit);
   watchers.set(dir, w);

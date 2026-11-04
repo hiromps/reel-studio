@@ -17,6 +17,7 @@ import {realignAliases} from '../shared/alias';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {agentAvailable, agentMissingMessage} from '../core/agent-availability';
 import {generateTts} from '../core/tts';
+import {generateEmotionAudition} from '../core/emotion-audition';
 import {generateTelopNarration} from '../core/telop-narration';
 import {autoPlaceSfx, scanLibrary} from '../core/sfx';
 import {deliver} from '../core/deliver';
@@ -39,6 +40,7 @@ import type {SfxRole} from '../shared/sfx';
 import {formatOrderCheck} from '../shared/order';
 import {studioConfig} from '../studio.config';
 import {canStartJob, type JobType} from '../shared/jobs';
+import {importModalResult} from '../core/modal-results';
 
 export {JOB_TYPES, type JobType} from '../shared/jobs';
 
@@ -173,6 +175,10 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
   const {onLine, signal} = ctx;
   const p = job.params;
   switch (job.type) {
+      case 'modal-import': {
+        if (typeof p.id !== 'string') throw new Error('ModalジョブIDが必要です');
+        return importModalResult(p.id, dir, signal, onLine);
+      }
       case 'catalog': {
         const materialsDir = (p.materialsDir as string | undefined) ?? loadCatalog(dir)?.materialsDir;
         if (!materialsDir) throw new Error('materialsDir が未指定');
@@ -467,6 +473,11 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return {summary: r.summary, applied: r.applied, unapplied: r.unapplied, needsTts: r.needsTts, costUsd: r.costUsd, placeholders: r.validation?.summary.placeholders};
       }
       // Fish Audio を直接叩いて narration/<id>.wav を作る（Claude は挟まない）
+      case 'emotion-test': {
+        return generateEmotionAudition(dir, {voice: String(p.voice ?? ''), text: typeof p.text === 'string' ? p.text : undefined,
+          speed: typeof p.speed === 'number' ? p.speed : undefined, signal,
+          onProgress: (done, total, phase) => ctx.onProgress({phase, done, total})});
+      }
       case 'tts': {
         const r = await generateTts(dir, {
           force: !!p.force,

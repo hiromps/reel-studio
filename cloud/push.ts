@@ -3,7 +3,7 @@
 //
 // iOS はホーム画面に追加した PWA でのみ届く（16.4 以降）。
 // 鍵は VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY（無ければ通知の機能そのものを出さない）。
-import {eq} from 'drizzle-orm';
+import {count, eq} from 'drizzle-orm';
 import webpush from 'web-push';
 import {db} from './db/client';
 import {pushSubs} from './db/schema';
@@ -36,7 +36,7 @@ export const removeSubscription = async (endpoint: string): Promise<void> => {
   await db().delete(pushSubs).where(eq(pushSubs.endpoint, endpoint));
 };
 
-export const countSubscriptions = async (): Promise<number> => (await db().select({endpoint: pushSubs.endpoint}).from(pushSubs)).length;
+export const countSubscriptions = async (): Promise<number> => (await db().select({value: count()}).from(pushSubs))[0].value;
 
 /**
  * 全端末へ送る（自分専用の 1 アカウントなので宛先の絞り込みはしない）。
@@ -44,7 +44,7 @@ export const countSubscriptions = async (): Promise<number> => (await db().selec
  */
 export const sendToAll = async (payload: PushPayload): Promise<{sent: number; dropped: number}> => {
   if (!pushAvailable()) return {sent: 0, dropped: 0};
-  const rows = await db().select().from(pushSubs);
+  const rows = await db().select({endpoint: pushSubs.endpoint, keys: pushSubs.keys}).from(pushSubs);
   let sent = 0;
   let dropped = 0;
   await Promise.all(

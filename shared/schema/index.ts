@@ -4,3 +4,4 @@ export * from './brief';
 export * from './format-spec';
 export * from './narration';
 export * from './persona';
+export * from './reel-cuts';

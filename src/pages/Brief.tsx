@@ -10,6 +10,7 @@ import {useStudio} from '../state/store';
 import {ScriptCard, type ScriptCardState} from '../components/ScriptCard';
 import {ReferenceCard, type ReferenceCardState} from '../components/ReferenceCard';
 import {VideoStyleCard} from '../components/VideoStyleCard';
+import {ProjectScriptSkill} from '../components/ProjectScriptSkill';
 import {EmptyState} from '../components/EmptyState';
 import {BriefFlow} from '../components/BriefFlow';
 import {briefFlowOf, isBriefRoute, recommendRoute, ROUTE_INFO, ROUTE_ORDER, type BriefRoute} from '../components/briefSteps';
@@ -52,6 +53,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState('');
+  const [briefDetailsOpen, setBriefDetailsOpen] = useState(!s.files.brief.data?.shop.name);
 
   // 台本・参考動画の有無（カードが読んだ結果を受け取る。「作り方の流れ」の判定に使う）
   const [scriptState, setScriptState] = useState<ScriptCardState>({hasText: false, sections: 0});
@@ -61,7 +63,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
 
   // 構成の作り方。案件ごとにブラウザが覚える。選んでいなければ状態からの推奨
   const [routePref, setRoutePref] = useStringPref(`reel-studio.brief.route.${s.active ?? ''}`, '');
-  const recommended = recommendRoute({hasScript: scriptState.hasText, referencePresent: refState.present, referenceAnalyzed: refState.analyzed});
+  const recommended = !scriptState.hasText && !refState.present ? 'script' : recommendRoute({hasScript: scriptState.hasText, referencePresent: refState.present, referenceAnalyzed: refState.analyzed});
   const route: BriefRoute = isBriefRoute(routePref) ? routePref : recommended;
   const project = s.projects.find((p) => p.slug === s.active);
   const steps = useMemo(
@@ -265,14 +267,26 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
   return (
     <div className="page">
       {flow}
+      <ProjectScriptSkill />
+      {ordered.map((id) => {
+        const primary = id === route;
+        return (
+          <details key={id} className={primary ? 'route-primary' : 'route-alt'} open={primary || undefined}>
+            <summary>
+              別の作り方: <b>{ROUTE_INFO[id].title}</b> — {ROUTE_INFO[id].when}（開いて使うなら、上の「構成の作り方」でこれを選んでください）
+            </summary>
+            {cardOf[id]}
+          </details>
+        );
+      })}
 
       <section className="card" data-tour="brief-form">
         <div className="row">
-          <h2 style={{margin: 0}}>Brief（意図）</h2>
+          <h2 style={{margin: 0}}>お店と動画の希望{brief.shop.name ? `：${brief.shop.name}` : ''}</h2>
           <span style={{flex: 1}} />
           <button onClick={() => s.loadFile('brief')}>読み直す</button>
           <button className="primary" onClick={() => s.saveFile('brief')} disabled={!s.files.brief.dirty}>
-            brief.json を保存
+            案件設定を保存
           </button>
           {s.files.brief.external && (
             <button className="warn" onClick={() => s.saveFile('brief', true)}>
@@ -280,9 +294,10 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
             </button>
           )}
         </div>
+        <details className="beginner-details" open={briefDetailsOpen} onToggle={(e) => setBriefDetailsOpen(e.currentTarget.open)}><summary>お店の情報・動画の長さ・話し方を編集</summary>
         <div className="form">
           <label>
-            persona
+            話し方
             <select value={brief.persona} onChange={(e) => set({persona: e.target.value, format: getPersona(e.target.value).defaultFormat})}>
               {!findPersona(brief.persona) && <option value={brief.persona}>{brief.persona}（未登録の人格）</option>}
               {s.personas.map((p) => (
@@ -523,6 +538,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
           補足メモ（Claude への指示）
           <textarea value={brief.notes ?? ''} onChange={(e) => set({notes: e.target.value || undefined})} />
         </label>
+        </details>
       </section>
 
       {/*
@@ -531,17 +547,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
         カードが読んだ台本・参考動画の状態が消えて「おすすめ」が行ったり来たりする
       */}
       <VideoStyleCard aiModel={aiModel} onModel={changeAiModel} onScript={() => chooseRoute('script')} />
-      {ordered.map((id) => {
-        const primary = id === route;
-        return (
-          <details key={id} className={primary ? 'route-primary' : 'route-alt'} open={primary || undefined}>
-            <summary>
-              別の作り方: <b>{ROUTE_INFO[id].title}</b> — {ROUTE_INFO[id].when}（開いて使うなら、上の「構成の作り方」でこれを選んでください）
-            </summary>
-            {cardOf[id]}
-          </details>
-        );
-      })}
+
     </div>
   );
 };

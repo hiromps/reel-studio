@@ -1,0 +1,19 @@
+.modal-cloud { min-width: 0; }
+.modal-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; margin-block: 16px; }
+.modal-fields label, .modal-cloud > label { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.modal-fields input, .modal-fields select, .modal-fields textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.modal-wide { grid-column: 1 / -1; }
+.modal-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px 24px; margin-block: 20px; }
+.modal-metrics div { min-width: 0; }
+.modal-metrics dt { font-size: 13px; opacity: .8; margin-bottom: 4px; }
+.modal-metrics dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.modal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 12px; }
+.modal-cloud button, .modal-cloud input:not([type=checkbox]), .modal-cloud select { min-height: 44px; }
+.modal-consent { display: flex; align-items: center; gap: 12px; min-height: 44px; margin-block: 12px; }
+.modal-consent input { width: 20px; height: 20px; flex-shrink: 0; }
+.modal-job { padding-block: 16px; border-top: 1px solid var(--border, #8886); }
+.modal-job span { display: block; margin-top: 4px; font-size: 13px; }
+.modal-job progress { width: min(100%, 400px); margin-top: 12px; }
+.modal-preview { display: grid; gap: 12px; margin-block: 16px; }
+.modal-preview video, .modal-preview img { width: min(100%, 512px); max-height: 480px; object-fit: contain; border-radius: 8px; }
+.modal-cloud details > summary { padding-block: 12px; cursor: pointer; }

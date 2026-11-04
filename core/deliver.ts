@@ -9,6 +9,8 @@ import {readBrief, readCaption, readNarration} from './project';
 import {studioConfig} from '../studio.config';
 import {DELIVER_LABEL, deliverFileName, deliverSource, type DeliverKind} from '../shared/deliver';
 import {getPersona} from '../shared/personas';
+import {hasReelCuts, reelCutsPath} from './reel-cuts';
+import {reelAudioNeedsIds} from './tts';
 
 export type DeliverItem = {kind: DeliverKind; from: string; to: string; bytes: number; skipped?: 'same'};
 
@@ -50,6 +52,10 @@ export const narrationReady = (projectDir: string): {ok: boolean; reason?: strin
   const pending = narration.segments.filter((s) => (s as {needsTts?: boolean}).needsTts).map((s) => s.id);
   if (pending.length) return {ok: false, reason: `音声が未生成のブロックがある: ${pending.join(', ')}`};
   const mixedAt = fs.statSync(mixed).mtimeMs;
+  if (hasReelCuts(projectDir)) {
+    if (reelAudioNeedsIds(projectDir, narration).length) return {ok: false, reason: '共通JSONまたは音声設定の変更後、音声を再生成していません'};
+    if (fs.statSync(reelCutsPath(projectDir)).mtimeMs > mixedAt) return {ok: false, reason: '共通カットJSONを直したあと mix していません'};
+  }
   const src = path.join(projectDir, 'out', 'final.mp4');
   if (fs.existsSync(src) && fs.statSync(src).mtimeMs > mixedAt) return {ok: false, reason: 'out/final.mp4 の方が新しい（レンダーし直したあと mix していない）'};
   const stale: string[] = [];

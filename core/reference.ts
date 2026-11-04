@@ -13,6 +13,8 @@ import crypto from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {studioConfig} from '../studio.config';
+import {isLocalMediaPath} from '../shared/media';
+import {requireLocalMedia} from './local-media';
 import {settingsDir} from './settings';
 import {ensureLooks} from './look';
 import {VARIETY_RULES, shotGroupNote, shotGroups} from '../shared/shot-variety';
@@ -399,8 +401,18 @@ export const importReferenceVideo = async (dir: string, srcPath: string, opt: Im
   });
 };
 
-/** URL（クラウドの Blob）から一時ファイルに落とす。スマホから上げた参考動画を PC が受け取るとき用 */
+/** 外部の取得元やローカル参照を一時ファイルへ取り込む。Storage URL は専用移行のみ。 */
 export const fetchReferenceToInbox = async (dir: string, url: string, name: string, signal?: AbortSignal): Promise<string> => {
+  if (isLocalMediaPath(url)) {
+    const source = requireLocalMedia(url);
+    const inbox = referenceInboxDir(dir);
+    fs.mkdirSync(inbox, {recursive: true});
+    const dest = path.join(inbox, `${crypto.randomUUID()}${path.extname(source)}`);
+    fs.copyFileSync(source, dest, fs.constants.COPYFILE_EXCL);
+    return dest;
+  }
+  const host = new URL(url).hostname;
+  if (host.endsWith('.supabase.co') || host.endsWith('.supabase.in') || host.endsWith('.blob.vercel-storage.com') || new URL(url).pathname.startsWith('/storage/v1/')) throw new Error('Storage のファイルは移行スクリプトでローカルに保存してください');
   const inbox = referenceInboxDir(dir);
   fs.mkdirSync(inbox, {recursive: true});
   const safe = name.replace(/[\\/:*?"<>|]/g, '_').replace(/^\.+/, '').trim() || 'reference.mp4';

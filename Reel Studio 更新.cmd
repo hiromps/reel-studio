@@ -1,7 +1,8 @@
 @echo off
 rem ---------------------------------------------------------------------------
 rem  Reel Studio updater (double-click to update).
-rem  Runs: git pull --ff-only -> npm install (if needed) -> build.
+rem  Detects the newest release, verifies it, and updates the desktop app.
+rem  Pass --source explicitly to update source code from GitHub instead.
 rem
 rem  NOTE: keep this file ASCII-only. cmd.exe parses batch files with the OEM
 rem  code page (CP932 on Japanese Windows), so UTF-8 Japanese text here would
@@ -18,25 +19,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-for /d %%D in ("%REEL_DIR%.runtime\node\node-v*-win-x64") do if exist "%%~D\node.exe" set "PATH=%%~D;%PATH%"
-where node >nul 2>&1
-if errorlevel 1 (
-  echo.
-  echo   Node.js was not found. Install it from https://nodejs.org and try again.
-  echo.
-  pause
-  exit /b 1
-)
-
-where git >nul 2>&1
-if errorlevel 1 (
-  echo.
-  echo   git was not found. Install it from https://git-scm.com and try again.
-  echo.
-  pause
-  exit /b 1
-)
-
-node "scripts\update.mjs" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REEL_DIR%scripts\run-desktop-update.ps1" %*
+if errorlevel 1 goto failed
 echo.
 pause
+exit /b 0
+:failed
+echo.
+echo Desktop update failed. See the error above.
+pause
+exit /b 1

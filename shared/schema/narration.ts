@@ -1,5 +1,6 @@
 // narration.json（既存契約）。narration-tts.md §6 のフォーマット。
 import {z} from 'zod';
+import {EmotionValueSchema} from '../emotion-tags';
 
 export const NarrationSegmentSchema = z
   .object({
@@ -9,6 +10,7 @@ export const NarrationSegmentSchema = z
     durSec: z.number().optional(), // ffprobe 実測
     trimSec: z.number().positive().optional(), // 先頭から使う秒数。元の wav は残す
     text: z.string(),
+    emotion_tag: EmotionValueSchema.optional(),
   })
   .passthrough();
 export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;

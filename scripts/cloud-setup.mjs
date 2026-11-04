@@ -9,7 +9,7 @@
 //   お店の素材を扱う以上それは事故なので、分ける。
 //
 // この script がやること:
-//   Vercel のプロジェクト作成 → 保護を外す → Blob ストア作成と接続 → DB のスキーマ適用 →
+//   Vercel のプロジェクト作成 → 保護を外す → ローカル保存の確認 → DB のスキーマ適用 →
 //   パスワードとトークンの生成 → 環境変数の設定 → 本番デプロイ → PC 側の接続設定
 //
 // 秘密の扱い: パスワードは打った本人の手元でハッシュにしてから Vercel に入れる（平文は送らない）。
@@ -127,33 +127,9 @@ const main = async () => {
   if (sso.code === 0) ok('保護を外しました（この URL は自分のパスワードで守ります）');
   else warn('保護を外せませんでした。Vercel の Settings → Deployment Protection を手で Off にしてください');
 
-  // ── 4. Blob（サムネイル・軽量プレビュー・完成動画の置き場）
-  step(4, TOTAL, 'メディアの置き場（Vercel Blob）');
-  const stores = vercel(['api', `/v1/storage/stores${teamQ}`]);
-  let storeId = null;
-  try {
-    const list = JSON.parse(stores.out.slice(stores.out.indexOf('{')));
-    const mine = (list.stores ?? []).find((s) => s.type === 'blob' && (s.projectsMetadata ?? []).some((p) => p.projectId === project.projectId));
-    if (mine) {
-      storeId = mine.id;
-      ok(`すでに接続済み: ${mine.name}`);
-    }
-  } catch {
-    /* 一覧が読めなければ作りにいく */
-  }
-  if (!storeId) {
-    const storeName = await ask('Blob ストア名', 'reel-studio-media');
-    const created = vercel(['blob', 'create-store', storeName]);
-    const m = /store_[A-Za-z0-9]+/.exec(created.out + created.err);
-    if (!m) throw new Error(`Blob ストアを作れませんでした: ${(created.err || created.out).split('\n').slice(-2).join(' ')}`);
-    storeId = m[0];
-    const connBody = path.join(os.tmpdir(), `reel-blob-${process.pid}.json`);
-    fs.writeFileSync(connBody, JSON.stringify({projectId: project.projectId, envVarEnvironments: ['production', 'preview', 'development']}));
-    const conn = vercel(['api', `/v1/storage/stores/${storeId}/connections${teamQ}`, '-X', 'POST', '--input', connBody]);
-    fs.rmSync(connBody, {force: true});
-    if (conn.code !== 0) throw new Error('Blob ストアをプロジェクトに接続できませんでした');
-    ok(`${storeName} を作って接続しました（BLOB_READ_WRITE_TOKEN は自動で入ります）`);
-  }
+  // ── 4. メディアは PC に保持（Storage の作成・鍵の配布は不要）
+  step(4, TOTAL, 'メディアの置き場（ローカル）');
+  ok('動画・音声は PC の保存先設定を使用します。メディア操作は PC の Reel Studio で行ってください');
 
   // ── 5. データベース（案件・契約ファイル・ジョブ）
   step(5, TOTAL, 'データベース（Supabase / Postgres）');

@@ -20,11 +20,16 @@ import {checkNarration, narrationDisplayName, narrationUsedSec} from '@shared/na
 import {localTime} from '@shared/time';
 import {api} from '../api';
 import {RenderTerms, RenderTermsToggle, termHint} from '../components/RenderTerms';
+import {useEmotionTags} from '../hooks/useEmotionTags';
+import {useNarrationRegeneration} from '../hooks/useNarrationRegeneration';
+import {NarrationEmotion} from '../components/NarrationEmotion';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 
 export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'settings') => void}> = ({onTab}) => {
   const s = useStudio();
+  const emotionOptions = useEmotionTags();
+  const narrationRegeneration = useNarrationRegeneration();
   const [sel, setSel] = useState<string | null>(null);
   const [gl, setGl] = useState('swiftshader');
   const [concurrency, setConcurrency] = useState('');
@@ -379,7 +384,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
         </details>
       </section>
 
-      <section className="card" data-tour="narration">
+      <section className="card" data-tour="narration" id="narration-audio">
         <div className="summary">
           <span>
             <b>ナレーション（声の設定と音声生成）</b>
@@ -490,11 +495,22 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
               {[...narration.segments]
                 .sort((a, b) => a.at - b.at)
                 .map((seg) => (
-                  <div key={seg.id} className={`narr-row compact${seg.needsTts ? ' needs-tts' : ''}`} title={seg.needsTts ? '要再生成' : `使用 ${narrationUsedSec(seg).toFixed(2)}s / 元音声 ${seg.durSec?.toFixed(2)}s`}>
+                  <div key={seg.id} className="narr-audio-block">
+                  <div className={`narr-row compact${seg.needsTts ? ' needs-tts' : ''}`} title={seg.needsTts ? '要再生成' : `使用 ${narrationUsedSec(seg).toFixed(2)}s / 元音声 ${seg.durSec?.toFixed(2)}s`}>
                     <span className="narr-id" title={`内部ID: ${seg.id}`}>{narrationDisplayName(seg)}</span>
                     <span className="counter">{seg.at.toFixed(2)}s</span>
                     <span className="narr-text-ro">{seg.text}</span>
                     <span className="counter">{seg.needsTts ? '要再生成' : `${narrationUsedSec(seg).toFixed(1)}s`}</span>
+                  </div>
+                  <NarrationEmotion segment={seg} options={emotionOptions} disabled={!!narrationRegeneration.blocked}
+                    onChange={emotion_tag => setNarr({...narration, segments: narration.segments.map(x => x.id === seg.id ? {...x, emotion_tag, needsTts: true, durSec: undefined} : x)})} />
+                  <div className="row">
+                    <button className="primary small" disabled={!!narrationRegeneration.blocked || !emotionOptions.ready || !seg.text.trim()}
+                      title={narrationRegeneration.blocked ?? '選択した感情を保存して、この音声ブロックだけを再生成します'}
+                      onClick={() => void narrationRegeneration.regenerate(seg.id)}>保存してこの感情で生成</button>
+                    {!seg.needsTts && !!seg.durSec && s.mediaBase && !narrationRegeneration.blocked && <audio controls preload="none" aria-label={`${narrationDisplayName(seg)}の生成済み音声`}
+                      src={`${s.mediaBase}/narration/${encodeURIComponent(seg.id)}.wav?v=${encodeURIComponent(jobs.find(j => j.type === 'tts' && j.status === 'done')?.id ?? s.files.narration.etag ?? '')}`} />}
+                  </div>
                   </div>
                 ))}
             </div>

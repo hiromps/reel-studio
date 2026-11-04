@@ -16,6 +16,14 @@ import {checkNarration} from '../shared/narration';
 import {studioConfig} from '../studio.config';
 import {loadSettings} from './settings';
 import type {Narration, NarrationSegment} from '../shared/schema/narration';
+import {hasReelCuts, loadReelCutsConfig} from './reel-cuts';
+import {ReelSpeechSchema} from '../shared/schema/reel-cuts';
+import {reelFishText, type ReelCutsConfig} from '../shared/reel-cuts';
+import {stableHash} from '../shared/hash';
+import {writeJsonAtomic} from './json-io';
+import {loadEmotionTags} from './emotion-tags';
+import type {EmotionTags} from '../shared/emotion-tags';
+import {fishEmotionTag} from '../shared/emotion-tags';
 
 const ENDPOINT = 'https://api.fish.audio/v1/tts';
 /** fish-audio-sdk が既定で送っている値（session.js のコンストラクタ引数） */
@@ -187,7 +195,7 @@ export const listVoices = async (opt: {signal?: AbortSignal} = {}): Promise<{voi
 
 /** 音声を作り直す必要があるブロック（本文が変わった or wav が無い） */
 export const needsTtsIds = (dir: string, narration: Narration): string[] =>
-  narration.segments.filter((s) => (s as {needsTts?: boolean}).needsTts || !fs.existsSync(path.join(dir, 'narration', `${s.id}.wav`))).map((s) => s.id);
+  hasReelCuts(dir) ? reelAudioNeedsIds(dir, narration) : narration.segments.filter((s) => s.needsTts || !fs.existsSync(path.join(dir, 'narration', `${s.id}.wav`)) || (s.emotion_tag !== undefined && !taggedAudioMatches(dir, s, narration))).map((s) => s.id);
 
 const wavDurationSec = async (file: string): Promise<number> => {
   const r = await execOk('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nokey=1', file]);
@@ -225,6 +233,52 @@ export const ttsBody = (text: string, voiceId: string, speed: number, latency: s
   reference_id: voiceId,
   prosody: {speed, volume: 0},
 });
+
+/** Official S2 API: inline bracket cues plus prosody.speed. No binary uploads. */
+export const reelTtsBody = (segment: NarrationSegment, voice: string, latency: string, config: ReelCutsConfig, emotions: EmotionTags = loadEmotionTags()): TtsBody => {
+  const speech = ReelSpeechSchema.parse({...segment, line: segment.text});
+  return {...ttsBody(reelFishText(speech, config, emotions), voice, speech.speed, latency), chunk_length: config.fish.chunk_length,
+    normalize: config.fish.normalize, prosody: {speed: speech.speed, volume: config.fish.volume}};
+};
+
+/** Ordinary narration blocks also carry IDs; the spoken text stays tag-free. */
+export const narrationTtsBody = (segment: NarrationSegment, voice: string, speed: number, latency: string, emotions: EmotionTags = loadEmotionTags()): TtsBody => {
+  const tag = fishEmotionTag(segment.emotion_tag, emotions);
+  return ttsBody((tag ? tag + ' ' : '') + segment.text.trim(), voice, speed, latency);
+};
+type ReelAudioCache = Record<string, {hash: string; size: number; mtimeMs: number}>;
+const reelAudioCacheFile = (dir: string) => path.join(dir, '.studio', 'reel-tts-cache.json');
+const readReelAudioCache = (dir: string): ReelAudioCache => {
+  try {return JSON.parse(fs.readFileSync(reelAudioCacheFile(dir), 'utf8'));} catch {return {};}
+};
+const taggedAudioMatches = (dir: string, segment: NarrationSegment, narration: Narration): boolean => {
+  const model = process.env.FISH_MODEL_ID?.trim() || loadSettings().tts.modelId || DEFAULT_MODEL;
+  const brief = readBrief(dir);
+  const persona = brief ? getPersona(brief.persona) : null;
+  const body = narrationTtsBody(segment, narration.voice || persona?.narration.voiceId || '', narration.speed ?? persona?.narration.speed ?? 1.2, narration.latency || 'normal');
+  const cached = readReelAudioCache(dir)[segment.id];
+  try {
+    const stat = fs.statSync(path.join(dir, 'narration', `${segment.id}.wav`));
+    return !!cached && cached.hash === stableHash({model, body}) && stat.size === cached.size && stat.mtimeMs === cached.mtimeMs;
+  } catch {return false;}
+};
+const reelRequestKey = (segment: NarrationSegment, narration: Narration, model: string, config: ReelCutsConfig) =>
+  stableHash({model, body: reelTtsBody(segment, narration.voice, narration.latency || 'normal', config)});
+
+/** Also used before mixing: changing voice/model/config cannot silently reuse stale WAVs. */
+export const reelAudioNeedsIds = (dir: string, narration: Narration): string[] => {
+  const config = loadReelCutsConfig();
+  const model = process.env.FISH_MODEL_ID?.trim() || loadSettings().tts.modelId || DEFAULT_MODEL;
+  const cache = readReelAudioCache(dir);
+  return narration.segments.filter((seg) => {
+    if (seg.needsTts) return true;
+    const cached = cache?.[seg.id];
+    try {
+      const st = fs.statSync(path.join(dir, 'narration', `${seg.id}.wav`));
+      return !cached || !st.isFile() || cached.hash !== reelRequestKey(seg, narration, model, config) || cached.size !== st.size || cached.mtimeMs !== st.mtimeMs;
+    } catch {return true;}
+  }).map((s) => s.id);
+};
 
 /**
  * 「長さが不自然」と判断する閾値。文字数から見た想定尺の何倍まで許すか。
@@ -345,11 +399,27 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   const speed = narration.speed ?? persona?.narration.speed ?? 1.2;
   if (!(speed >= 0.5 && speed <= 2)) throw new Error(`speed が範囲外です: ${speed}（0.5〜2.0）`);
   const latency = narration.latency || 'normal';
+  const reelConfig = hasReelCuts(projectDir) ? loadReelCutsConfig() : null;
+  const hasEmotions = narration.segments.some(seg => seg.emotion_tag !== undefined);
+  const emotionConfig = reelConfig || hasEmotions ? loadEmotionTags() : undefined;
+  if (narration.segments.some(seg => !!seg.emotion_tag) && !['s2-pro', 's2.1-pro', 's2.1-pro-free'].includes(env.modelId)) throw new Error('感情タグ付きの音声生成には Fish Audio の S2 系モデルを選んでください');
+  if (reelConfig && !reelConfig.fish.supported_models.some((model) => model === env.modelId)) throw new Error(`共通カットの音声生成には設定の supported_models にある S2 モデルを選んでください: ${env.modelId}`);
+  const bodyFor = (seg: NarrationSegment) => reelConfig ? reelTtsBody(seg, voice, latency, reelConfig, emotionConfig) : seg.emotion_tag !== undefined ? narrationTtsBody(seg, voice, speed, latency, emotionConfig) : ttsBody(seg.text.trim(), voice, speed, latency);
+  const cacheFile = reelAudioCacheFile(projectDir);
+  const audioCache = readReelAudioCache(projectDir);
+  const keyFor = (seg: NarrationSegment) => stableHash({model: env.modelId, body: bodyFor(seg)});
+  const cachedAudio = (seg: NarrationSegment) => {
+    const cached = audioCache[seg.id];
+    const file = path.join(projectDir, 'narration', `${seg.id}.wav`);
+    if (!cached || !fs.existsSync(file)) return false;
+    const stat = fs.statSync(file);
+    return cached.hash === keyFor(seg) && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs;
+  };
 
   const outDir = path.join(projectDir, 'narration');
   fs.mkdirSync(outDir, {recursive: true});
 
-  const want = new Set(opt.ids ?? (opt.force ? narration.segments.map((s) => s.id) : needsTtsIds(projectDir, narration)));
+  const want = new Set(opt.ids ?? (opt.force ? narration.segments.map((s) => s.id) : narration.segments.filter((s) => s.needsTts || !fs.existsSync(path.join(outDir, `${s.id}.wav`)) || ((reelConfig || s.emotion_tag !== undefined) && !cachedAudio(s))).map(s => s.id)));
   const targets = narration.segments.filter((s) => want.has(s.id));
   const skipped = narration.segments.filter((s) => !want.has(s.id)).map((s) => s.id);
   if (!targets.length) {
@@ -359,7 +429,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   const empty = targets.find((s) => !s.text.trim());
   if (empty) throw new Error(`${empty.id} の本文が空です。先に文言を入れてください`);
   // テロップ由来の改行は画面上のレイアウト。本文を言い換えず、そのまま音声に渡す。
-  const multiline = targets.find((s) => /[\r\n]/.test(s.text) && !s.fromTelop);
+  const multiline = targets.find((s) => /[\r\n]/.test(s.text) && !s.fromTelop && !reelConfig);
   if (multiline) throw new Error(`${multiline.id} の本文に改行があります。1 ブロック 1 文にしてください`);
 
   const totalChars = targets.reduce((n, s) => n + [...s.text].length, 0);
@@ -373,6 +443,11 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
     if (!cur) return;
     const seg = cur.segments.find((s) => s.id === id);
     if (!seg) return;
+    const target = targets.find((s) => s.id === id);
+    if (target && (cur.voice !== narration.voice || cur.latency !== narration.latency || cur.speed !== narration.speed || keyFor(seg) !== keyFor(target))) {
+      log(`  ${id}: 生成中に原稿または音声設定が変わったため、再生成待ちのまま保持します`);
+      return;
+    }
     fn(seg);
     writeNarration(projectDir, cur);
   };
@@ -396,18 +471,24 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
     let tries = 0;
     for (;;) {
       tries++;
-      const buf = await synth(env, ttsBody(seg.text.trim(), voice, speed, latency), opt.signal);
+      const buf = await synth(env, bodyFor(seg), opt.signal);
       fs.writeFileSync(file, buf);
       dur = await wavDurationSec(file);
       if (!outlier(chars, dur) || tries > OUTLIER_RETRIES) break;
       log(`  ${seg.id} ${dur.toFixed(2)}s は ${chars}字 に対して不自然なので引き直します（${tries}/${OUTLIER_RETRIES}）`);
       rerolled.push(seg.id);
     }
+    if (reelConfig || seg.emotion_tag !== undefined) {
+      const stat = fs.statSync(file);
+      audioCache[seg.id] = {hash: keyFor(seg), size: stat.size, mtimeMs: stat.mtimeMs};
+      writeJsonAtomic(cacheFile, audioCache);
+    }
     patch(seg.id, (s) => {
       s.durSec = dur;
-      delete s.trimSec;
+      if (!reelConfig) delete s.trimSec;
       delete (s as {needsTts?: boolean}).needsTts;
     });
+    if (reelConfig && seg.trimSec && dur > seg.trimSec) log(`  ! ${seg.id}: 音声 ${dur.toFixed(2)}秒 が発話枠 ${seg.trimSec.toFixed(2)}秒 を超えます。末尾を切るため、カット尺・話速・台詞を調整してください`);
     made.push(seg.id);
     const note = outlier(chars, dur) ? ' ← 引き直しても不自然。聴いて確認してください' : tries > 1 ? `（${tries} 回目）` : '';
     log(`  ${seg.id} ${chars}字 → ${dur.toFixed(2)}s（${(chars / Math.max(dur, 0.01)).toFixed(1)} 字/秒）${note}`);

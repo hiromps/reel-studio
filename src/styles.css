@@ -10,7 +10,7 @@
   --panel2: #f2f3f6;
   --line: #e4e6eb;
   --fg: #1d2026;
-  --muted: #8b919c;
+  --muted: #667085;
   --accent: #1a73ff;
   --accent2: #1a73ff;
   --accent-soft: rgba(26, 115, 255, 0.1);
@@ -1659,14 +1659,28 @@ pre.md {
 }
 
 .triage-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr;
   gap: 8px;
 }
 .triage-actions button {
-  flex: 1;
-  padding: 12px;
-  font-size: 14px;
+  min-height: 56px;
+  padding: 12px 10px;
+  font-size: 16px;
+  font-weight: 650;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
 }
+.triage-decision-bar {flex-shrink: 0; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line);}
+.triage-decision-bar > p {margin: 8px 0 0; font-size: 12px; color: var(--fg);}
+.triage-actions svg {width: 21px; height: 21px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;}
+.triage-actions kbd {font-size: 10px; opacity: 0.75; font-weight: 500;}
+.triage-actions .triage-drop {background: var(--tint-red); color: var(--tint-red-fg);}
+.triage-actions .triage-hook {background: var(--tint-yellow); color: var(--tint-yellow-fg);}
+.triage-actions .triage-hook.selected {box-shadow: inset 0 0 0 2px currentColor;}
+.triage-actions .triage-hook.selected svg {fill: currentColor;}
 .triage-keys {
   text-align: center;
 }
@@ -3930,18 +3944,9 @@ a.btn-like:hover {
   .triage-tags label.grow {
     flex: 1 1 100%;
   }
-  /* 判定ボタンはいつでも押せるよう、本文の下端に貼り付ける
-     （左右の負のマージンは .modal-body の内側余白と同じ値にする） */
-  .triage-actions {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    margin: 0 -10px;
-    padding: 8px 10px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom));
-    background: var(--panel);
-    border-top: 1px solid var(--line);
-  }
+  .triage-decision-bar {padding: 10px;}
+  .triage-actions button {gap: 5px; font-size: 14px; padding: 10px 6px;}
+  .triage-actions kbd {display: none;}
   /* キーボードの説明はスマホでは意味がないので場所を譲る */
   .triage-keys {
     display: none;
@@ -4752,6 +4757,14 @@ a.btn-like:hover {
 .locked-text-reminder { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 
 .zoom-controls { display: grid; gap: 8px; padding: 8px 0; min-width: 0; }
+.insp-color, .clip-color { border: 1px solid var(--line); border-radius: 12px; padding: 8px; min-width: 0; }
+.insp-color > summary, .clip-color > summary { cursor: pointer; color: var(--accent); min-height: 28px; }
+.color-controls { display: grid; gap: 8px; padding-top: 8px; min-width: 0; }
+.color-control-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 4px 8px; align-items: center; }
+.color-control-row > label { grid-column: 1 / -1; }
+.color-control-row input { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; }
+.color-controls > button { justify-self: start; min-height: 44px; }
+.insp-color > button { min-height: 44px; margin: 4px 4px 0 0; }
 .zoom-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .zoom-controls input, .zoom-controls select { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; }
 .zoom-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

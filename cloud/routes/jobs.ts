@@ -7,7 +7,7 @@
 import {Router, type Request, type Response} from 'express';
 import {JOB_TYPES, PROJECTLESS_JOBS, type JobType} from '../../shared/jobs';
 import {normalizeSlug} from '../../shared/project';
-import {addJob, failStaleJobs, getJob, jobLogLines, kvGet, listJobs, requestCancel, type CloudJob} from '../store';
+import {addJob, failStaleJobs, getJob, jobLogLines, kvGet, listJobs, listJobStates, requestCancel, type CloudJob} from '../store';
 import {docsChangedSince} from '../events-source';
 
 export const jobsRouter = Router();
@@ -47,7 +47,7 @@ const POLL_MS = 2000;
 // 55 秒から始まると 60 秒を越えて関数ごと切られ、同じインスタンスの他のリクエストも 504 になる
 const MAX_MS = 40_000;
 
-const isSame = (a: CloudJob | undefined, b: CloudJob): boolean =>
+const isSame = (a: {status: string; progress: CloudJob['progress'] | null} | undefined, b: {status: string; progress: CloudJob['progress'] | null}): boolean =>
   !!a && a.status === b.status && a.progress?.done === b.progress?.done && a.progress?.phase === b.progress?.phase && a.progress?.total === b.progress?.total;
 
 export const eventsHandler = async (req: Request, res: Response): Promise<void> => {
@@ -62,7 +62,7 @@ export const eventsHandler = async (req: Request, res: Response): Promise<void> 
   const active = (await kvGet<{slug: string | null}>('active-slug'))?.slug ?? null;
   send('hello', {activeSlug: active});
 
-  const seen = new Map<string, CloudJob>();
+  const seen = new Map<string, {status: string; progress: CloudJob['progress'] | null}>();
   const logSeq = new Map<string, number>();
   let since = new Date(Date.now() - POLL_MS);
   let closed = false;
@@ -75,29 +75,27 @@ export const eventsHandler = async (req: Request, res: Response): Promise<void> 
   let first = true;
   while (!closed && Date.now() - startedAt < MAX_MS) {
     try {
-      const jobs = await listJobs(30);
-      for (const j of jobs) {
+      const jobs = await listJobStates(30);
+      for (const state of jobs) {
         if (first) {
-          seen.set(j.id, j);
-          if (j.status === 'running') logSeq.set(j.id, Math.max(0, (j.logTail?.length ?? 0) > 0 ? 0 : 0));
+          seen.set(state.id, state);
+          logSeq.set(state.id, state.logSeq);
           continue;
         }
-        if (isSame(seen.get(j.id), j)) continue;
-        const prev = seen.get(j.id);
-        seen.set(j.id, j);
-        if (prev && prev.progress && j.progress && prev.status === j.status) send('job:progress', {jobId: j.id, ...j.progress});
-        send('job:update', j);
-      }
-      // 動いているジョブのログを流す
-      for (const j of jobs) {
-        if (j.status !== 'running' && j.status !== 'done' && j.status !== 'failed') continue;
-        if (!logSeq.has(j.id) && j.status !== 'running') continue;
-        const from = logSeq.get(j.id) ?? 0;
-        const {lines, seq} = await jobLogLines(j.id, from);
-        if (lines.length) {
-          for (const line of lines) send('job:log', {jobId: j.id, line});
-          logSeq.set(j.id, seq);
-        } else if (!logSeq.has(j.id)) logSeq.set(j.id, seq);
+        const prev = seen.get(state.id);
+        if (!isSame(prev, state)) {
+          const j = await getJob(state.id);
+          if (j) {
+            if (prev?.progress && j.progress && prev.status === j.status) send('job:progress', {jobId: j.id, ...j.progress});
+            send('job:update', j);
+          }
+          seen.set(state.id, state);
+        }
+        const from = logSeq.get(state.id) ?? 0;
+        if (state.logSeq <= from) continue;
+        const {lines, seq} = await jobLogLines(state.id, from);
+        for (const line of lines) send('job:log', {jobId: state.id, line});
+        logSeq.set(state.id, seq);
       }
       // PC が書き戻した契約ファイルを画面に知らせる（ローカル版の chokidar と同じ役割）
       if (!first) {

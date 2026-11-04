@@ -1,6 +1,6 @@
 {
   "name": "reel-studio",
-  "version": "0.4.2",
+  "version": "0.4.12",
   "private": true,
   "description": "Reel Studio: GUI/CLI that turns raw food-shop footage into 9:16 short reels with telops, AI narration, and captions (Remotion + Claude Code + Fish Audio)",
   "license": "MIT",
@@ -31,6 +31,7 @@
     "cloud:deploy": "node scripts/cloud-deploy.mjs",
     "cloud:migrate": "node scripts/cloud-migrate.mjs",
     "cloud:copy-db": "node scripts/cloud-copy-db.mjs",
+    "media:migrate": "tsx scripts/migrate-media.ts",
     "dev": "vite",
     "icons": "node scripts/make-icon.mjs && node scripts/make-pwa-icons.mjs",
     "build": "npm run icons && node scripts/prepare-public.mjs && node scripts/build-api.mjs && vite build",
@@ -46,12 +47,12 @@
     "desktop:verify": "node scripts/verify-desktop.mjs",
     "start:dev": "node scripts/launch.mjs --dev",
     "update": "node scripts/update.mjs",
+    "desktop:update": "node scripts/update.mjs --desktop",
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@openai/codex": "^0.160.1",
     "@remotion/player": "4.0.522",
-    "@vercel/blob": "^2.8.0",
     "chokidar": "^4.0.3",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",

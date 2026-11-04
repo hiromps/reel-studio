@@ -854,6 +854,7 @@ export function planCuts(input: PlanInput): PlanResult {
     const cut: Cut = {id, src: a.clip.src, inSec: a.inSec, outSec: a.outSec};
     // 素材側で決めた「ここを見せる」（切り出し）をカットに引き継ぐ。既定のままなら書かない
     if (!isDefaultCrop(a.clip.crop)) cut.crop = {...a.clip.crop!};
+    if (a.clip.color) cut.color = {...a.clip.color};
     if (a.rate && a.rate !== 1) cut.playbackRate = a.rate;
     let telop = '';
     let textStatus: TextStatus = g.textStatus;

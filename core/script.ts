@@ -42,10 +42,12 @@ import {FORMAT_SPECS} from '../shared/format-specs';
 import {stableHash} from '../shared/hash';
 import {VARIETY_RULES, isSimilarShot, shotGroupNote, shotGroups} from '../shared/shot-variety';
 import {ensureLooks} from './look';
+import {hasReelCuts, readReelScript, saveReelScript, reelCutsPath} from './reel-cuts';
 
-export const scriptPath = (dir: string) => path.join(dir, 'script.md');
-export const readScript = (dir: string): string | null => (fs.existsSync(scriptPath(dir)) ? fs.readFileSync(scriptPath(dir), 'utf8') : null);
+export const scriptPath = (dir: string) => hasReelCuts(dir) ? reelCutsPath(dir) : path.join(dir, 'script.md');
+export const readScript = (dir: string): string | null => readReelScript(dir) ?? (fs.existsSync(scriptPath(dir)) ? fs.readFileSync(scriptPath(dir), 'utf8') : null);
 export const writeScript = (dir: string, text: string) => {
+  if (hasReelCuts(dir)) {saveReelScript(dir, text); return scriptPath(dir);}
   fs.mkdirSync(dir, {recursive: true});
   fs.writeFileSync(scriptPath(dir), text.replace(/\r\n/g, '\n').replace(/\s*$/, '\n'), 'utf8');
   return scriptPath(dir);
@@ -139,6 +141,7 @@ const loadScriptEnv = (projectDir: string) => {
 
 /** cuts.json と narration.json を書く（「台本から組み立てる」と「承認して書き込む」の共通部分）。旧版は .studio/backups/ に残る */
 const writeScriptOutputs = (projectDir: string, plan: ScriptPlan, cuts: ReelData, persona: ReturnType<typeof getPersona>, log: (l: string) => void) => {
+  if (hasReelCuts(projectDir)) throw new Error('共通カット案件の構成は reel-cuts.json または編集画面から変更してください。従来形式の台本による置き換えは行いません');
   assertOrderUnlocked(projectDir);
   writeCuts(projectDir, cuts, {preserveOrder: true});
   const narration = scriptPlanToNarration(plan, persona.narration);

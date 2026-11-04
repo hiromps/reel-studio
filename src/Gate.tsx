@@ -10,6 +10,7 @@ import {api, onUnauthorized} from './api';
 import {LoginPage} from './pages/Login';
 import {StudioProvider} from './state/store';
 import {App} from './App';
+import {PwaUpdateNotice} from './components/PwaUpdateNotice';
 
 type Phase = 'checking' | 'login' | 'ready';
 
@@ -35,7 +36,7 @@ export const Gate: React.FC = () => {
   useEffect(() => onUnauthorized(() => setPhase('login')), []);
 
   if (phase === 'checking') return <div className="boot">読み込み中…</div>;
-  if (phase === 'login') return <LoginPage onDone={() => setPhase('ready')} />;
+  if (phase === 'login') return <><LoginPage onDone={() => setPhase('ready')} /><PwaUpdateNotice /></>;
   return (
     <StudioProvider>
       <App />

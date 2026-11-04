@@ -24,10 +24,10 @@ export const BriefFlow: React.FC<{
   return (
     <section className="card" data-tour="brief-flow">
       <div className="row">
-        <h2 style={{margin: 0}}>作り方の流れ</h2>
-        <span className="hint">上から順に進めれば、人格の文体で揃った 1 本ができます。色が付いている工程がいまやることです</span>
+        <h2 style={{margin: 0}}>AIで台本から動画へ</h2>
+        <span className="hint">素材を用意して、伝えたいことを入力。AIが台本づくりを手伝います。</span>
       </div>
-      <ol className="flow-steps">
+      <details className="beginner-details"><summary>作り方の流れを見る</summary><ol className="flow-steps">
         {steps.map((st, i) => (
           <li key={st.id} className={`flow-step ${st.status}`}>
             <span className="flow-mark" aria-hidden="true">
@@ -44,9 +44,9 @@ export const BriefFlow: React.FC<{
             )}
           </li>
         ))}
-      </ol>
+      </ol></details>
 
-      <h3>構成の作り方（どれか 1 つ。選んだものがすぐ下に出ます）</h3>
+      <h3>作り方を選ぶ</h3>
       <div className="flow-routes">
         {ROUTE_ORDER.map((id) => {
           const r = ROUTE_INFO[id];
@@ -67,7 +67,7 @@ export const BriefFlow: React.FC<{
       </div>
       {now?.id === 'build' && (
         <p className="hint">
-          3 つは<b>どれか 1 つ</b>を使います（どれも cuts.json を書くので、混ぜると上書きし合います）。テロップとナレーションを同じ台本から作る「台本から組み立てる」「バズ動画の型を写す」の方が、1 本の中の言い回しが揃いやすいです。
+          選んだ作り方の画面が下に表示されます。まずは台本を作って確認し、その台本に素材を合わせて進められます。
         </p>
       )}
 

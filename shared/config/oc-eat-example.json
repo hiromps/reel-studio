@@ -1,0 +1,28 @@
+[
+  {
+    "id": "opening",
+    "slot": "self_eat",
+    "clip_path": "uploads/eating.mp4",
+    "start": 0.5,
+    "duration": 2.5,
+    "line": "このお肉、とろけます！",
+    "intensity": 4,
+    "emotion_tag": "[delighted]",
+    "speed": 1.1,
+    "pause_after": 0.2,
+    "emphasis": ["とろけます"]
+  },
+  {
+    "id": "dish",
+    "slot": "dish",
+    "clip_path": "uploads/dish.mp4",
+    "start": 1,
+    "duration": 3,
+    "line": "旨みたっぷりの一皿です。",
+    "intensity": 3,
+    "emotion_tag": "[satisfied]",
+    "speed": 1.0,
+    "pause_after": 0.2,
+    "emphasis": ["旨み"]
+  }
+]

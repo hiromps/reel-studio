@@ -2,6 +2,8 @@
 // Remotion が無視する拡張（Cut.id / meta.slots / meta.telopGroups / meta.aliases / meta.generated）を足す。
 import {z} from 'zod';
 import {ZoomSchema} from './zoom';
+import {ColorAdjustmentsSchema} from '../color';
+import {EmotionValueSchema} from '../emotion-tags';
 export {ZoomSchema, type Zoom} from './zoom';
 
 export const OrientationSchema = z.enum(['vertical', 'horizontal']);
@@ -47,12 +49,14 @@ export const isDefaultCrop = (c?: Crop | null): boolean => !c || (c.zoom === 1 &
 export const CutSchema = z
   .object({
     id: z.string().optional(), // 拡張。planCuts が "c01" 等を振る。Remotion は無視
+    emotion_tag: EmotionValueSchema.optional(),
     src: z.string().min(1), // public/ からの相対パス
     inSec: z.number().min(0),
     outSec: z.number(),
     playbackRate: z.number().positive().optional(),
     crop: CropSchema.optional(), // 画面内の切り出し（省略時は中央・そのまま）
     zoom: ZoomSchema.optional(), // カット内のキーフレームズーム（映像のみ）
+    color: ColorAdjustmentsSchema.optional(), // 映像の色・明るさ（テロップには適用しない）
     main: MainTelopSchema.optional(),
     price: PriceTelopSchema.optional(),
     badge: z.string().optional(),
@@ -145,6 +149,7 @@ export const ThumbnailSchema = z.object({
       src: z.string().min(1),
       atSec: z.number().min(0),
       crop: CropSchema.optional(),
+      color: ColorAdjustmentsSchema.optional(),
     })
     .optional(),
 });

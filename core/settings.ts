@@ -81,6 +81,8 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     cloud: {...cur.cloud},
     instagram: {...cur.instagram},
     update: {...cur.update},
+    scriptSkill: cur.scriptSkill,
+    scriptSkills: cur.scriptSkills,
   };
   const setOrClear = (obj: Record<string, unknown>, key: string, v: unknown) => {
     if (v === undefined) return;
@@ -122,6 +124,8 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     setOrClear(ig, 'account', patch.instagram.account);
   }
   if (patch.update?.notify) (next.update as Record<string, unknown>).notify = patch.update.notify;
+  if (patch.scriptSkill !== undefined) next.scriptSkill = patch.scriptSkill ?? undefined;
+  if (patch.scriptSkills !== undefined) next.scriptSkills = patch.scriptSkills;
   return SettingsSchema.parse(next);
 };
 

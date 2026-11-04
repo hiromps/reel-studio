@@ -1,6 +1,7 @@
 // カットのサムネイル。素材ファイルから IN 位置のフレームをサーバーに切り出させる（catalog を経由しない）。
 // 取れなかったときだけ catalog のコンタクトシートに落ちる。
 import React, {useEffect, useRef, useState} from 'react';
+import {colorFilter, type ColorAdjustments} from '@shared/color';
 
 /** IN をドラッグで動かしている間、1 フレームごとにサーバーへ切り出させないための待ち時間 */
 const REFETCH_DELAY_MS = 250;
@@ -18,9 +19,10 @@ type Props = {
   fallback?: string | null;
   className?: string;
   alt?: string;
+  color?: ColorAdjustments;
 };
 
-export const CutThumb: React.FC<Props> = ({slug, src, inSec, width = 240, fallback, className, alt = ''}) => {
+export const CutThumb: React.FC<Props> = ({slug, src, inSec, width = 240, fallback, className, alt = '', color}) => {
   const primary = slug ? cutFrameUrl(slug, src, inSec, width) : null;
   const [url, setUrl] = useState<string | null>(primary);
   const mounted = useRef(false);
@@ -42,6 +44,7 @@ export const CutThumb: React.FC<Props> = ({slug, src, inSec, width = 240, fallba
       className={className}
       src={url}
       alt={alt}
+      style={{filter: colorFilter(color)}}
       loading="lazy"
       draggable={false}
       onError={() => setUrl(url === primary && fallback ? fallback : null)}

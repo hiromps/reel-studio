@@ -1,4 +1,6 @@
 import {videoStylePrompt} from '../shared/video-style';
+import {hasReelCuts} from './reel-cuts';
+import {draftReelSpeech} from './reel-speech-draft';
 // タグ付けと並べ替えを、裏で走らせた Claude Code に代行させる。
 // エージェントは「サムネイルを見て JSON を返す」だけ。catalog.json / brief.json / cuts.json への
 // 反映は必ずこちら側が zod 検証を通してから行う（importTags / importOrder）。
@@ -581,6 +583,13 @@ export async function aiNarration(
   projectDir: string,
   opt: {model?: string; onLine?: (l: string) => void; onProgress?: AiProgress; signal?: AbortSignal} = {},
 ): Promise<AiNarrationResult> {
+  if (hasReelCuts(projectDir)) {
+    const result = await draftReelSpeech(projectDir, opt);
+    const narration = readNarration(projectDir)!;
+    const cps = loadOrderEnv(projectDir).persona.narration.charsPerSec;
+    return {blocks: narration.segments.map(s => ({id: s.id, at: s.at, text: s.text, estSec: countChars(s.text) / cps})),
+      findings: [], costUsd: result.costUsd, notes: result.notes, videoSec: narration.videoSec ?? 0};
+  }
   const log = opt.onLine ?? (() => {});
   const env = loadOrderEnv(projectDir);
   const {persona, brief, catalog} = env;
@@ -1276,7 +1285,7 @@ export function applyPatch(
       continue;
     }
     const id = newCutIdOf(next.cuts);
-    const cut: Cut = {id, src: clip.src, inSec: range.inSec, outSec: range.outSec, ...(clip.crop ? {crop: clip.crop} : {})};
+    const cut: Cut = {id, src: clip.src, inSec: range.inSec, outSec: range.outSec, ...(clip.crop ? {crop: clip.crop} : {}), ...(clip.color ? {color: {...clip.color}} : {})};
     const text = a.text?.trim();
     if (text) cut.main = {text: normalizeEllipsis(text)};
     let at = next.cuts.length;

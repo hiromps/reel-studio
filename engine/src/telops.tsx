@@ -1,6 +1,7 @@
 import React from 'react';
 import {AbsoluteFill, continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import type {MainTelopDef, PriceTelopDef} from './GourmetReel';
+import {VerticalText, verticalTextCells} from './VerticalText';
 
 // ── フォント：Noto Serif JP Bold（セリフ体太字）を public/fonts から読み込む ─────
 // ネット不要のローカル TTF（Google Fonts は使わない）。
@@ -198,7 +199,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; hasPrice?: bo
   // 長文の安全弁：縦は高さ1300px・横は幅900pxに収まるよう自動縮小
   // （2026-08-12にセーフゾーン余白を広げるため1400/980から縮小。
   // 原則は台本側で13文字以内に収める）
-  const fontSize = Math.min(LAYOUT.mainFontSize, Math.floor((vertical ? 1300 : 900) / Math.max(1, text.length)));
+  const fontSize = Math.min(LAYOUT.mainFontSize, Math.floor((vertical ? 1300 : 900) / Math.max(1, vertical ? verticalTextCells(text) : text.length)));
 
   // 2026-08-12：キーワード色分けを廃止（ユーザー指示「色を使わずに」）。
   // highlight/highlightColorはcuts.jsonの互換のため型としては残るが、描画では使わない。
@@ -225,13 +226,13 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; hasPrice?: bo
           style={{
             ...textStyle,
             writingMode: 'vertical-rl',
-            // 数字・英字も1文字ずつ正立で縦に積む（「120分」が横倒しにならない）
+            // 英字は正立。半角数字の連続部分は下の VerticalText で縦中横にする。
             textOrientation: 'upright',
             letterSpacing: '0.06em',
             marginTop: priceNudge,
           }}
         >
-          {content}
+          <VerticalText text={text} />
         </div>
       </AbsoluteFill>
     );
@@ -353,7 +354,7 @@ export const TateTelop: React.FC<{text: string; outlineColor: string; theme: The
         ...outlined(12, outlineColor),
       }}
     >
-      {text}
+      <VerticalText text={text} />
     </div>
   );
 };

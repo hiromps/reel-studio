@@ -389,6 +389,7 @@ export const scriptPlanToCuts = (plan: ScriptPlan, ctx: ScriptBuildContext): Ree
     };
     // 素材側で決めた「ここを見せる」（切り出し）を引き継ぐ
     if (!isDefaultCrop(clip?.crop)) cut.crop = {...clip!.crop!};
+    if (clip?.color) cut.color = {...clip.color};
     // 三点リーダーは「・・・」に揃える（AI は「…」で返してくることがある）
     if (c.telop.trim()) cut.main = {text: normalizeEllipsis(c.telop.trim()), ...(c.orientation === 'horizontal' ? {orientation: 'horizontal' as const} : {})};
     if (c.badge?.trim()) cut.badge = c.badge.trim();
