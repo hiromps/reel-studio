@@ -145,6 +145,37 @@ export const deleteDocs = async (slug: string): Promise<void> => {
   await db().delete(docs).where(eq(docs.slug, slug));
 };
 
+/** Import media and its initial timeline together, preserving edits on any conflict. */
+export async function writeModalMedia(slug: string, catalog: unknown, cuts: unknown, expected: {catalogEtag?: string | null; cutsEtag?: string | null}): Promise<boolean> {
+  class Conflict extends Error {}
+  try {
+    return await db().transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`reel-cuts:${slug}`}))`);
+      const rows = await tx.select(docColumns).from(docs).where(and(eq(docs.slug, slug), inArray(docs.name, ['catalog', ...REEL_DOC_NAMES]))).for('update');
+      const before = (name: string) => rows.find(r => r.name === name);
+      const etag = (name: string) => {const row = before(name); return row ? docEtag(row.rev, row.hash) : null;};
+      if (etag('catalog') !== expected.catalogEtag || etag('cuts') !== expected.cutsEtag) return false;
+      const values: Record<string, unknown> = {catalog, cuts};
+      if (before('reelCuts')) Object.assign(values, updateReelBundle('cuts', cuts, Object.fromEntries(rows.map(r => [r.name, r.data]))));
+      for (const [name, data] of Object.entries(values)) {
+        assertMetadataOnly(data);
+        const hash = stableHash(data), rev = before(name)?.rev ?? 0;
+        const written = rowsOf(await tx.execute(sql`
+          INSERT INTO docs (slug, name, data, rev, hash, updated_by, updated_at)
+          VALUES (${slug}, ${name}, ${JSON.stringify(data)}::jsonb, 1, ${hash}, 'cloud', now())
+          ON CONFLICT (slug, name) DO UPDATE SET data = EXCLUDED.data, rev = docs.rev + 1,
+            hash = EXCLUDED.hash, updated_by = EXCLUDED.updated_by, updated_at = now()
+            WHERE docs.rev = ${rev}
+          RETURNING rev
+        `));
+        if (!written.length) throw new Conflict();
+      }
+      await tx.update(projects).set({updatedAt: new Date()}).where(eq(projects.slug, slug));
+      return true;
+    });
+  } catch (e) {if (e instanceof Conflict) return false; throw e;}
+}
+
 // ───────────────────────── 案件 ─────────────────────────
 
 const projectColumns = {slug: projects.slug, persona: projects.persona, shopName: projects.shopName, format: projects.format, info: projects.info, createdAt: projects.createdAt, updatedAt: projects.updatedAt, deletedAt: projects.deletedAt};

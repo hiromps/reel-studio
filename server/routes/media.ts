@@ -12,8 +12,17 @@ import {resolveProjectDirStrict} from '../../core/project';
 import {fontsDir} from '../../core/fonts';
 import {isFontFileName, safeFontFile} from '../../shared/schema/fonts';
 import {migratedMedia} from '../../core/local-media';
+import {serveModalRenderMedia} from '../../core/modal-render-router';
+import {localModalRender} from '../modal-render';
 
 export const mediaRouter = Router();
+mediaRouter.get('/p/:slug/:mode/:kind/*', (req, res, next) => {
+  if (req.params.slug === '_global') return next();
+  void serveModalRenderMedia(req, res, localModalRender).then(served => {if (!served) next();}).catch(error => {
+    if (res.headersSent) return res.destroy();
+    res.status(typeof error?.status === 'number' ? error.status : 503).end();
+  });
+});
 
 const serve = (res: Response, abs: string | null, cache: string, downloadAs?: string) => {
   if (!abs) return res.status(404).end();

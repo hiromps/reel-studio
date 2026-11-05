@@ -10,19 +10,19 @@ export const validateModalEndpoint = (value: string): string => {
   if (u.protocol !== 'https:' || !/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)?\.modal\.run$/.test(u.hostname) || u.port || u.username || u.password || u.search || u.hash || u.pathname !== '/') throw new ModalError('URLには https://…modal.run のエンドポイントを指定してください', 400);
   return u.origin;
 };
-export const modalFetchWith = async (config: ModalConfig, secrets: ModalSecrets, route: string, opt: {method?: string; body?: unknown; timeoutMs?: number} = {}): Promise<Response> => {
+export const modalFetchWith = async (config: ModalConfig, secrets: ModalSecrets, route: string, opt: {method?: string; body?: unknown; timeoutMs?: number; headers?: Record<string, string>} = {}): Promise<Response> => {
   const url = validateModalEndpoint(config.endpointUrl);
   if (!url || !secrets.proxyTokenId || !secrets.proxyTokenSecret) throw new ModalError('ModalのURLとHTTP Proxy Tokenを設定してください', 503);
   let response: Response;
   try {
-    response = await fetch(`${url}${route}`, {method: opt.method ?? 'GET', redirect: 'error', signal: AbortSignal.timeout(opt.timeoutMs ?? 30_000), headers: {'Modal-Key': secrets.proxyTokenId, 'Modal-Secret': secrets.proxyTokenSecret, 'Content-Type': 'application/json'}, ...(opt.body !== undefined ? {body: JSON.stringify(opt.body)} : {})});
+    response = await fetch(`${url}${route}`, {method: opt.method ?? 'GET', redirect: 'error', signal: AbortSignal.timeout(opt.timeoutMs ?? 30_000), headers: {'Content-Type': 'application/json', ...opt.headers, 'Modal-Key': secrets.proxyTokenId, 'Modal-Secret': secrets.proxyTokenSecret}, ...(opt.body !== undefined ? {body: JSON.stringify(opt.body)} : {})});
   } catch {throw new ModalError('Modalに接続できませんでした。URL・接続状態を確認し、ジョブ送信時は履歴で受付状況を確認してください', 504);}
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) throw new ModalError('ModalのHTTP Proxy Tokenで認証できませんでした', 502);
     // Never reflect arbitrary upstream content or validation input (may contain credentials).
-    const messages: Record<number, string> = {400: 'Modalの入力検証に失敗しました', 404: 'Modalのジョブまたは結果が見つかりません', 409: 'GPUジョブが実行中、または設定とバックエンドが一致しません', 413: 'Modalの入力サイズ上限を超えています', 422: 'Modalの入力形式が不正です', 429: 'Modalの月間予算またはアクセス上限に達しました'};
+    const messages: Record<number, string> = {400: 'Modalの入力検証に失敗しました', 404: 'Modalのジョブまたは素材が見つかりません', 409: 'GPUジョブが実行中、素材の転送が未完了、または必要な素材・音声が不足しています', 410: 'クラウド素材の保存期限が切れました。素材を再アップロードしてください', 413: 'Modalの入力サイズ上限を超えています', 416: '動画の読込範囲が不正です', 422: 'Modalの入力形式が不正です', 429: 'Modalの月間予算・保存容量またはアクセス上限に達しました'};
     await response.body?.cancel();
-    throw new ModalError(messages[response.status] ?? `Modal処理に失敗しました（HTTP ${response.status}）`, [400, 404, 409, 413, 422, 429].includes(response.status) ? response.status : 502);
+    throw new ModalError(messages[response.status] ?? `Modal処理に失敗しました（HTTP ${response.status}）`, [400, 404, 409, 410, 413, 416, 422, 429].includes(response.status) ? response.status : 502);
   }
   return response;
 };

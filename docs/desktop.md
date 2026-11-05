@@ -2,7 +2,7 @@
 
 ## 利用者の使い方
 
-1. `Reel-Studio-0.4.13-Setup.exe` を実行します。
+1. `Reel-Studio-0.4.14-Setup.exe` を実行します。
 2. インストール先を選び、完了後に「Reel Studio」を起動します。
 3. デスクトップまたはスタートメニューの「Reel Studio」から次回も起動できます。
 

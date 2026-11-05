@@ -18,7 +18,7 @@ STARTUP_SECONDS = 180
 SCALEDOWN_SECONDS = 2
 MAX_BUDGET_USD = 25.0
 MAX_JOB_SECONDS = 600
-MAX_RESULT_BYTES = 64 * 1024 * 1024
+MAX_RESULT_BYTES = 256 * 1024 * 1024
 TERMINAL = {"completed", "failed", "cancelled"}
 
 
@@ -32,7 +32,11 @@ def month_key():
 
 class JobInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["gpu-test", "text-to-image", "image-to-image", "image-to-video", "text-to-video"]
+    kind: Literal["gpu-test", "text-to-image", "image-to-image", "image-to-video", "text-to-video", "remotion-render", "prepare-media"]
+    sessionId: UUID | None = None
+    cuts: dict | None = None
+    narration: dict | None = None
+    draft: bool = False
     prompt: str = Field(default="", max_length=2000)
     negativePrompt: str = Field(default="", max_length=1000)
     width: int = Field(default=512, ge=256, le=768, multiple_of=32)
@@ -49,6 +53,12 @@ class JobInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_task(self):
+        from modal_backend.render_contracts import CLOUD_KINDS, validate_render
+        if self.kind in CLOUD_KINDS:
+            validate_render(self)
+            return self
+        if self.sessionId or self.cuts or self.narration:
+            raise ValueError("unexpected render input")
         if self.kind != "gpu-test" and not self.prompt.strip():
             raise ValueError("prompt required")
         if (self.frames - 1) % 4:

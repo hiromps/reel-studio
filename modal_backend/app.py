@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -33,8 +34,27 @@ gpu_image = (modal.Image.debian_slim(python_version="3.11")
              .pip_install("diffusers==0.35.1", "transformers==4.56.2", "accelerate==1.10.1",
                           "safetensors==0.6.2", "sentencepiece==0.2.1", "Pillow==11.3.0",
                           "imageio==2.37.0", "imageio-ffmpeg==0.6.0", "pydantic==2.11.7", "ftfy==6.3.1")
-             .env({"HF_HOME": "/data/models", "HF_HUB_DISABLE_TELEMETRY": "1", "TOKENIZERS_PARALLELISM": "false"})
-             .add_local_python_source("modal_backend"))
+             .env({"HF_HOME": "/data/models", "HF_HUB_DISABLE_TELEMETRY": "1", "TOKENIZERS_PARALLELISM": "false"}))
+
+# Pinned Node/Remotion/Chrome live in the image, never downloaded on a GPU job.
+_root = Path(__file__).resolve().parent.parent
+gpu_image = (gpu_image
+    .apt_install('curl', 'xz-utils', 'libnss3', 'libatk1.0-0', 'libatk-bridge2.0-0',
+                 'libcups2', 'libdrm2', 'libxkbcommon0', 'libxcomposite1', 'libxdamage1',
+                 'libxfixes3', 'libxrandr2', 'libgbm1', 'libasound2', 'libpango-1.0-0', 'libcairo2')
+    .run_commands('cd /tmp && curl -fsSLO https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz && curl -fsSLo SHASUMS256.txt https://nodejs.org/dist/v24.21.0/SHASUMS256.txt && sha256sum --check --ignore-missing SHASUMS256.txt && tar -xJf node-v24.21.0-linux-x64.tar.xz --strip-components=1 -C /usr/local && rm node-v24.21.0-linux-x64.tar.xz SHASUMS256.txt')
+    .add_local_file(str(_root / 'modal_backend/render_runtime/package.json'), '/opt/reel/package.json', copy=True)
+    .add_local_file(str(_root / 'modal_backend/render_runtime/package-lock.json'), '/opt/reel/package-lock.json', copy=True)
+    .run_commands('cd /opt/reel && npm ci --omit=dev --no-audit --no-fund',
+                  'cd /opt/reel && node -e "require(\'@remotion/renderer\').ensureBrowser().then(v=>require(\'fs\').writeFileSync(\'chrome.json\',JSON.stringify(v)))"')
+    .add_local_dir(str(_root / 'engine/src'), '/opt/reel/engine/src', copy=True)
+    .add_local_dir(str(_root / 'engine/public/fonts'), '/opt/reel/engine/public/fonts', copy=True)
+    .add_local_dir(str(_root / 'shared'), '/opt/reel/shared', copy=True)
+    .add_local_file(str(_root / 'modal_backend/remotion_entry.tsx'), '/opt/reel/modal_backend/remotion_entry.tsx', copy=True)
+    .add_local_file(str(_root / 'modal_backend/render.mjs'), '/opt/reel/modal_backend/render.mjs', copy=True)
+    .add_local_file(str(_root / 'scripts/mix-narration.cjs'), '/opt/reel/scripts/mix-narration.cjs', copy=True)
+    .env({'REEL_REMOTION_ROOT': '/opt/reel', 'NVIDIA_DRIVER_CAPABILITIES': 'all'})
+    .add_local_python_source('modal_backend'))
 
 
 @app.function(image=gpu_image, gpu=GPU, cpu=(4, 4), memory=(65536, 65536),
@@ -49,6 +69,8 @@ def gpu_job(job_id: str, payload: dict):
 
     try:
         progress("loading", 1)
+        if payload['kind'] in {'remotion-render', 'prepare-media'}:
+            payload['_session'] = state['render-session:' + payload['sessionId']]
         storage.reload()
         # Single GPU writer; prune old outputs at the next explicitly allowed job.
         outputs = Path("/data/results")
@@ -64,18 +86,19 @@ def gpu_job(job_id: str, payload: dict):
             result_file = Path(temp) / "result.json"
             request_file.write_text(json.dumps(payload))
             with (Path(temp) / "worker.log").open("w") as log:
-                process = subprocess.Popen([sys.executable, "-m", "modal_backend.models",
+                module = 'modal_backend.cloud_worker' if payload['kind'] in {'remotion-render', 'prepare-media'} else 'modal_backend.models'
+                process = subprocess.Popen([sys.executable, "-m", module,
                     str(request_file), str(progress_file), str(result_file), job_id],
-                    stdout=log, stderr=log)
+                    stdout=log, stderr=log, start_new_session=True)
                 previous = None
                 try:
                     while process.poll() is None:
                         if time.monotonic() - started >= payload["maxSeconds"]:
-                            process.kill()
+                            os.killpg(process.pid, signal.SIGKILL)
                             process.wait()
                             raise TimeoutError("JOB_TIMEOUT")
                         if disk_usage_bytes(Path('/data')) > 80 * 1024**3:
-                            process.kill()
+                            os.killpg(process.pid, signal.SIGKILL)
                             process.wait()
                             raise RuntimeError("STORAGE_LIMIT")
                         if progress_file.exists():
@@ -89,7 +112,7 @@ def gpu_job(job_id: str, payload: dict):
                         time.sleep(1)
                 finally:
                     if process.poll() is None:
-                        process.kill()
+                        os.killpg(process.pid, signal.SIGKILL)
                         process.wait()
             if process.returncode != 0:
                 if result_file.exists():
@@ -129,6 +152,7 @@ def api():
 
     web = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     local_lock = asyncio.Lock()
+    media = None
 
     @asynccontextmanager
     async def control_lock():
@@ -200,6 +224,10 @@ def api():
                     j.update(status="failed", error=result["error"])
                 else:
                     j.update(status="completed", progress=100)
+                    if result.get('sessionUpdate'):
+                        await media['apply_result'](result)
+                    if result.get('renderInfo'):
+                        j['renderInfo'] = result['renderInfo']
                     if result.get("gpuInfo"):
                         j["gpuInfo"] = result["gpuInfo"]
                         v["gpuInfo"] = result["gpuInfo"]
@@ -239,7 +267,10 @@ def api():
                 "activeJobId": active, "source": "estimate", "billingUrl": "https://modal.com/docs/guide/budgets",
                 "note": "保守的な予約額。起動・実行上限・CPU・メモリ・80GiBストレージ・転送・余裕分を含む。実際の請求額とは異なります。他アプリの使用量は含みません。月はUTC暦月。"},
             "jobs": [public_job(j) for j in list(v["jobs"].values())[-100:]][::-1],
-            "gpuInfo": v["gpuInfo"], "scaling": {"minContainers": 0, "maxContainers": 1, "scaledownSeconds": SCALEDOWN_SECONDS}}
+            "gpuInfo": v["gpuInfo"], "capabilities": ['cloud-render-v1'], "scaling": {"minContainers": 0, "maxContainers": 1, "scaledownSeconds": SCALEDOWN_SECONDS}}
+
+    from modal_backend.media import mount_media
+    media = mount_media(web, state, storage, control_lock, ledger)
 
     @web.get("/health")
     async def health():
@@ -270,11 +301,14 @@ def api():
             v = await ledger()
             job_id = str(payload.requestId)
             import hashlib
-            fingerprint = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+            excluded = {'sessionId', 'cuts', 'narration', 'draft'} if payload.kind not in {'remotion-render', 'prepare-media'} else set()
+            fingerprint = hashlib.sha256(payload.model_dump_json(exclude=excluded).encode()).hexdigest()
             if job_id in v["jobs"]:
                 if v["jobs"][job_id]["fingerprint"] != fingerprint:
                     raise HTTPException(409, "Request ID already used")
                 return public_job(v["jobs"][job_id])
+            if payload.kind in {'remotion-render', 'prepare-media'}:
+                await media['validate_job'](payload)
             view = dashboard(v)
             if view["usage"]["activeJobId"]:
                 raise HTTPException(409, "One GPU job at a time")
@@ -288,6 +322,8 @@ def api():
             job = {"id": job_id, "kind": payload.kind, "status": "queued", "progress": 0,
                 "createdAt": utc_now(), "maxSeconds": payload.maxSeconds,
                 "estimatedCostUsd": cost, "fingerprint": fingerprint}
+            if payload.sessionId:
+                job['sessionId'] = str(payload.sessionId)
             v["jobs"][job_id] = job
             v["months"].setdefault(month_key(), {})[job_id] = cost
             v["recent"].append(now)

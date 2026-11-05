@@ -42,6 +42,7 @@ export type AssetRow = {kind: string; mode: string; relPath: string; hash: strin
 
 export class CloudClient {
   constructor(private cfg: CloudConfig) {}
+  publishModalProject = (slug: string, project: import('../shared/modal-render').ModalRenderProject) => this.call('POST', `/modal/render-project/${encodeURIComponent(slug)}`, project);
 
   get baseUrl(): string {
     return this.cfg.url;

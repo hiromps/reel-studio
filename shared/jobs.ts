@@ -4,6 +4,7 @@
 /** ジョブ種別の唯一の定義。サーバーの受け口も GUI のボタンもこれを見る（二重管理にしない） */
 export const JOB_TYPES = [
   'modal-import',
+  'modal-upload',
   'catalog',
   'thumbs',
   'proxy',

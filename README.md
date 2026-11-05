@@ -4,7 +4,9 @@
 
 ナレーション音声ごとに [固定感情タグ](docs/emotion-tags.md) を選び、その感情で1本だけ再生成できます。共通カット案件では一括適用・聞き比べも利用できます。縦書きテロップ内の半角数字は自動で横並びになります。
 
-一般利用者向けのWindows版は **`Reel-Studio-0.4.13-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
+一般利用者向けのWindows版は **`Reel-Studio-0.4.14-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
+
+**Modalクラウド書き出し**：書き出し画面で「Modalクラウド」を選ぶと、端末のGPUを使わずに完成MP4を作れます。Web/PWAの素材画面ではスマホから動画を転送し、軽量プレビューで編集できます。素材の転送とGPU処理はそれぞれ明示的に許可して実行します。[利用手順と制限](docs/modal-cloud-gpu.md#通常動画のクラウド書き出し0414)。
 
 ソースから使う場合は、ZIPを展開して「Reel Studio セットアップ.cmd」を実行してください。[開発用セットアップ](docs/setup.md)も用意しています。
 
@@ -14,8 +16,8 @@ cut order from a set of proven formats, writes the telops and the narration scri
 Claude Code, synthesizes the voice with Fish Audio, renders with Remotion, mixes, and drops a
 deliverable (video + caption) into an `outputs/` folder.
 
-Everything runs on your machine. Your API key and your "personas" (voice, tone, caption style)
-live in `~/.reel-studio/`, outside the repository.
+Local processing runs on your machine; optional Modal rendering uploads only the selected project's media after confirmation. Your API key and your "personas" (voice, tone, caption style)
+live in `~/.reel-studio/`, outside the repository. Modal credentials are encrypted separately.
 
 - **Requirements**: Node.js 22+, `ffmpeg` / `ffprobe` with libsoxr (Windows setup installs missing tools),
   [Claude Code](https://claude.com/claude-code) installed and logged in (`claude` on PATH),

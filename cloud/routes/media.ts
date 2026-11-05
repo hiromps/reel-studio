@@ -5,9 +5,12 @@ import {isAssetKind, isAssetMode} from '../../shared/media';
 import {requireLocalMedia} from '../../core/local-media';
 import {findAsset} from '../store';
 import {normalizeSlug} from '../../shared/project';
+import {serveModalRenderMedia} from '../../core/modal-render-router';
+import {cloudModalRender} from '../modal-render';
 
 export const mediaRouter = Router();
 mediaRouter.get('/p/:slug/:mode/:kind/*', async (req, res) => {
+  if (req.params.slug !== '_global' && await serveModalRenderMedia(req, res, cloudModalRender)) return;
   if (process.env.VERCEL) return res.status(409).json({error: 'メディアは PC にあります。PC の Reel Studio で開いてください'});
   const slug = req.params.slug === '_global' ? '_global' : normalizeSlug(req.params.slug);
   const {mode, kind} = req.params;

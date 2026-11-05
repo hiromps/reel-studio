@@ -1,4 +1,6 @@
 import {Router, type RequestHandler} from 'express';
+import {createModalRenderRouter} from '../../core/modal-render-router';
+import {cloudModalRender} from '../modal-render';
 import {createHmac, timingSafeEqual} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -41,9 +43,10 @@ const wrap = (handler: RequestHandler): RequestHandler => (req, res, next) => {
 let windowStart = 0, requests = 0;
 cloudModalRouter.use((_req, res, next) => {
   if (Date.now() - windowStart > 60_000) {windowStart = Date.now(); requests = 0;}
-  if (++requests > 120) return res.status(429).json({error: '操作が多すぎます。少し待ってください'});
+  if (++requests > 600) return res.status(429).json({error: '操作が多すぎます。少し待ってください'});
   next();
 });
+cloudModalRouter.use('/render', createModalRenderRouter(cloudModalRender));
 const jobId = (id: string): string => {
   if (!z.string().uuid().safeParse(id).success) throw new ModalError('ジョブIDが不正です', 400);
   return id;

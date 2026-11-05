@@ -20,6 +20,7 @@ import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
 import {colorFilter, isDefaultColor} from '@shared/color';
 import {ModalGenerateCard} from '../components/ModalCloud';
+import {CloudRenderCard} from '../components/CloudRender';
 
 const KINDS: ClipKind[] = ['exterior', 'signage', 'interior', 'menu', 'cooking', 'serving', 'eating', 'sizzle', 'person', 'conversation', 'detail', 'other'];
 
@@ -211,6 +212,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
 
   return (
     <div className="page">
+      {s.isCloud && <CloudRenderCard materials />}
       <ModalGenerateCard />
       <section className="card" data-tour="materials-folder">
         <h2>素材フォルダ</h2>

@@ -26,7 +26,7 @@ class FakeState:
         self.data = {}
         self.get = AsyncMethod(lambda key, default=None: copy.deepcopy(self.data.get(key, default)))
         self.put = AsyncMethod(self.write)
-        self.pop = AsyncMethod(lambda key: self.data.pop(key))
+        self.pop = AsyncMethod(lambda key, default=None: self.data.pop(key, default))
 
     def write(self, key, value, skip_if_exists=False):
         if skip_if_exists and key in self.data:

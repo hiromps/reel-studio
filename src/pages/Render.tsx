@@ -23,11 +23,14 @@ import {RenderTerms, RenderTermsToggle, termHint} from '../components/RenderTerm
 import {useEmotionTags} from '../hooks/useEmotionTags';
 import {useNarrationRegeneration} from '../hooks/useNarrationRegeneration';
 import {NarrationEmotion} from '../components/NarrationEmotion';
+import {CloudRenderCard} from '../components/CloudRender';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 
 export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'settings') => void}> = ({onTab}) => {
   const s = useStudio();
+  const [selectedRenderTarget, setRenderTarget] = useState<'pc' | 'modal' | null>(null);
+  const renderTarget = selectedRenderTarget ?? (s.isCloud ? 'modal' : 'pc');
   const emotionOptions = useEmotionTags();
   const narrationRegeneration = useNarrationRegeneration();
   const [sel, setSel] = useState<string | null>(null);
@@ -261,10 +264,13 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
 
   return (
     <div className="page">
-      <BuildCard onTab={onTab} />
+      <section className="card modal-cloud">
+        <label>書き出す場所<select value={renderTarget} onChange={e => setRenderTarget(e.target.value as 'pc' | 'modal')}><option value="modal">Modalクラウド（端末のGPU不要）</option><option value="pc">PCで書き出し</option></select></label>
+      </section>
+      {renderTarget === 'modal' ? <CloudRenderCard /> : <BuildCard onTab={onTab} />}
       {liveJob && <AiJobStatus job={liveJob} onCancel={(id) => void s.cancelJob(id)} lines={4} />}
 
-      <section className="card" data-tour="render-run">
+      {renderTarget === 'pc' && <section className="card" data-tour="render-run">
         <h2>
           レンダー（手動） <RenderTermsToggle open={termsOpen} onToggle={() => setTermsOpen((v) => !v)} />
         </h2>
@@ -382,7 +388,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
             <button onClick={() => s.addJob('npm-install')} title={termHint('npm install')}>npm install</button>
           </div>
         </details>
-      </section>
+      </section>}
 
       <section className="card" data-tour="narration" id="narration-audio">
         <div className="summary">

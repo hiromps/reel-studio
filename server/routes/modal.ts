@@ -9,6 +9,9 @@ import {ModalError, modalJson, testModalSdk, validateModalEndpoint} from '../../
 import {downloadModalResult} from '../../core/modal-results';
 import {resolveProjectDirStrict} from '../../core/project';
 import {jobs} from '../jobs';
+import {createModalRenderRouter} from '../../core/modal-render-router';
+import {localModalRender} from '../modal-render';
+import {localRenderSnapshot, publishLocalModalProject} from '../../core/modal-render';
 
 // Local same-origin capability, required for EVERY Modal route after bootstrap.
 // Never persisted, placed in a URL, logged, or accepted from cross-origin pages.
@@ -36,9 +39,10 @@ modalRouter.use(auth);
 let windowStart = 0, requests = 0;
 modalRouter.use((_req, res, next) => {
   if (Date.now() - windowStart > 60_000) {windowStart = Date.now(); requests = 0;}
-  if (++requests > 120) return res.status(429).json({error: 'アクセスが多すぎます。少し待ってください'});
+  if (++requests > 600) return res.status(429).json({error: 'アクセスが多すぎます。少し待ってください'});
   next();
 });
+modalRouter.use('/render', createModalRenderRouter(localModalRender));
 const wrap = (handler: RequestHandler): RequestHandler => (req, res, next) => {
   Promise.resolve().then(() => handler(req, res, next)).catch(error => {
     if (res.headersSent) return res.end();
@@ -50,6 +54,18 @@ const jobId = (id: string) => {
   if (!z.string().uuid().safeParse(id).success) throw new ModalError('ジョブIDが不正です', 400);
   return id;
 };
+modalRouter.post('/render/projects/:slug/upload-local', wrap((req, res) => {
+  const input = z.object({sessionId: z.string().uuid(), allowUpload: z.literal(true)}).strict().safeParse(req.body);
+  if (!input.success) throw new ModalError('素材アップロードを許可してください', 400);
+  const dir = resolveProjectDirStrict(req.params.slug);
+  localRenderSnapshot(dir); // Reject missing media/audio before queueing anything.
+  const existing = jobs.list().find(j => j.type === 'modal-upload' && j.slug === path.basename(dir) && j.params.sessionId === input.data.sessionId);
+  res.status(202).json(existing ?? jobs.publicJob(jobs.add('modal-upload', path.basename(dir), input.data)));
+}));
+modalRouter.post('/render/projects/:slug/publish', wrap(async (req, res) => {
+  const dir = resolveProjectDirStrict(req.params.slug);
+  res.json(await publishLocalModalProject(path.basename(dir)));
+}));
 
 modalRouter.get('/settings', wrap((_req, res) => {res.json(modalSettingsView());}));
 modalRouter.put('/settings', wrap((req, res) => {

@@ -17,3 +17,8 @@
 .modal-preview { display: grid; gap: 12px; margin-block: 16px; }
 .modal-preview video, .modal-preview img { width: min(100%, 512px); max-height: 480px; object-fit: contain; border-radius: 8px; }
 .modal-cloud details > summary { padding-block: 12px; cursor: pointer; }
+.cloud-render { overflow-wrap: anywhere; }
+.cloud-render > label, .cloud-upload > label:not(.modal-consent) { display: flex; flex-direction: column; gap: 8px; }
+.cloud-render select, .cloud-render input[type=file] { width: 100%; max-width: 100%; box-sizing: border-box; }
+.cloud-render progress { width: min(100%, 400px); }
+.cloud-render a.button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }

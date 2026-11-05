@@ -18,7 +18,7 @@ vi.mock('../cloud/db/client', async () => {
       if (name === state.failOn) throw new Error('simulated database write failure');
       const old = state.rows.get(String(name));
       state.rows.set(String(name), {name, data: JSON.parse(String(json)), hash, rev: (old?.rev ?? 0) + 1, updatedBy: actor, updatedAt: new Date()});
-      return [];
+      return parsed.sql.includes('RETURNING rev') ? [{rev: (old?.rev ?? 0) + 1}] : [];
     },
     update: () => ({set: () => ({where: async () => {}})}),
   };
@@ -29,7 +29,7 @@ vi.mock('../cloud/db/client', async () => {
   }};
   return {db: () => client, rowsOf: (v: unknown) => Array.isArray(v) ? v : []};
 });
-import {writeDoc} from '../cloud/store';
+import {writeDoc, writeModalMedia, docEtag} from '../cloud/store';
 import {createReelCut} from '../shared/reel-cuts';
 beforeEach(() => {state.rows.clear(); state.failOn = ''; state.transactions = 0; state.rollbacks = 0;});
 const input = () => [createReelCut('uploads/dish.mp4', undefined, {line: 'お肉の旨みがすごいです'})];
@@ -68,4 +68,22 @@ it('一部の書き込みが失敗したら原本も互換ドキュメントも�
   const snapshot = structuredClone(state.rows); state.failOn = 'narration';
   await expect(writeDoc('shop-reel', 'reelCuts', input(), {by: 'cloud'})).rejects.toThrow('simulated');
   expect(state.rows).toEqual(snapshot); expect(state.rollbacks).toBe(1);
+});
+it('クラウド素材の取り込みは素材一覧・共通JSON・タイムラインをまとめて保存する', async () => {
+  await writeDoc('shop-reel', 'reelCuts', input(), {by: 'cloud'});
+  const old = state.rows.get('cuts');
+  const cuts = structuredClone(old.data); cuts.cuts.push({id: 'new', src: 'uploads/new.mp4', inSec: 0, outSec: 2});
+  const expected = {catalogEtag: null, cutsEtag: docEtag(old.rev, old.hash)};
+  expect(await writeModalMedia('shop-reel', {clips: []}, cuts, expected)).toBe(true);
+  expect(state.rows.get('catalog').data).toEqual({clips: []});
+  expect(state.rows.get('reelCuts').data).toHaveLength(2);
+  expect(state.rows.get('cuts').data.cuts[1].id).toBe('new');
+  const snapshot = structuredClone(state.rows);
+  expect(await writeModalMedia('shop-reel', {clips: []}, cuts, expected)).toBe(false);
+  expect(state.rows).toEqual(snapshot);
+});
+it('クラウド素材の取り込み途中で失敗したら素材一覧もロールバックする', async () => {
+  state.failOn = 'cuts';
+  await expect(writeModalMedia('shop-reel', {clips: []}, {fps: 30, cuts: []}, {catalogEtag: null, cutsEtag: null})).rejects.toThrow('simulated');
+  expect(state.rows.size).toBe(0); expect(state.rollbacks).toBe(1);
 });

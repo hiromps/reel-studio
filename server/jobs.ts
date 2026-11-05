@@ -41,6 +41,7 @@ import {formatOrderCheck} from '../shared/order';
 import {studioConfig} from '../studio.config';
 import {canStartJob, type JobType} from '../shared/jobs';
 import {importModalResult} from '../core/modal-results';
+import {uploadModalProject} from '../core/modal-render';
 
 export {JOB_TYPES, type JobType} from '../shared/jobs';
 
@@ -175,6 +176,10 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
   const {onLine, signal} = ctx;
   const p = job.params;
   switch (job.type) {
+      case 'modal-upload': {
+        if (p.allowUpload !== true || typeof p.sessionId !== 'string' || !/^[a-f0-9-]{36}$/.test(p.sessionId)) throw new Error('素材アップロードの許可とIDが必要です');
+        return uploadModalProject(dir, p.sessionId, signal, ctx.onProgress);
+      }
       case 'modal-import': {
         if (typeof p.id !== 'string') throw new Error('ModalジョブIDが必要です');
         return importModalResult(p.id, dir, signal, onLine);

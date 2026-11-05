@@ -21,7 +21,7 @@ export const ModalSettingsPatchSchema = ModalConfigSchema.partial().extend({
 
 export const MODAL_TASKS = ['gpu-test', 'text-to-image', 'image-to-image', 'image-to-video', 'text-to-video'] as const;
 export type ModalTask = typeof MODAL_TASKS[number];
-export const MODAL_TASK_LABEL: Record<ModalTask, string> = {'gpu-test': 'GPU接続テスト', 'text-to-image': 'Text to Image', 'image-to-image': 'Image to Image', 'image-to-video': 'Image to Video', 'text-to-video': 'Text to Video'};
+export const MODAL_TASK_LABEL: Record<ModalTask | 'remotion-render' | 'prepare-media', string> = {'gpu-test': 'GPU接続テスト', 'text-to-image': 'Text to Image', 'image-to-image': 'Image to Image', 'image-to-video': 'Image to Video', 'text-to-video': 'Text to Video', 'remotion-render': 'クラウド書き出し', 'prepare-media': '軽量プレビュー作成'};
 export const MODAL_STATUS_LABEL = {queued: '待機中', loading: 'モデル読込中', running: '生成中', completed: '完了', failed: 'エラー', cancelling: '中止処理中', cancelled: '中止'} as const;
 export type ModalJobStatus = keyof typeof MODAL_STATUS_LABEL;
 export const ModalJobInputSchema = z.object({
@@ -45,6 +45,6 @@ export const ModalJobInputSchema = z.object({
 });
 export type ModalJobInput = z.infer<typeof ModalJobInputSchema>;
 export type ModalGpuInfo = {name: string; memoryTotalMiB: number; memoryUsedMiB: number; cudaAvailable: boolean; cudaVersion: string; torchVersion: string; capability: string; checkedAt: string};
-export type ModalJob = {id: string; kind: ModalTask; status: ModalJobStatus; progress: number; createdAt: string; endedAt?: string; estimatedCostUsd: number; maxSeconds: number; model?: string; error?: string; resultType?: 'image/png' | 'video/mp4'; gpuInfo?: ModalGpuInfo};
+export type ModalJob = {id: string; kind: ModalTask | 'remotion-render' | 'prepare-media'; status: ModalJobStatus; progress: number; createdAt: string; endedAt?: string; estimatedCostUsd: number; maxSeconds: number; model?: string; error?: string; resultType?: 'image/png' | 'video/mp4' | 'application/json'; gpuInfo?: ModalGpuInfo; sessionId?: string; phase?: string; renderInfo?: import('./modal-render').ModalRenderInfo};
 export type ModalUsage = {month: string; budgetUsd: number; committedUsd: number; overheadReserveUsd: number; remainingUsd: number; activeJobId: string | null; source: 'estimate'; billingUrl: string; note: string};
 export type ModalDashboard = {ok: boolean; gpu: string; config: {monthlyBudgetUsd: number; maxJobSeconds: number}; usage: ModalUsage; jobs: ModalJob[]; gpuInfo: ModalGpuInfo | null; scaling: {minContainers: number; maxContainers: number; scaledownSeconds: number}};

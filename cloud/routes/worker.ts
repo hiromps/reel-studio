@@ -49,6 +49,16 @@ workerRouter.get('/modal/jobs/:id', async (req, res) => {
   catch {res.status(502).json({error: 'Modalの生成結果を確認できませんでした'});}
 });
 workerRouter.get('/modal/jobs/:id/result', cloudModalResultHandler);
+workerRouter.post('/modal/render-project/:slug', async (req, res) => {
+  const slug = normalizeSlug(req.params.slug);
+  const input = z.object({sessionId: z.string().uuid(), uploadedAt: z.string().datetime(), lastJobId: z.string().uuid().optional(), audioFingerprint: z.string().regex(/^[a-f0-9]{8}$/).optional()}).strict().safeParse(req.body);
+  if (!input.success) return res.status(400).json({error: 'クラウド素材の情報が不正です'});
+  if (!(await readDocs(slug)).some(d => d.name === 'brief')) return res.status(404).json({error: '案件がありません'});
+  const session = await cloudModalJson<import('../../shared/modal-render').ModalSession>(`/render/sessions/${input.data.sessionId}`);
+  if (!session.files.every(f => f.complete)) return res.status(409).json({error: '素材転送が完了していません'});
+  await kvSet('modal-render-project:' + slug, input.data);
+  res.json({ok: true});
+});
 workerRouter.post('/video-styles', async (req, res) => {
   const parsed = VideoStyleEntrySchema.array().safeParse(req.body?.entries);
   if (!parsed.success) return res.status(400).json({error: '動画の型の形式が不正です'});

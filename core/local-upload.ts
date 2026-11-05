@@ -29,8 +29,9 @@ export const saveLocalUpload = async (body: Readable, folder: string, name: stri
     hash.update(chunk);
     callback(null, chunk);
   }});
+  const output = fs.createWriteStream(temp, {flags: 'wx'});
   try {
-    await pipeline(body, check, fs.createWriteStream(temp, {flags: 'wx'}));
+    await pipeline(body, check, output);
     if (!bytes) throw new Error('素材ファイルの中身がありません');
     const digest = hash.digest('hex');
     try {
@@ -45,6 +46,10 @@ export const saveLocalUpload = async (body: Readable, folder: string, name: stri
       return {file: target, folder: safeFolder, reused: true};
     }
   } finally {
+    // A rejected input can precede the asynchronous Windows open/close callbacks.
+    // Wait for the writer before removing its temporary file.
+    output.destroy();
+    if (!output.closed) await new Promise<void>(resolve => output.once('close', resolve));
     fs.rmSync(temp, {force: true});
   }
 };
