@@ -19,6 +19,7 @@ import {hasReelCuts} from './reel-cuts';
 import {ensureProjectFont, type FontDelivery} from './fonts';
 import {pendingAliases, applyAliases} from './alias';
 import {loadSettings} from './settings';
+import {detectLocalGpu} from './local-gpu';
 import {resolveThumbnail, THUMBNAIL_REL} from '../shared/thumbnail';
 
 export type RenderProgress = {phase: 'bundle' | 'render' | 'stitch' | 'other'; done: number; total: number; attempt: number};
@@ -60,6 +61,7 @@ export type RenderOptions = {
 };
 
 export type RenderResult = {
+  encoder?: 'h264_nvenc' | 'h264_videotoolbox' | 'libx264';
   ok: boolean;
   attempts: number;
   outPath: string;
@@ -238,17 +240,23 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
   if (pf.font.missing) warnings.push(`テロップのフォント ${pf.font.file} が見つかりません（設定の置き場の fonts/ にも案件の public/fonts/ にも無い）。同梱の明朝で描かれます`);
   let attempts = 0;
   let last: ExecResult | null = null;
+  const device = await detectLocalGpu(projectDir);
+  let hardware = device.available && opt.crf === undefined;
+  let hardwareFailed = false;
+  if (hardware) log(`対応GPUを優先します: ${device.name} (${device.encoder})`);
+  else if (device.available && opt.crf !== undefined) log('CRFの明示指定を優先し、CPUでエンコードします');
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  for (let attempt = 1; attempt <= retries + (hardwareFailed ? 1 : 0); attempt++) {
     attempts = attempt;
     const low = pf.lowMemory || attempt >= 2;
     const gl = opt.gl ?? 'swiftshader';
     const concurrency = opt.concurrency ?? (opt.draft || low ? 1 : undefined);
     const cache = opt.cacheBytes ?? (low ? 128 * 1024 * 1024 : 256 * 1024 * 1024);
-    const args = ['render', 'GourmetReel', outAbs, '--codec=h264', `--crf=${opt.crf ?? (opt.draft ? 30 : 20)}`, `--gl=${gl}`, `--offthreadvideo-cache-size-in-bytes=${cache}`, '--overwrite'];
+    const encoding = hardware ? ['--hardware-acceleration=required', `--video-bitrate=${opt.draft ? '2M' : '8M'}`] : ['--hardware-acceleration=disable', `--crf=${opt.crf ?? (opt.draft ? 30 : 20)}`];
+    const args = ['render', 'GourmetReel', outAbs, '--codec=h264', ...encoding, `--gl=${gl}`, `--offthreadvideo-cache-size-in-bytes=${cache}`, '--overwrite'];
     if (concurrency) args.push(`--concurrency=${concurrency}`);
     if (opt.draft) args.push('--scale=0.25');
-    if (attempt >= 3) args.push('--x264-preset=veryfast');
+    if (attempt >= 3 && !hardware) args.push('--x264-preset=veryfast');
     if (renderProps) args.push(`--props=${path.resolve(renderProps)}`);
     const logFile = path.join(logsDir, `render-${fileStamp()}-try${attempt}.log`);
     logs.push(logFile);
@@ -275,6 +283,11 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
     const output = r.stdout + r.stderr;
     if (r.code === 0 && fs.existsSync(outAbs) && !RETRY_PATTERNS.test(output.slice(-4000))) break;
     if (opt.signal?.aborted) throw new Error('中断された');
+    if (hardware) {
+      hardware = false; hardwareFailed = true;
+      const message = 'GPUでの書き出しに失敗したため、CPUへ切り替えて再試行します';
+      warnings.push(message); log(message); continue;
+    }
     const reason = r.code !== 0 ? `exit ${r.code}` : 'エラーパターン検出';
     log(`[try ${attempt}] 失敗（${reason}）`);
     if (attempt < retries) {
@@ -314,6 +327,7 @@ export async function renderProject(opt: RenderOptions): Promise<RenderResult> {
     }
   }
   const result: RenderResult = {
+    encoder: hardware ? device.encoder! : 'libx264',
     ok: true,
     attempts,
     outPath: outAbs,

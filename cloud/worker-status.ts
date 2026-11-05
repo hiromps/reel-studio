@@ -6,6 +6,8 @@ import type {MosaicStatus} from '../shared/schema/settings';
 export const WORKER_ONLINE_MS = 60_000;
 
 export type WorkerStatus = {
+  renderDevice?: import('../shared/render-device').RenderDevice;
+  localRenderProjects?: import('../shared/render-device').LocalRenderProject[];
   lastSeen: string;
   host: string | null;
   node: string | null;

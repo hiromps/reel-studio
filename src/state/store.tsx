@@ -66,6 +66,8 @@ type Store = {
      * 未指定（ローカルのサーバー）は今までどおり全部この PC で動く。
      */
     mode?: 'cloud';
+    renderDevice?: import('@shared/render-device').RenderDevice | null;
+    localRenderProjects?: import('@shared/render-device').LocalRenderProject[];
     /** クラウド版のみ。PC のワーカーが繋がっているか */
     worker?: {online: boolean; lastSeen: string | null; node: string | null; ffmpeg: string | null; ffprobe: string | null; host: string | null};
   } | null;
@@ -197,6 +199,20 @@ export const StudioProvider: React.FC<{children: React.ReactNode}> = ({children}
     const c = await api.get<Store['config']>('/api/config');
     setConfig(c.data);
   }, []);
+  useEffect(() => {
+    if (config?.mode !== 'cloud') return;
+    let stopped = false, loading = false;
+    const refresh = async () => {
+      if (loading || document.visibilityState === 'hidden') return;
+      loading = true;
+      try {const next = await api.get<Store['config']>('/api/config'); if (!stopped) setConfig(next.data);} catch { /* Preserve the last known state during a temporary connection error. */ }
+      finally {loading = false;}
+    };
+    const id = window.setInterval(() => {void refresh();}, 30_000);
+    const onFocus = () => {void refresh();};
+    window.addEventListener('focus', onFocus); document.addEventListener('visibilitychange', onFocus);
+    return () => {stopped = true; clearInterval(id); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus);};
+  }, [config?.mode]);
 
   const loadFile = useCallback(async <K extends ContractName>(name: K, opt: {byJob?: string} = {}) => {
     const slug = activeRef.current;

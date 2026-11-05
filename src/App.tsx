@@ -19,6 +19,7 @@ import {readTheme, saveTheme, type Theme} from './theme';
 import {AGENT_PROVIDER_LABEL, type AgentStatus} from '@shared/schema/settings';
 import {version} from '../package.json';
 import {PwaUpdateNotice} from './components/PwaUpdateNotice';
+import {CloudAvailabilityNotice} from './components/CloudAvailabilityNotice';
 
 const TABS: {id: TourTab; label: string; sub: string}[] = [
   {id: 'projects', label: '案件', sub: '一覧'},
@@ -69,6 +70,7 @@ export const App: React.FC = () => {
   const [tour, setTour] = useState(false);
   const [tourDone, setTourDone] = useStringPref('reel-studio.tourDone', '');
   const [nextBarPref, setNextBarPref] = useStringPref('reel-studio.nextbar', '1');
+  const [cloudNotice, setCloudNotice] = useStringPref('reel-studio.cloudNotice', '1');
   const nextBarHidden = nextBarPref === '0';
   const [theme, setTheme] = useState<Theme>(readTheme);
   const toggleTheme = () => {
@@ -212,14 +214,8 @@ export const App: React.FC = () => {
       </header>
 
       {/* PCの接続状態と、独立したModal処理の利用可否を混同しない。 */}
-      {s.isCloud && s.config?.worker && !s.config.worker.online && (
-        <div className="offlinebar">
-          <span className="pill warn">PC未接続</span>
-          <span>
-            Modalの素材転送・軽量プレビュー・クラウド書き出しはPC接続不要です。AI台本・音声生成・PCでの書き出しなど、PCに依頼した処理は、PCでReel Studioを起動すると実行されます。
-            {s.config.worker.lastSeen && <> PCの最終応答: {new Date(s.config.worker.lastSeen).toLocaleString('ja-JP')}</>}
-          </span>
-        </div>
+      {s.isCloud && cloudNotice !== '0' && (
+        <CloudAvailabilityNotice worker={s.config?.worker} onHide={() => setCloudNotice('0')} />
       )}
       <InstallHint />
 
@@ -270,6 +266,8 @@ export const App: React.FC = () => {
       </div>
 
       <HelpPanel
+        cloudNoticeVisible={s.isCloud ? cloudNotice !== '0' : undefined}
+        onCloudNotice={s.isCloud ? show => setCloudNotice(show ? '1' : '0') : undefined}
         open={help}
         onClose={() => setHelp(false)}
         onTab={go}

@@ -10,6 +10,7 @@
 //   assets  … 生成物（サムネ・軽量プロキシ・完成動画）の登録
 import {Router} from 'express';
 import {z} from 'zod';
+import {RenderDeviceSchema, LocalRenderProjectsSchema} from '../../shared/render-device';
 import {cloudModalResultHandler} from './modal';
 import {cloudModalJson} from '../modal';
 import type {SettingsView} from '../../shared/schema/settings';
@@ -71,6 +72,8 @@ workerRouter.post('/video-styles', async (req, res) => {
 workerRouter.post('/hello', async (req, res) => {
   const b = (req.body ?? {}) as Partial<WorkerStatus>;
   const status: WorkerStatus = {
+    renderDevice: RenderDeviceSchema.safeParse(b.renderDevice).success ? RenderDeviceSchema.parse(b.renderDevice) : undefined,
+    localRenderProjects: LocalRenderProjectsSchema.safeParse(b.localRenderProjects).success ? LocalRenderProjectsSchema.parse(b.localRenderProjects) : [],
     lastSeen: new Date().toISOString(),
     host: b.host ?? null,
     node: b.node ?? null,

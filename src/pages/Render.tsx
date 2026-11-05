@@ -24,13 +24,16 @@ import {useEmotionTags} from '../hooks/useEmotionTags';
 import {useNarrationRegeneration} from '../hooks/useNarrationRegeneration';
 import {NarrationEmotion} from '../components/NarrationEmotion';
 import {CloudRenderCard} from '../components/CloudRender';
+import {preferredRenderTarget} from '@shared/render-device';
+import {useStringPref} from '../hooks/usePref';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 
 export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'settings') => void}> = ({onTab}) => {
   const s = useStudio();
-  const [selectedRenderTarget, setRenderTarget] = useState<'pc' | 'modal' | null>(null);
-  const renderTarget = selectedRenderTarget ?? (s.isCloud ? 'modal' : 'pc');
+  const [selectedRenderTarget, setRenderTarget] = useStringPref('reel-studio.renderTarget', 'auto');
+  const automaticTarget = preferredRenderTarget({cloud: s.isCloud, online: s.config?.worker?.online, device: s.config?.renderDevice, projects: s.config?.localRenderProjects, slug: s.active, cuts: s.files.cuts.data, narration: s.files.narration.data, dirty: s.files.cuts.dirty || s.files.narration.dirty});
+  const renderTarget = selectedRenderTarget === 'pc' || selectedRenderTarget === 'modal' ? selectedRenderTarget : automaticTarget;
   const emotionOptions = useEmotionTags();
   const narrationRegeneration = useNarrationRegeneration();
   const [sel, setSel] = useState<string | null>(null);
@@ -186,6 +189,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           sizeBytes?: number;
           durationSec?: number;
           attempts?: number;
+          encoder?: string;
           warnings?: string[];
           synced?: string[];
           applied?: number;
@@ -203,7 +207,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
           <div>
             <video src={`${s.mediaBase}/${r.outRel}?t=${j.endedAt}`} controls playsInline />
             <div className="hint">
-              {r.outRel} {r.sizeBytes ? `${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB` : ''} {r.frames !== undefined ? `${r.frames}f / 期待 ${r.expectedFrames}f` : ''} {r.durationSec ? `${r.durationSec.toFixed(2)}s` : ''} {r.attempts ? `（${r.attempts} 回目で成功）` : ''}
+              {r.outRel} {r.sizeBytes ? `${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB` : ''} {r.frames !== undefined ? `${r.frames}f / 期待 ${r.expectedFrames}f` : ''} {r.durationSec ? `${r.durationSec.toFixed(2)}s` : ''} {r.attempts ? `（${r.attempts} 回目で成功）` : ''} {r.encoder && `／ ${r.encoder}`}
             </div>
           </div>
         )}
@@ -265,7 +269,10 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
   return (
     <div className="page">
       <section className="card modal-cloud">
-        <label>書き出す場所<select value={renderTarget} onChange={e => setRenderTarget(e.target.value as 'pc' | 'modal')}><option value="modal">Modalクラウド（端末のGPU不要）</option><option value="pc">PCで書き出し</option></select></label>
+        <label>書き出す場所<select value={selectedRenderTarget} onChange={e => setRenderTarget(e.target.value)}><option value="auto">自動（対応するPCのGPUを優先）</option><option value="pc">PCで書き出し</option><option value="modal">Modalクラウド（端末のGPU不要）</option></select></label>
+        <p className="hint">{selectedRenderTarget === 'auto' ? `今回は${renderTarget === 'pc' ? 'PC' : 'Modalクラウド'}を使います。` : '選んだ書き出し先を優先します。'} Modalクラウドは対応GPUのあるPCでも選べます。</p>
+        {s.config?.renderDevice && <p className="hint">{s.config.renderDevice.available ? `対応GPU：${s.config.renderDevice.name}。PCでの書き出しではGPUエンコードを優先します。` : s.config.renderDevice.reason}</p>}
+        {s.isCloud && renderTarget === 'pc' && !s.config?.worker?.online && <p role="status">PCは未接続です。PCでReel Studioを起動すると、依頼した書き出しが始まります。</p>}
       </section>
       {renderTarget === 'modal' ? <CloudRenderCard /> : <BuildCard onTab={onTab} />}
       {liveJob && <AiJobStatus job={liveJob} onCancel={(id) => void s.cancelJob(id)} lines={4} />}

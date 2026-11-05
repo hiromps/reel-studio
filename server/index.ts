@@ -37,6 +37,7 @@ import {mediaRouter} from './routes/media';
 import {uploadsRouter} from './routes/uploads';
 import {settingsRouter} from './routes/settings';
 import {modalRouter} from './routes/modal';
+import {detectLocalGpu} from '../core/local-gpu';
 import {fontsRouter} from './routes/fonts';
 import {versionRouter} from './routes/version';
 import {personasRouter} from './routes/personas';
@@ -110,6 +111,7 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/config', async (_req, res) => {
   res.json({
+    renderDevice: await detectLocalGpu(),
     dataRoot: studioConfig.dataRoot,
     workDir: studioConfig.workDir,
     uploadsRoot: studioConfig.uploadsRoot,

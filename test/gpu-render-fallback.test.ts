@@ -1,0 +1,30 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {afterEach, expect, it, vi} from 'vitest';
+const cuts = vi.hoisted(() => ({fps:30,cuts:[{id:'one',src:'uploads/sample.mp4',inSec:0,outSec:1}]}));
+vi.mock('../core/local-gpu', () => ({detectLocalGpu: async () => ({available:true,encoder:'h264_nvenc',name:'Test GPU'})}));
+vi.mock('../core/project', () => ({readCuts:()=>cuts,readBrief:()=>null,engineDiff:()=>({stale:false}),engineFamily:()=> 'standard',syncEngine:()=>({synced:[]}),writeCuts:vi.fn(),npmInstall:vi.fn()}));
+vi.mock('../core/fonts', () => ({ensureProjectFont:()=>({copied:false,missing:false,file:null})}));
+vi.mock('../core/thumbnails', () => ({makeQcTile:async()=> 'tile.png'}));
+vi.mock('../core/ffprobe', () => ({countFrames:async()=>({frames:30,durationSec:1}),ffprobe:vi.fn()}));
+vi.mock('../core/exec', () => ({exec:vi.fn()}));
+import {exec} from '../core/exec';
+import {renderProject} from '../core/render';
+let temp:string;
+afterEach(()=>{if(temp&&path.resolve(temp).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(temp).startsWith('reel-gpu-fallback-'))fs.rmSync(temp,{recursive:true,force:true});vi.clearAllMocks();});
+it('GPU実行に失敗してもretries=1でCPUへ切り替え、CRFとGPU設定を混ぜない',async()=>{
+ temp=fs.mkdtempSync(path.join(os.tmpdir(),'reel-gpu-fallback-'));
+ for(const rel of ['public/uploads','node_modules/@remotion/cli'])fs.mkdirSync(path.join(temp,rel),{recursive:true});
+ fs.writeFileSync(path.join(temp,'public/uploads/sample.mp4'),'fixture');fs.writeFileSync(path.join(temp,'node_modules/@remotion/cli/remotion-cli.js'),'fixture');
+ vi.mocked(exec).mockImplementation((_bin,args)=>{
+  const gpu=args.includes('--hardware-acceleration=required');if(!gpu)fs.writeFileSync(path.join(temp,'out/final.mp4'),'output');
+  return Object.assign(Promise.resolve({code:gpu?1:0,stdout:'',stderr:gpu?'driver failed':'',signal:null,durationMs:1}),{child:null as any});
+ });
+ const r=await renderProject({projectDir:temp,retries:1,allowErrors:true,thumbnail:false});
+ expect(r.ok).toBe(true);expect(r.encoder).toBe('libx264');expect(r.attempts).toBe(2);
+ const first=vi.mocked(exec).mock.calls[0][1],second=vi.mocked(exec).mock.calls[1][1];
+ expect(first).toContain('--video-bitrate=8M');expect(first.some(a=>a.startsWith('--crf='))).toBe(false);
+ expect(second).toContain('--hardware-acceleration=disable');expect(second).toContain('--crf=20');
+ expect(r.warnings.some(w=>w.includes('CPUへ切り替え'))).toBe(true);
+});

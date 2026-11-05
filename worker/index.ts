@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
+import {detectLocalGpu, localGpuProjects} from '../core/local-gpu';
 import {loadEmotionTags} from '../core/emotion-tags';
 import {exec} from '../core/exec';
 import {claudeAvailable, claudeBin, claudeVersion, resetClaudeBin} from '../core/agent';
@@ -85,6 +86,8 @@ const refreshEnv = async (): Promise<void> => {
 };
 
 const status = async (running: {slug: string; type: string}[]): Promise<Omit<WorkerStatus, 'lastSeen'>> => ({
+  renderDevice: await detectLocalGpu(),
+  localRenderProjects: localGpuProjects(),
   host: os.hostname(),
   node: process.version,
   ffmpeg: env.ffmpeg,

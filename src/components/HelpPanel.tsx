@@ -49,6 +49,8 @@ const TERMS: {t: string; d: string}[] = [
 ];
 
 type Props = {
+  cloudNoticeVisible?: boolean;
+  onCloudNotice?: (show: boolean) => void;
   open: boolean;
   onClose: () => void;
   onTab: (t: TourTab) => void;
@@ -57,7 +59,7 @@ type Props = {
   onNextBar: (show: boolean) => void;
 };
 
-export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, nextBarHidden, onNextBar}) => {
+export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, nextBarHidden, onNextBar, cloudNoticeVisible, onCloudNotice}) => {
   const [sec, setSec] = useState<'flow' | 'timeline' | 'keys' | 'terms'>('flow');
 
   useEffect(() => {
@@ -136,8 +138,9 @@ export const HelpPanel: React.FC<Props> = ({open, onClose, onTab, onStartTour, n
               <h3>表示の設定</h3>
               <label className="sb-inline">
                 <input type="checkbox" checked={!nextBarHidden} onChange={(e) => onNextBar(e.target.checked)} />
-                <span>画面上に「次にやること」を表示する</span>
+                  <span>画面上に「次にやること」を表示する</span>
               </label>
+                {onCloudNotice && <label className="row"><input type="checkbox" checked={cloudNoticeVisible} onChange={e => onCloudNotice(e.target.checked)} /><span>PCなしで使える機能の案内を表示する</span></label>}
             </>
           )}
 

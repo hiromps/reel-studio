@@ -138,6 +138,8 @@ miscRouter.get('/config', async (_req, res) => {
     uploadsFolders: w?.uploadsFolders ?? [],
     // ── ここからクラウド版だけが返すもの（画面がローカル専用 UI を隠すのに使う） ──
     mode: 'cloud' as const,
+    renderDevice: online ? w?.renderDevice ?? null : null,
+    localRenderProjects: online ? w?.localRenderProjects ?? [] : [],
     worker: {online, lastSeen: w?.lastSeen ?? null, node: w?.node ?? null, ffmpeg: w?.ffmpeg ?? null, ffprobe: w?.ffprobe ?? null, host: w?.host ?? null},
   });
 });
