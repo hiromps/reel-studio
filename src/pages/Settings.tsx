@@ -806,7 +806,7 @@ const CloudCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
       <section className="card">
         <h2>クラウド接続</h2>
         <p className="hint">
-          この画面はクラウド版です。重い処理（素材のカタログ化・AI・レンダー）は自宅の PC が実行します。
+          この画面はクラウド版です。Modalの素材転送・軽量プレビュー・クラウド書き出しはPC接続不要です。AI台本・音声生成・PCでの書き出しなどはPCが実行します。
           {s.config?.worker?.online ? (
             <>
               {' '}
@@ -814,7 +814,7 @@ const CloudCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
               {s.config.worker.host ? `（${s.config.worker.host}）` : ''} です。
             </>
           ) : (
-            ' いま PC は繋がっていません（PC で Reel Studio を起動してください）。'
+            ' いまPCは未接続です。PCを使う処理を実行する場合は、PCでReel Studioを起動してください。'
           )}
           {' '}接続先の設定は PC の Reel Studio で行います。
         </p>

@@ -211,13 +211,13 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* クラウド版で PC が落ちているとき。ジョブは消えず、PC が起きたら順に実行される */}
+      {/* PCの接続状態と、独立したModal処理の利用可否を混同しない。 */}
       {s.isCloud && s.config?.worker && !s.config.worker.online && (
         <div className="offlinebar">
-          <span className="pill err">PC オフライン</span>
+          <span className="pill warn">PC未接続</span>
           <span>
-            重い処理（素材のカタログ化・AI・レンダー）は自宅の PC が行います。いま PC が繋がっていないので、押したジョブは待機のまま残り、PC で Reel Studio を起動すると順に実行されます。
-            {s.config.worker.lastSeen && <> 最後の応答: {new Date(s.config.worker.lastSeen).toLocaleString('ja-JP')}</>}
+            Modalの素材転送・軽量プレビュー・クラウド書き出しはPC接続不要です。AI台本・音声生成・PCでの書き出しなど、PCに依頼した処理は、PCでReel Studioを起動すると実行されます。
+            {s.config.worker.lastSeen && <> PCの最終応答: {new Date(s.config.worker.lastSeen).toLocaleString('ja-JP')}</>}
           </span>
         </div>
       )}
