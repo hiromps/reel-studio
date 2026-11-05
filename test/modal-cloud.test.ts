@@ -67,3 +67,7 @@ it('生成物をDB保存せずストリームで返す', async () => {
   expect((await r.arrayBuffer()).byteLength).toBe(bytes.length);
   expect(records.size).toBe(0);
 });
+it('Webの旧生成ボタンによる新規課金ジョブを拒否する', async () => {
+  const r=await fetch(`${base}/jobs`,{method:'POST',headers:headers(),body:JSON.stringify({kind:'text-to-image',prompt:'test',requestId:crypto.randomUUID(),allowGpu:true})});
+  expect(r.status).toBe(400);expect(upstream).not.toHaveBeenCalled();
+});

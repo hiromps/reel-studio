@@ -5,7 +5,7 @@ import {createHmac, timingSafeEqual} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {z} from 'zod';
-import {ModalConfigSchema, ModalJobInputSchema, ModalSettingsPatchSchema, MODAL_SECRET_KEYS, type ModalDashboard, type ModalJob, type ModalSecrets} from '../../shared/modal';
+import {ModalConfigSchema, ModalUtilityJobInputSchema as ModalJobInputSchema, ModalSettingsPatchSchema, MODAL_SECRET_KEYS, type ModalDashboard, type ModalJob, type ModalSecrets} from '../../shared/modal';
 import {ModalError, validateModalEndpoint} from '../../core/modal-client';
 import {cloudModalConnection, cloudModalFetch, cloudModalJson, cloudModalView, saveCloudModal} from '../modal';
 import {addJob, kvGet, listJobs, readDoc} from '../store';
@@ -77,7 +77,7 @@ cloudModalRouter.get('/health', wrap(async (_req, res) => {
 cloudModalRouter.get('/gpu/info', wrap(async (_req, res) => {res.json(await cloudModalJson('/gpu/info'));}));
 for (const route of ['/estimate', '/jobs']) cloudModalRouter.post(route, wrap(async (req, res) => {
   const parsed = ModalJobInputSchema.safeParse(req.body);
-  if (!parsed.success || (parsed.data?.imageBase64?.length ?? 0) > 3 * 1024 ** 2) throw new ModalError('ジョブ入力が不正です。Web版の入力画像は2MB以下にしてください', 400);
+  if (!parsed.success) throw new ModalError('Modalの動画書き出しは「書き出し」画面から実行してください。画像・動画のAI生成は受け付けていません', 400);
   const {config} = await cloudModalConnection();
   const maxSeconds = Math.min(parsed.data.maxSeconds ?? config.maxJobSeconds, config.maxJobSeconds);
   const result = await cloudModalJson(route, {method: 'POST', body: {...parsed.data, maxSeconds, budgetUsd: config.monthlyBudgetUsd}, timeoutMs: 45_000});

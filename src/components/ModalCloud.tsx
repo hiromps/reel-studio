@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {modalApi} from '../modal-api';
-import {useStudio} from '../state/store';
-import {MODAL_GPU, MODAL_SECRET_KEYS, MODAL_STATUS_LABEL, MODAL_TASK_LABEL, type ModalDashboard, type ModalJob, type ModalJobInput, type ModalSettingsView, type ModalTask} from '@shared/modal';
+import {MODAL_GPU, MODAL_SECRET_KEYS, MODAL_STATUS_LABEL, MODAL_TASK_LABEL, type ModalDashboard, type ModalJob, type ModalJobInput, type ModalSettingsView} from '@shared/modal';
 import '../modal.css';
 
 const usd = (v: number) => `$${v.toFixed(2)}`;
@@ -89,7 +88,8 @@ const ModalSettingsLocal: React.FC = () => {
   const secretLabels = {tokenId: 'Modal API Token ID', tokenSecret: 'Modal API Token Secret', proxyTokenId: 'HTTP Proxy Token ID', proxyTokenSecret: 'HTTP Proxy Token Secret'};
   return <section className="card modal-cloud" data-tour="settings-modal">
     <h2>Modal Cloud GPU</h2>
-    <p>ローカルPCのGPUを使わずに、クラウドで画像・動画を生成します。接続確認と画面の表示ではGPUを起動しません。</p>
+    <p>Reel Studioで編集した映像・字幕・生成済み音声をクラウドで合成し、完成MP4を書き出します。編集を軽くするプレビュー作成にも使います。</p>
+    <p className="hint">案件を開き、「書き出し」→「書き出す場所」→「Modalクラウド」から実行できます。画像・動画をAIで新しく生成する機能は提供しません。接続確認や画面を開くだけではGPUを起動しません。</p>
     <Overview dashboard={dashboard} settings={settings} />
     <form onSubmit={e => {e.preventDefault(); void run(async () => {
       await modalApi.put('/settings', {...form, gpu: MODAL_GPU, ...Object.fromEntries(Object.entries(secrets).filter(([, v]) => v.trim()))});
@@ -109,7 +109,7 @@ const ModalSettingsLocal: React.FC = () => {
       </div>
     </form>
     <details><summary>GPU接続テスト・課金の保護</summary>
-      <p className="hint">GPUテストはCUDAで実際に計算します。実行上限30秒に加え、コールドスタート等も予約額に含めます。生成ボタンは素材画面にあります。</p>
+      <p className="hint">GPUテストは接続の診断用です。実際の動画の書き出しは案件の「書き出し」画面から行います。診断の実行上限30秒に加え、コールドスタート等も予約額に含めます。</p>
       <div className="modal-actions"><button disabled={busy || !settings?.configured} onClick={() => void run(async () => {const r = await modalApi.post<{estimatedCostUsd: number}>('/estimate', probeInput()); setEstimate(r.estimatedCostUsd);})}>テストの概算を確認（GPU起動なし）</button>{estimate !== null && <span>予約額の目安: {usd(estimate)}</span>}</div>
       <label className="modal-consent"><input type="checkbox" checked={allowGpu} onChange={e => setAllowGpu(e.target.checked)} />このGPUテストの起動・利用料金を許可する</label>
       <button disabled={busy || !settings?.configured || !allowGpu || !!dashboard?.usage.activeJobId} onClick={() => void run(async () => {
@@ -123,84 +123,7 @@ const ModalSettingsLocal: React.FC = () => {
     </details>
     <div role="status">{busy && <p>処理中…</p>}{message && <p>{message}</p>}</div>
     {error && <p role="alert" className="warn-text">{error}</p>}
-    <Jobs jobs={dashboard?.jobs ?? []} busy={busy} onCancel={id => void run(async () => {await modalApi.post(`/jobs/${id}/cancel`); await refresh();})} />
+    <Jobs jobs={(dashboard?.jobs ?? []).filter(j => active(j) || ['remotion-render', 'prepare-media', 'gpu-test'].includes(j.kind))} busy={busy} onCancel={id => void run(async () => {await modalApi.post(`/jobs/${id}/cancel`); await refresh();})} />
     <button disabled={busy || loading} onClick={() => void refresh()}>接続状態・履歴を更新</button>
   </section>;
-};
-
-export const ModalGenerateCard: React.FC = () => {
-  const s = useStudio();
-  const [provider, setProvider] = useState('existing');
-  return <section className="card modal-cloud">
-    <h2>AIプロバイダー・素材生成</h2>
-    <label>使うAI<select value={provider} onChange={e => setProvider(e.target.value)}>
-      <option value="existing">既存AI（台本・素材のタグ付け）</option>
-      <option value="modal">Modal Cloud GPU（画像・動画の生成）</option>
-    </select></label>
-    {provider === 'existing' ? <p className="hint">既存AIのタグ付けは、この画面の「AIでタグ付け」から利用できます。台本は「AIで台本」から作成できます。</p> : <ModalGenerateLocal key={s.active} />}
-  </section>;
-};
-
-const ModalGenerateLocal: React.FC = () => {
-  const s = useStudio();
-  const {settings, dashboard, error, setError, loading, refresh} = useModal();
-  const [kind, setKind] = useState<ModalTask>('text-to-image');
-  const [prompt, setPrompt] = useState('');
-  const [image, setImage] = useState<string>();
-  const [steps, setSteps] = useState(20);
-  const [size, setSize] = useState('512x512');
-  const [frames, setFrames] = useState(17);
-  const [allow, setAllow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [estimate, setEstimate] = useState<number | null>(null);
-  const [preview, setPreview] = useState<{url: string; job: ModalJob} | null>(null);
-  const previewRef = useRef('');
-  const [pending, setPending] = useState<ModalJobInput | null>(null);
-  const frozen = !!pending;
-  useEffect(() => {if (pending && dashboard?.jobs.some(j => j.id === pending.requestId)) {setPending(null); setAllow(false);}}, [dashboard, pending]);
-  useEffect(() => () => {if (previewRef.current) URL.revokeObjectURL(previewRef.current);}, []);
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true); setError('');
-    try {await fn();} catch (e) {setError(errorText(e));} finally {setBusy(false);}
-  };
-  const input = (): ModalJobInput => {
-    const [width, height] = size.split('x').map(Number);
-    return {kind, prompt, negativePrompt: '', width, height, steps, frames, seed: 42, strength: 0.7, ...(kind.startsWith('image-to-') ? {imageBase64: image} : {}), allowGpu: true, requestId: crypto.randomUUID()};
-  };
-  return <div>
-    <Overview dashboard={dashboard} settings={settings} />
-    {!settings?.configured && <p className="warn-text">設定画面の「Modal Cloud GPU」で接続を設定してください。</p>}
-    <div className="modal-fields">
-      <label>生成方法<select disabled={busy || frozen} value={kind} onChange={e => {setKind(e.target.value as ModalTask); setEstimate(null);}}>{(['text-to-image', 'image-to-image', 'image-to-video', 'text-to-video'] as const).map(k => <option key={k} value={k}>{MODAL_TASK_LABEL[k]}</option>)}</select></label>
-      <label>出力サイズ<select disabled={busy || frozen} value={size} onChange={e => {setSize(e.target.value); setEstimate(null);}}><option>512x512</option><option>320x576</option><option>576x320</option></select></label>
-      <label className="modal-wide">プロンプト<textarea disabled={busy || frozen} rows={3} maxLength={2000} value={prompt} onChange={e => {setPrompt(e.target.value); setEstimate(null);}} placeholder="例: Cinematic close-up of steaming ramen, soft warm lighting" /></label>
-      {kind.startsWith('image-to-') && <label className="modal-wide">入力画像（PNG・JPEG・WebP、最大{s.isCloud ? 2 : 6}MB）<input disabled={busy || frozen} type="file" accept="image/png,image/jpeg,image/webp" onChange={e => {
-        setImage(undefined);
-        const file = e.target.files?.[0]; if (!file) return;
-        const maxMb = s.isCloud ? 2 : 6;
-        if (file.size > maxMb * 1024 ** 2) {setError(`画像は${maxMb}MB以下にしてください`); return;}
-        const reader = new FileReader(); reader.onload = () => setImage(String(reader.result).split(',')[1]); reader.onerror = () => setError('画像を読み込めません'); reader.readAsDataURL(file);
-      }} /></label>}
-      <label>推論ステップ<input disabled={busy || frozen} type="number" min={1} max={40} value={steps} onChange={e => setSteps(e.target.valueAsNumber)} /></label>
-      {kind.endsWith('video') && <label>フレーム数（16fps）<select disabled={busy || frozen} value={frames} onChange={e => setFrames(Number(e.target.value))}><option value={17}>17（約1秒・軽量テスト）</option><option value={33}>33（約2秒）</option><option value={49}>49（約3秒）</option></select></label>}
-    </div>
-    <p className="hint">画像: SSD-1B ／ Text to Video: Wan 2.1 1.3B ／ Image to Video: Wan 2.2 5B。各モデルはApache-2.0として公開されています。初回はモデルのダウンロード・読込にも時間と料金がかかります。画像はPNG、動画はMP4で保存できます。画像を案件に追加すると3秒のMP4素材になります。</p>
-    {s.isCloud && <p className="hint">生成・結果の確認はPCの起動なしで利用できます。「この案件の素材に追加」はPC版Reel Studioが起動すると実行されます。素材の保存先はPCのままです。</p>}
-    <div className="modal-actions"><button disabled={busy || !settings?.configured || !prompt.trim()} onClick={() => void run(async () => {const payload = input(); const r = await modalApi.post<{estimatedCostUsd: number}>('/estimate', payload); setEstimate(r.estimatedCostUsd);})}>概算を確認（GPU起動なし）</button>{estimate !== null && <span>上限予約額: {usd(estimate)}</span>}</div>
-    <label className="modal-consent"><input type="checkbox" checked={allow} onChange={e => setAllow(e.target.checked)} />このジョブのGPU起動・利用料金を許可する</label>
-    <div className="modal-actions"><button className="primary" disabled={busy || !settings?.configured || !allow || !prompt.trim() || kind.startsWith('image-to-') && !image || !!dashboard?.usage.activeJobId} onClick={() => void run(async () => {
-      // Keep request ID across a network failure; retry is idempotent.
-      const payload = pending ?? input();
-      setPending(payload);
-      try {await modalApi.post('/jobs', payload); setPending(null); setAllow(false);}
-      catch (e) {if ((e as {status?: number}).status && (e as {status: number}).status < 500) setPending(null); throw e;}
-      await refresh();
-    })}>Modalで生成する</button><button disabled={busy || loading} onClick={() => void refresh()}>履歴を更新</button></div>
-    {frozen && <p className="hint">送信結果を確認中です。再送しても同じジョブIDを使用します。内容を変更する前に履歴で受付状況を確認してください。</p>}
-    {busy && <p role="status">処理中…</p>}{error && <p role="alert" className="warn-text">{error}</p>}
-    <Jobs jobs={dashboard?.jobs ?? []} busy={busy} onCancel={id => void run(async () => {await modalApi.post(`/jobs/${id}/cancel`); await refresh();})}
-      onPreview={j => void run(async () => {const blob = await modalApi.blob(`/jobs/${j.id}/result`); if (previewRef.current) URL.revokeObjectURL(previewRef.current); previewRef.current = URL.createObjectURL(blob); setPreview({url: previewRef.current, job: j});})}
-      onImport={j => void run(async () => {if (s.files.catalog.dirty) throw new Error('素材の未保存の変更を保存してから追加してください'); if (!s.active) return; const r = await modalApi.post<{catalogJob: {id: string}}>(`/jobs/${j.id}/import`, {slug: s.active}); s.toast(`素材取り込みを開始しました（${r.catalogJob.id}）`, 'ok'); await s.reloadActive();})} />
-    {preview && <div className="modal-preview">{preview.job.resultType === 'video/mp4' ? <video src={preview.url} controls playsInline /> : <img src={preview.url} alt="Modalで生成した画像" />}<a className="button" href={preview.url} download={`${preview.job.id}.${preview.job.resultType === 'video/mp4' ? 'mp4' : 'png'}`}>生成結果を保存</a></div>}
-  </div>;
 };

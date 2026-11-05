@@ -84,6 +84,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.submit(arbitrary_code="print(1)").status_code, 422)
         self.assertEqual(self.calls, [])
 
+    def test_ai_generation_is_disabled_before_spawn(self):
+        for kind in ('text-to-image', 'text-to-video'):
+            self.assertEqual(self.submit(kind=kind, prompt='test').status_code, 422)
+        self.assertEqual(len(self.calls), 0)
+
     def test_budget_blocks_before_spawn(self):
         self.assertEqual(self.submit(budgetUsd=0.1).status_code, 429)
         self.assertEqual(self.calls, [])

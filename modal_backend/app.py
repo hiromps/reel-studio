@@ -285,7 +285,10 @@ def api():
 
     async def parse_job(request):
         try:
-            return JobInput.model_validate(await request.json())
+            payload = JobInput.model_validate(await request.json())
+            if payload.kind not in {'gpu-test', 'remotion-render', 'prepare-media'}:
+                raise ValueError('Only Reel Studio rendering and diagnostics are enabled')
+            return payload
         except (ValidationError, ValueError):
             raise HTTPException(422, "Invalid job")
 

@@ -104,7 +104,7 @@ export const SettingsPage: React.FC<{onCreate?: () => void}> = ({onCreate}) => {
       <AgentCard view={view} save={save} />
       <ScriptSkillCard skill={view.settings.scriptSkill} skills={view.settings.scriptSkills} save={save} />
       <h2 className="settings-more-title">必要なときだけ設定</h2>
-      <SettingsSection title="Modal Cloud GPU" description="クラウドGPUで画像・動画を生成する・予算と接続の設定">
+      <SettingsSection title="Modal Cloud GPU" description="編集済み動画をクラウドで書き出す・予算と接続の設定">
         <ModalCloudSettings />
       </SettingsSection>
       <SettingsSection title="音声・話し方" description="AIナレーションの声や、文章の雰囲気を変える">

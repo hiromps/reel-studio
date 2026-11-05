@@ -45,3 +45,11 @@ it('明示許可なし・不正入力・過大予算ではGPUに到達しない'
   expect((await fetch(`${base}/settings`, {method: 'PUT', headers, body: JSON.stringify({monthlyBudgetUsd: 26})})).status).toBe(400);
   expect((await fetch(`${base}/jobs/../../health`, {headers})).status).toBe(404);
 });
+it('古い画面から画像・動画の生成を依頼しても受付前に拒否する', async () => {
+  const {modalJson} = await import('../core/modal-client'); vi.mocked(modalJson).mockClear();
+  for (const kind of ['text-to-image', 'image-to-image', 'text-to-video', 'image-to-video']) {
+    const r = await fetch(`${base}/jobs`, {method:'POST', headers:{'X-Reel-Modal-Session':token,'Content-Type':'application/json'}, body:JSON.stringify({kind,prompt:'test',imageBase64:'AA==',requestId:crypto.randomUUID(),allowGpu:true})});
+    expect(r.status).toBe(400); expect((await r.json()).error).toContain('AI生成は受け付けていません');
+  }
+  expect(modalJson).not.toHaveBeenCalled();
+});

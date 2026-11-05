@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
-import {ModalConfigSchema, ModalJobInputSchema, ModalSettingsPatchSchema, MODAL_SECRET_KEYS, type ModalDashboard, type ModalJob, type ModalSecrets} from '../../shared/modal';
+import {ModalConfigSchema, ModalUtilityJobInputSchema as ModalJobInputSchema, ModalSettingsPatchSchema, MODAL_SECRET_KEYS, type ModalDashboard, type ModalJob, type ModalSecrets} from '../../shared/modal';
 import {modalConfig, modalSettingsView, saveModalSettings} from '../../core/modal-vault';
 import {ModalError, modalJson, testModalSdk, validateModalEndpoint} from '../../core/modal-client';
 import {downloadModalResult} from '../../core/modal-results';
@@ -89,7 +89,7 @@ modalRouter.get('/gpu/info', wrap(async (_req, res) => {res.json(await modalJson
 
 for (const route of ['/estimate', '/jobs']) modalRouter.post(route, wrap(async (req, res) => {
   const parsed = ModalJobInputSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({error: 'ジョブ入力が不正です。GPU実行の許可・プロンプト・画像・サイズを確認してください'});
+  if (!parsed.success) return res.status(400).json({error: 'Modalの動画書き出しは「書き出し」画面から実行してください。画像・動画のAI生成は受け付けていません'});
   const config = modalConfig();
   const maxSeconds = Math.min(parsed.data.maxSeconds ?? config.maxJobSeconds, config.maxJobSeconds);
   const result = await modalJson(route, {method: 'POST', body: {...parsed.data, maxSeconds, budgetUsd: config.monthlyBudgetUsd}, timeoutMs: 45_000});

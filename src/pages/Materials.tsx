@@ -19,7 +19,6 @@ import {localDate} from '@shared/time';
 import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
 import {colorFilter, isDefaultColor} from '@shared/color';
-import {ModalGenerateCard} from '../components/ModalCloud';
 import {CloudRenderCard} from '../components/CloudRender';
 
 const KINDS: ClipKind[] = ['exterior', 'signage', 'interior', 'menu', 'cooking', 'serving', 'eating', 'sizzle', 'person', 'conversation', 'detail', 'other'];
@@ -213,7 +212,6 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   return (
     <div className="page">
       {s.isCloud && <CloudRenderCard materials />}
-      <ModalGenerateCard />
       <section className="card" data-tour="materials-folder">
         <h2>素材フォルダ</h2>
         <p className="hint">撮った動画が入っているフォルダを選びます。中の動画をすべて読み込み、長さ・解像度を調べて案件フォルダにコピーします（元のフォルダは変更しません）。</p>

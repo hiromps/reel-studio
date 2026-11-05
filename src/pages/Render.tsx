@@ -297,10 +297,10 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
         <AliasFixNotice />
         <div className="row">
           <button className="primary" onClick={() => s.addJob('draft', opts())} disabled={!canRender}>
-            ドラフト（0.25 倍・crf30）
+            ドラフト（確認用・0.25倍）
           </button>
           <button className="primary" onClick={() => s.addJob('render', opts())} disabled={!canRender}>
-            本番レンダー（h264 crf20）
+            本番レンダー（完成動画）
           </button>
           <label title={termHint('カット')}>
             カット
