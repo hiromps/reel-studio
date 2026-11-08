@@ -2,12 +2,13 @@
 import {Router} from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import {AGENT_PROVIDERS, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider} from '../../shared/schema/settings';
-import {deepseekApiKey, deepseekKeyView, fishKeyView, instagramKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
+import {AGENT_PROVIDERS, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider, type ClaudeReconnectResult} from '../../shared/schema/settings';
+import {agentProvider, deepseekApiKey, deepseekKeyView, fishKeyView, instagramKeyView, loadSettings, mergeSettings, saveSettings, settingsView} from '../../core/settings';
 import {listFonts} from '../../core/fonts';
 import {claudeAvailable, claudeBin, claudeBinInfo, claudeVersion, resetClaudeBin} from '../../core/agent';
 import {codexAvailable, codexBinInfo, codexLoggedIn, codexVersion} from '../../core/codex';
 import {listAgentModels} from '../../core/agent-models';
+import {claudeAuthStatus, claudeLoginCommand, openClaudeLogin} from '../../core/claude-auth';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
 import {instagramMcpEnv, probeInstagramMcp, resetInstagramMcpEnv} from '../../core/instagram-mcp';
 import {probeDeepseekKey} from '../../shared/deepseek';
@@ -25,7 +26,8 @@ const view = async () => {
   const version = available ? await claudeVersion(info.bin) : null;
   const codex = codexBinInfo();
   const codexReady = codexAvailable();
-  const result = settingsView({bin: info.bin, available, source: info.source, version}, studioConfig.templateDir, listFonts());
+  const auth = available ? await claudeAuthStatus(info.bin) : undefined;
+  const result = settingsView({bin: info.bin, available, source: info.source, version, ...(auth ? {auth} : {})}, studioConfig.templateDir, listFonts());
   result.codex = {bin: codex.bin, available: codexReady, loggedIn: codexReady ? await codexLoggedIn(codex.bin) : false, source: codex.source, version: codexReady ? await codexVersion(codex.bin) : null};
   return result;
 };
@@ -112,6 +114,43 @@ settingsRouter.post('/test/claude', async (req, res) => {
     version,
     message: version ? `動きました（${version}）` : 'claude --version が動きませんでした。Claude Code のインストールと、ターミナルで claude を一度起動してログイン済みかを確認してください',
   });
+});
+
+/** PC の claude CLI のログイン状態（課金なし）。画面の「Claude に再接続」が待つあいだ数秒おきに読む */
+settingsRouter.get('/claude/auth', async (_req, res) => {
+  if (!claudeAvailable()) return res.json({available: false, auth: null, command: claudeLoginCommand()});
+  res.json({available: true, auth: await claudeAuthStatus(), command: claudeLoginCommand()});
+});
+
+/** `claude auth login` を PC のターミナルで開く（ブラウザでの承認は人がする） */
+settingsRouter.post('/claude/login', (_req, res) => {
+  if (!claudeAvailable()) return res.status(409).json({error: 'claude 実行ファイルが見つかりません。Claude Code をインストールしてください'});
+  const opened = openClaudeLogin();
+  res.json({opened, command: claudeLoginCommand(), message: opened ? 'ログイン用のウィンドウを開きました。ブラウザで承認してください' : `このPCではウィンドウを開けません。ターミナルで ${claudeLoginCommand()} を実行してください`});
+});
+
+/**
+ * 接続先を Claude（PC でログイン中の claude CLI）に戻す。ログイン済みならそのまま切り替えて保存し、
+ * 未ログイン・期限切れならログイン画面を開いて login-started を返す（画面は /claude/auth を待ってから呼び直す）
+ */
+settingsRouter.post('/claude/reconnect', async (req, res) => {
+  const model = typeof req.body?.model === 'string' && req.body.model.trim() ? req.body.model.trim() : undefined;
+  const reply = (r: ClaudeReconnectResult) => res.json(r);
+  if (!claudeAvailable()) return reply({state: 'failed', auth: null, message: 'claude 実行ファイルが見つかりません。Claude Code をインストールするか、「高度な設定」で場所を指定してください'});
+  const auth = await claudeAuthStatus();
+  if (!auth.loggedIn) {
+    if (req.body?.openLogin === false) return reply({state: 'failed', auth, message: auth.error ?? 'Claude にログインしていません'});
+    const opened = openClaudeLogin();
+    return reply({state: 'login-started', auth, message: opened ? 'ログイン用のウィンドウを開きました。ブラウザで承認すると自動で切り替わります' : `ターミナルで ${claudeLoginCommand()} を実行してログインしてください`});
+  }
+  try {
+    saveSettings(mergeSettings(loadSettings(), {agent: {provider: 'claude', ...(model ? {model} : {})}}));
+  } catch (e) {
+    return reply({state: 'failed', auth, message: `保存に失敗しました: ${(e as Error).message}`});
+  }
+  resetClaudeBin();
+  if (agentProvider() !== 'claude') return reply({state: 'failed', auth, message: '環境変数 REEL_STUDIO_AGENT_PROVIDER が別の接続先を指定しているため切り替えられません'});
+  reply({state: 'connected', auth, message: `Claude に接続しました${auth.plan ? `（${auth.plan}）` : ''}`, view: await view()});
 });
 
 settingsRouter.post('/test/codex', async (req, res) => {

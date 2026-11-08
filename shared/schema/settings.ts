@@ -238,10 +238,38 @@ export type SettingsView = {
     instagramMcpKey: boolean;
     instagramAccount: boolean;
   };
-  claude: {bin: string; available: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};
+  claude: {bin: string; available: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null; auth?: ClaudeAuth};
   codex?: {bin: string; available: boolean; loggedIn?: boolean; source: 'env' | 'settings' | 'path' | 'none'; version: string | null};
   /** クラウド画面が使う、PC ワーカーで取得した候補のスナップショット */
   agentModels?: Partial<Record<AgentProvider, AgentModelsView>>;
+  /** クラウド画面のみ：AI の設定を保存したが、PC がまだ適用していない（次の同期で入る） */
+  pendingAgent?: boolean;
+};
+
+/**
+ * PC の claude CLI のログイン状態（`claude auth status --json` の要約）。メールアドレスは持たない。
+ * loggedIn=false なら Settings の「Claude に再接続」で `claude auth login` を開く
+ */
+export type ClaudeAuth = {
+  loggedIn: boolean;
+  /** claude.ai（サブスク）/ console（API 課金）など */
+  method: string | null;
+  /** max / pro など */
+  plan: string | null;
+  /** ログインの有効期限（ISO） */
+  expiresAt: string | null;
+  checkedAt: string;
+  /** 状態を読めなかったとき（claude が古い・起動できない） */
+  error?: string;
+};
+
+/** POST /api/settings/claude/reconnect の応答 */
+export type ClaudeReconnectResult = {
+  /** connected = Claude に切り替えて保存した / login-started = ログイン画面を開いた（終わるのを待つ）/ pending = クラウドから PC へ反映を依頼した */
+  state: 'connected' | 'login-started' | 'pending' | 'failed';
+  message: string;
+  auth: ClaudeAuth | null;
+  view?: SettingsView;
 };
 
 export type AgentModelOption = {id: string; label: string};
@@ -263,4 +291,25 @@ export type MosaicStatus = {
   gpu: boolean;
   message: string;
   checkedAt: string;
+};
+
+const PENDING_AGENT_KEYS = ['provider', 'model', 'deepseekModel', 'codexModel', 'tagBatchSize', 'tagConcurrency', 'timeoutMin'] as const;
+
+/** 反映待ちの AI 設定（接続先・モデルなど）を見え方に重ねる。変わる項目があれば pending=true */
+export const overlayPendingAgent = (
+  agent: SettingsView['settings']['agent'],
+  patch: unknown,
+): {agent: SettingsView['settings']['agent']; pending: boolean} => {
+  const parsed = SettingsPatchSchema.shape.agent.safeParse(patch);
+  if (!parsed.success || !parsed.data) return {agent, pending: false};
+  const next = {...agent} as Record<string, unknown>;
+  let pending = false;
+  for (const k of PENDING_AGENT_KEYS) {
+    const v = (parsed.data as Record<string, unknown>)[k];
+    // null は「既定に戻す」。既定値はここでは分からないので、PC の適用を待つ
+    if (v === undefined || v === null || v === '') continue;
+    if (next[k] !== v) pending = true;
+    next[k] = v;
+  }
+  return {agent: next as SettingsView['settings']['agent'], pending};
 };

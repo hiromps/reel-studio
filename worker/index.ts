@@ -19,6 +19,7 @@ import {detectLocalGpu, localGpuProjects} from '../core/local-gpu';
 import {loadEmotionTags} from '../core/emotion-tags';
 import {exec} from '../core/exec';
 import {claudeAvailable, claudeBin, claudeVersion, resetClaudeBin} from '../core/agent';
+import {claudeAuthStatus} from '../core/claude-auth';
 import {codexAvailable, codexBinInfo, codexLoggedIn, codexVersion} from '../core/codex';
 import {listAgentModels} from '../core/agent-models';
 import {ttsAvailable, resetFishEnv} from '../core/tts';
@@ -199,7 +200,9 @@ const applyRemoteChanges = async (client: CloudClient, reply: Awaited<ReturnType
 
 const currentSettingsView = async () => {
   const available = claudeAvailable();
-  const view = settingsView({bin: claudeBin(), available, source: 'path', version: available ? await claudeVersion() : null}, studioConfig.templateDir, listFonts());
+  // ログイン状態も載せる（クラウド画面の「Claude に再接続」が、PC でログイン済みかを見て切り替える）
+  const auth = available ? await claudeAuthStatus() : undefined;
+  const view = settingsView({bin: claudeBin(), available, source: 'path', version: available ? await claudeVersion() : null, ...(auth ? {auth} : {})}, studioConfig.templateDir, listFonts());
   const codex = codexBinInfo();
   view.codex = {bin: codex.bin, source: codex.source, available: codexAvailable(), loggedIn: codexAvailable() ? await codexLoggedIn(codex.bin) : false, version: codexAvailable() ? await codexVersion(codex.bin) : null};
   const providers = ['claude', 'deepseek', 'codex'] as const;

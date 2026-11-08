@@ -10,7 +10,7 @@ import path from 'node:path';
 import {copyLocalMedia, localMediaRoot, requireLocalMedia} from '../../core/local-media';
 import {PersonaIdSchema} from '../../shared/schema/brief';
 import {BUILTIN_PERSONAS, PersonaSchema, findPersona, listPersonas, setPersonas, type Persona} from '../../shared/personas';
-import {agentStatusOf, AGENT_PROVIDERS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider, type AgentStatus, type SettingsView} from '../../shared/schema/settings';
+import {agentStatusOf, overlayPendingAgent, AGENT_PROVIDERS, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, SettingsPatchSchema, type AgentProvider, type AgentStatus, type SettingsView} from '../../shared/schema/settings';
 import {fetchClaudeModels, fetchDeepseekModels} from '../../shared/agent-models';
 import {scriptSkillCatalog} from '../../shared/script-skill';
 import {probeInstagramMcp} from '../../shared/instagram-mcp';
@@ -233,11 +233,15 @@ const settingsViewCloud = async (): Promise<SettingsView> => {
   const pendingLibrary = SettingsPatchSchema.shape.scriptSkills.safeParse(pending?.patch.scriptSkills);
   const scriptSkill = pendingSkill.success && pendingSkill.data !== undefined ? pendingSkill.data ?? undefined : base.settings.scriptSkill;
   const scriptSkills = pendingLibrary.success && pendingLibrary.data !== undefined ? pendingLibrary.data : base.settings.scriptSkills;
+  // AI の接続先・モデルも同じ。PC が適用するまで旧スナップショットを返すと、保存した直後に選択が元に戻って
+  // 「保存できない」ように見える。鍵（*ApiKey）と実行ファイルの場所は PC の事実を正とするので重ねない
+  const pendingAgent = overlayPendingAgent(base.settings.agent, pending?.patch.agent);
   const env = fishEnv();
   return {
     ...base,
+    ...(pendingAgent.pending ? {pendingAgent: true} : {}),
     // 音声生成の鍵はクラウド側（Vercel の環境変数）を使う。PC の鍵は PC のジョブが使う
-    settings: {...base.settings, scriptSkill, scriptSkills, tts: {...base.settings.tts, apiKey: env ? {present: true, masked: '••••（Vercel）', source: 'env'} : base.settings.tts.apiKey}},
+    settings: {...base.settings, agent: pendingAgent.agent, scriptSkill, scriptSkills, tts: {...base.settings.tts, apiKey: env ? {present: true, masked: '••••（Vercel）', source: 'env'} : base.settings.tts.apiKey}},
     env: {...base.env, fishApiKey: !!env},
     claude: base.claude.available ? base.claude : {...base.claude, version: w?.claudeVersion ?? base.claude.version, available: !!w?.claude},
   };
@@ -273,6 +277,40 @@ miscRouter.put('/settings', async (req, res) => {
   await kvSet('settings-patch', {rev: cur.rev + 1, patch: {...cur.patch, ...parsed.data}});
   const view = await settingsViewCloud();
   res.json({...view, problem: view.problem ?? 'PC に反映を依頼しました（次の同期で適用されます）'});
+});
+
+/** PC の claude CLI のログイン状態（ワーカーが送ってきた控え。最新は PC 側で確認する） */
+miscRouter.get('/settings/claude/auth', async (_req, res) => {
+  const view = await kvGet<SettingsView>('settings-view');
+  res.json({available: !!view?.claude.available, auth: view?.claude.auth ?? null, command: 'claude auth login', remote: true});
+});
+
+/** ログインはブラウザでの承認が要るので、PC の前で行う（クラウドからは開けない） */
+miscRouter.post('/settings/claude/login', (_req, res) => {
+  res.status(409).json({error: 'ログインは PC で行います。PC の Reel Studio の Settings で「Claude に再接続」を押してください'});
+});
+
+/**
+ * 接続先を Claude に戻す（クラウド画面から）。PC がログイン済みなら設定の変更を預けて PC に適用させる。
+ * 未ログイン・期限切れなら PC での操作を案内する
+ */
+miscRouter.post('/settings/claude/reconnect', async (req, res) => {
+  const view = await kvGet<SettingsView>('settings-view');
+  const w = await kvGet<WorkerStatus>('worker');
+  const auth = view?.claude.auth ?? null;
+  const online = !!w && Date.now() - Date.parse(w.lastSeen) < WORKER_ONLINE_MS;
+  if (!view?.claude.available) return res.json({state: 'failed', auth, message: 'PC で claude が見つかりません。PC に Claude Code をインストールしてください'});
+  if (auth && !auth.loggedIn) return res.json({state: 'failed', auth, message: `PC の Claude がログインしていません${auth.error ? `（${auth.error}）` : ''}。PC の Reel Studio の Settings で「Claude に再接続」を押してログインしてください`});
+  const model = typeof req.body?.model === 'string' && req.body.model.trim() ? req.body.model.trim() : undefined;
+  const cur = (await kvGet<{rev: number; patch: Record<string, unknown>}>('settings-patch')) ?? {rev: 0, patch: {}};
+  const agent = {...((cur.patch.agent as Record<string, unknown> | undefined) ?? {}), provider: 'claude', ...(model ? {model} : {})};
+  await kvSet('settings-patch', {rev: cur.rev + 1, patch: {...cur.patch, agent}});
+  res.json({
+    state: 'pending',
+    auth,
+    message: online ? 'PC に Claude への切り替えを依頼しました（数十秒で反映されます）' : 'PC がオフラインです。PC の Reel Studio が起動すると Claude に切り替わります',
+    view: await settingsViewCloud(),
+  });
 });
 
 miscRouter.post('/settings/test/tts', async (req, res) => {

@@ -17,10 +17,13 @@ import {AiJobStatus} from '../components/AiJobStatus';
 import {REFINABLE_LABEL, type PersonaRefineResult} from '@shared/persona-refine';
 import {useMosaicStatus} from '../components/MosaicPanel';
 import {ModalCloudSettings} from '../components/ModalCloud';
+import {ClaudeReconnect} from '../components/ClaudeReconnect';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 type TestResult = {ok: boolean; message: string; version?: string | null; bin?: string};
 type Save = (patch: SettingsPatch, done: string) => Promise<boolean>;
+/** 保存以外の操作（Claude の再接続など）で返ってきた見え方を画面に反映する */
+type ApplyView = (view: SettingsView, done: string) => Promise<void>;
 
 const SUB_KEYS = ['workDir', 'uploadsRoot', 'outputsDir', 'sfxDir'] as const;
 type SubKey = (typeof SUB_KEYS)[number];
@@ -66,6 +69,21 @@ export const SettingsPage: React.FC<{onCreate?: () => void}> = ({onCreate}) => {
     },
     [s],
   );
+  const applyView = useCallback<ApplyView>(
+    async (next, done) => {
+      setView(next);
+      s.toast(done, 'ok');
+      await s.reloadConfig();
+    },
+    [s],
+  );
+  // クラウド画面：AI の設定が PC に適用されるまで、ときどき読み直す（適用されると pendingAgent が消える）
+  const pendingAgent = !!view?.pendingAgent;
+  useEffect(() => {
+    if (!pendingAgent) return;
+    const timer = setInterval(() => void load().then(() => s.reloadConfig()), 15_000);
+    return () => clearInterval(timer);
+  }, [pendingAgent, load, s]);
 
   if (loadErr)
     return (
@@ -101,7 +119,7 @@ export const SettingsPage: React.FC<{onCreate?: () => void}> = ({onCreate}) => {
           {s.config?.personasProblem && <p className="warn-text">{s.config.personasProblem}</p>}
         </section>
       )}
-      <AgentCard view={view} save={save} />
+      <AgentCard view={view} save={save} applyView={applyView} />
       <ScriptSkillCard skill={view.settings.scriptSkill} skills={view.settings.scriptSkills} save={save} />
       <h2 className="settings-more-title">必要なときだけ設定</h2>
       <SettingsSection title="Modal Cloud GPU" description="編集済み動画をクラウドで書き出す・予算と接続の設定">
@@ -390,7 +408,7 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
 
 // ───────────────────────── AI ─────────────────────────
 
-const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
+const AgentCard: React.FC<{view: SettingsView; save: Save; applyView: ApplyView}> = ({view, save, applyView}) => {
   const a = view.settings.agent;
   // 古いワーカーが送ってきた見え方には DeepSeek の欄が無いので、無くても開けるようにしておく
   const provider: AgentProvider = a.provider ?? 'claude';
@@ -526,6 +544,7 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
           <span className="agent-badge-model">{provider === 'deepseek' ? dsModel : provider === 'codex' ? a.codexModel : a.model}</span>
         </span>
         {provider === 'deepseek' && !dsKey.present && <span className="pill err">API キーが未設定です</span>}
+        {view.pendingAgent && <span className="pill warn" role="status">PC への反映待ち（PC が受け取ると切り替わります）</span>}
         {form.provider !== provider && <span className="pill warn">「AI の設定を保存」を押すと {AGENT_PROVIDER_LABEL[form.provider]} に切り替わります</span>}
       </div>
       <div className="form">
@@ -547,6 +566,9 @@ const AgentCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => 
           </select>
           {modelsError && <span className="warn-text" role="alert">{modelsError}</span>}
         </label>
+        {form.provider === 'claude' && !view.env.agentProvider && (
+          <ClaudeReconnect model={validModel ? form.model : a.model} current={provider === 'claude'} onView={applyView} />
+        )}
         {form.provider !== 'deepseek' && <div className="full">
           <button onClick={() => void (form.provider === 'codex' ? runCodexTest() : runTest())} disabled={testing || codexTesting}>{testing || codexTesting ? 'AIへの接続を確認中…' : 'AIへの接続を確認'}</button>
           {(form.provider === 'codex' ? codexTest : test) && <p role="status">{(form.provider === 'codex' ? codexTest : test)?.message}</p>}
