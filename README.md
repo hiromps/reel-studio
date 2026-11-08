@@ -4,7 +4,7 @@
 
 ナレーション音声ごとに [固定感情タグ](docs/emotion-tags.md) を選び、その感情で1本だけ再生成できます。共通カット案件では一括適用・聞き比べも利用できます。縦書きテロップ内の半角数字は自動で横並びになります。
 
-一般利用者向けのWindows版は **`Reel-Studio-0.4.16-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
+一般利用者向けのWindows版は **`Reel-Studio-0.4.17-Setup.exe`** でインストールできます。デスクトップ・スタートメニューの「Reel Studio」から専用ウィンドウで起動します。Node.js・Remotion・FFmpeg・書き出し用ブラウザは同梱され、利用者のnpm操作は不要です。配布版の作成、更新、利用条件は [Electron版の手順](docs/desktop.md) を参照してください。
 
 Modalは、Reel Studioで編集した動画のMP4書き出しと軽量プレビュー作成に使用します。画像・動画をAIで新規生成する機能は提供しません。
 
