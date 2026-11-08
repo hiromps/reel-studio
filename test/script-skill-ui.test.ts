@@ -96,3 +96,31 @@ it('保存中は操作を止め、保存に失敗しても選んだ内容を残�
   await act(async () => button('このスキルを追加').click());
   expect(save).toHaveBeenCalledTimes(2);
 });
+
+it('登録済みスキルの名前を変えると、一覧と既定の両方が新しい名前になり、同名の警告が消える', async () => {
+  const {host, save, render, button, select} = await setup(skill);
+  await select(file(skill.content.replace('関西グルメの台本', 'azu の台本')));
+  await act(async () => button('このスキルを追加').click()); await render();
+  const added = save.mock.lastCall![0].scriptSkills;
+  expect(host.textContent).toContain('同じ名前のスキルがほかにもあります');
+  const options = () => [...host.querySelectorAll('option')].map((o) => o.textContent);
+  expect(options()).toEqual(['oc-eat-reel-script（関西グルメの台本）（既定）', 'oc-eat-reel-script（azu の台本）']);
+  await act(async () => {const menu = host.querySelector('select')!; menu.value = added[1].id; menu.dispatchEvent(new Event('change', {bubbles: true}));});
+  const name = host.querySelector('input[aria-label="スキルの名前"]') as HTMLInputElement;
+  expect(name.value).toBe('oc-eat-reel-script');
+  await act(async () => {Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Azu'); name.dispatchEvent(new Event('input', {bubbles: true}));});
+  await act(async () => button('名前を変更').click()); await render();
+  const renamed = save.mock.lastCall![0];
+  expect(renamed).not.toHaveProperty('scriptSkill');
+  expect(renamed.scriptSkills[0]).toEqual(added[0]);
+  expect(renamed.scriptSkills[1]).toMatchObject({id: added[1].id, content: expect.stringContaining('name: Azu\n')});
+  expect(options()).toEqual(['oc-eat-reel-script（既定）', 'Azu']);
+  expect(host.textContent).not.toContain('同じ名前のスキルがほかにもあります');
+  // 既定のスキルの名前を変えると、既定の写しも一緒に変わる
+  await act(async () => {const menu = host.querySelector('select')!; menu.value = added[0].id; menu.dispatchEvent(new Event('change', {bubbles: true}));});
+  const first = host.querySelector('input[aria-label="スキルの名前"]') as HTMLInputElement;
+  await act(async () => {Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(first, 'oc.eat'); first.dispatchEvent(new Event('input', {bubbles: true}));});
+  await act(async () => button('名前を変更').click()); await render();
+  expect(save.mock.lastCall![0].scriptSkill.content).toContain('name: oc.eat\n');
+  expect(options()).toEqual(['oc.eat（既定）', 'Azu']);
+});

@@ -1,6 +1,6 @@
 import React from 'react';
 import {useStudio} from '../state/store';
-import {sameScriptSkill, scriptSkillInfo} from '@shared/script-skill';
+import {sameScriptSkill, scriptSkillInfo, scriptSkillLabels} from '@shared/script-skill';
 
 export const ScriptSkillStatus: React.FC = () => {
   const s = useStudio();
@@ -19,6 +19,7 @@ export const ProjectScriptSkill: React.FC = () => {
   const selected = brief.scriptSkill;
   const current = selected ? entries.find((e) => e.id === selected.id && e.enabled && sameScriptSkill(e, selected)) : undefined;
   const value = selected === undefined ? '__default' : selected === null ? '__none' : current?.id ?? '__snapshot';
+  const labels = scriptSkillLabels(entries);
   const activeJobs = s.jobs.some((j) => j.slug === s.active && ['running', 'queued'].includes(j.status));
   return <section className="card project-skill-card" aria-labelledby="project-skill-title">
     <div><h2 id="project-skill-title">この案件で使う台本スキル</h2><p>AIにどんな書き方で作ってほしいかを選びます。</p></div>
@@ -31,7 +32,7 @@ export const ProjectScriptSkill: React.FC = () => {
         <option value="__default">設定の既定を使う{catalog?.defaultSkill?.enabled ? `：${scriptSkillInfo(catalog.defaultSkill.content).name}` : '（スキルなし）'}</option>
         <option value="__none">この案件では使わない</option>
         {value === '__snapshot' && selected && <option value="__snapshot">{scriptSkillInfo(selected.content).name}（案件に保存済み）</option>}
-        {entries.filter((entry) => entry.enabled).map((entry) => <option key={entry.id} value={entry.id}>{scriptSkillInfo(entry.content).name}</option>)}
+        {entries.filter((entry) => entry.enabled).map((entry) => <option key={entry.id} value={entry.id}>{labels.get(entry.id)}</option>)}
       </select>
     </label>
     <ScriptSkillStatus />
