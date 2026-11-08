@@ -8,7 +8,7 @@ import {ScriptSkillEntrySchema} from '../script-skill';
 export const PersonaIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,30}$/, '人格 id は英小文字・数字・ハイフン（先頭は英字）');
 export type PersonaId = z.infer<typeof PersonaIdSchema>;
 
-export const FormatIdSchema = z.enum(['F0', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']);
+export const FormatIdSchema = z.enum(['F0', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9']);
 export type FormatId = z.infer<typeof FormatIdSchema>;
 
 export const SavePrioritySchema = z.enum(['access', 'budget', 'menu', 'crowd', 'hours', 'scene', 'howto', 'caution']);

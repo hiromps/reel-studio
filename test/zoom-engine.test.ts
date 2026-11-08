@@ -17,6 +17,8 @@ vi.mock('../engine/src/telops', () => ({
   PriceTelop: ({text}: any) => React.createElement('span', {'data-telop': 'price'}, text),
   BadgeTelop: ({text}: any) => React.createElement('span', {'data-telop': 'badge'}, text),
   TateTelop: ({text}: any) => React.createElement('span', {'data-telop': 'tate'}, text),
+  EndCard: ({title}: any) => React.createElement('span', {'data-telop': 'end'}, title),
+  resolveTelopStyle: () => ({}),
 }));
 import {GourmetReel, type ReelData} from '../engine/src/GourmetReel';
 import {viralZoom} from '../shared/zoom';

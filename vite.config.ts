@@ -68,7 +68,7 @@ export default defineConfig({
       '/studio': api,
       '/out': api,
       '/qc': api,
-      '/p': api,
+      '/p/': api, // '/p' だと /package.json まで API へ流れて画面が真っ白になる
     },
   },
   build: {outDir: 'dist', sourcemap: false},

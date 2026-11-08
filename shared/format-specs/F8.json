@@ -1,0 +1,102 @@
+{
+  "id": "F8",
+  "name": "azu単店型（約19秒・20カット）",
+  "maxSec": 25,
+  "targetSec": [17, 20],
+  "nominalSec": 19,
+  "theme": "azu",
+  "reveal": "none",
+  "badge": "none",
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック（大阪で一番リピしてる系・0秒から声と文字）",
+      "timeSec": [0, 2],
+      "cutSec": [0.8, 1.2],
+      "cuts": [2, 2],
+      "rolePattern": ["hook", "sizzle"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [2, 2],
+      "rules": {"useUserHook": true, "noSignage": true, "defaultOrientation": "horizontal", "preferKinds": ["eating", "sizzle", "cooking", "serving"]}
+    },
+    {
+      "id": "2_gap",
+      "label": "②場所のギャップ（駅→路地→満席）",
+      "timeSec": [2, 4.5],
+      "cutSec": [0.7, 1.0],
+      "cuts": [3, 3],
+      "rolePattern": ["proof"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [3, 3],
+      "rules": {"defaultOrientation": "horizontal", "preferKinds": ["exterior", "interior", "detail"]}
+    },
+    {
+      "id": "3_authority",
+      "label": "③肩書き（〇〇出身のシェフ）",
+      "timeSec": [4.5, 7],
+      "cutSec": [1.0, 1.4],
+      "cuts": [2, 2],
+      "rolePattern": ["proof"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [2, 2],
+      "rules": {"defaultOrientation": "horizontal", "preferKinds": ["cooking", "person"]}
+    },
+    {
+      "id": "4_signature",
+      "label": "④名物＋食感（提供→寄り→割る）",
+      "timeSec": [7, 10],
+      "cutSec": [0.8, 1.2],
+      "cuts": [3, 3],
+      "rolePattern": ["sizzle"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [3, 3],
+      "rules": {"defaultOrientation": "horizontal", "preferKinds": ["serving", "sizzle", "eating"]}
+    },
+    {
+      "id": "5_second",
+      "label": "⑤2品目＋シズル動作",
+      "timeSec": [10, 13],
+      "cutSec": [0.8, 1.2],
+      "cuts": [3, 3],
+      "rolePattern": ["sizzle"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [3, 3],
+      "rules": {"defaultOrientation": "horizontal", "preferKinds": ["serving", "sizzle", "eating"]}
+    },
+    {
+      "id": "6_shime",
+      "label": "⑥〆・体感オチ（価格を出すならここ）",
+      "timeSec": [13, 15.5],
+      "cutSec": [0.8, 1.0],
+      "cuts": [3, 3],
+      "rolePattern": ["sizzle", "sizzle", "proof"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [3, 3],
+      "rules": {"defaultOrientation": "horizontal", "allowPrice": true, "preferKinds": ["eating", "sizzle", "menu"]}
+    },
+    {
+      "id": "7_scene",
+      "label": "⑦使いどころ（飲み会・デート使い）",
+      "timeSec": [15.5, 17],
+      "cutSec": [0.7, 0.9],
+      "cuts": [2, 2],
+      "rolePattern": ["info"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [2, 2],
+      "rules": {"defaultOrientation": "horizontal", "preferKinds": ["interior", "person", "detail"]}
+    },
+    {
+      "id": "8_cta",
+      "label": "⑧締め（外観＋店名→最終カード）",
+      "timeSec": [17, 19],
+      "cutSec": [0.6, 1.4],
+      "cuts": [2, 2],
+      "rolePattern": ["cta"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [2, 2],
+      "rules": {"defaultOrientation": "horizontal", "preferSignage": true, "closerLastCut": true, "preferKinds": ["exterior", "signage"]}
+    }
+  ],
+  "tempo": {"totalCuts": [19, 21], "maxCutSec": 1.4, "playbackRateRange": [1.0, 1.25]},
+  "telop": {"maxChars": 20, "secPerChar": 0.13, "floorSec": 1.2, "groupSecTarget": [2.0, 3.0], "maxEllipsis": 3}
+}

@@ -9,7 +9,7 @@ export {ZoomSchema, type Zoom} from './zoom';
 export const OrientationSchema = z.enum(['vertical', 'horizontal']);
 export type Orientation = z.infer<typeof OrientationSchema>;
 
-export const ThemeSchema = z.enum(['pop', 'bold', 'human', 'stylish']);
+export const ThemeSchema = z.enum(['pop', 'bold', 'human', 'stylish', 'azu']);
 export type ThemeName = z.infer<typeof ThemeSchema>;
 
 export const MainTelopSchema = z.object({
@@ -25,6 +25,31 @@ export const SubSchema = MainTelopSchema.extend({
   endSec: z.number(),
 });
 export type SubDef = z.infer<typeof SubSchema>;
+
+/**
+ * テロップの見た目。engine/src/telops.tsx の TelopStyle と対応。省略項目はテーマの既定（azu だけ横書き 2 行・ゴシック・黒フチ）。
+ */
+export const TelopStyleSchema = z.object({
+  layout: z.enum(['auto', 'vertical', 'horizontal']).optional(),
+  y: z.number().min(0.1).max(0.9).optional(),
+  size: z.number().min(30).max(140).optional(),
+  lineChars: z.number().int().min(0).max(30).optional(),
+  family: z.enum(['custom', 'gothic', 'serif']).optional(),
+  outline: z.enum(['soft', 'hard']).optional(),
+  outlineWidth: z.number().min(0).max(30).optional(),
+  shadow: z.number().min(0).max(1).optional(),
+  tags: z.boolean().optional(),
+  bigNumbers: z.boolean().optional(),
+});
+export type TelopStyleDef = z.infer<typeof TelopStyleSchema>;
+
+/** 最終カード（黒背景に店名ピン＋一言）。engine/src/telops.tsx の EndCardDef と対応 */
+export const EndCardSchema = z.object({
+  title: z.string(),
+  sub: z.string().optional(),
+  bg: z.enum(['black', 'dim']).optional(),
+});
+export type EndCardDef = z.infer<typeof EndCardSchema>;
 
 export const PriceTelopSchema = z.object({
   text: z.string(),
@@ -61,6 +86,7 @@ export const CutSchema = z
     price: PriceTelopSchema.optional(),
     badge: z.string().optional(),
     subs: z.array(SubSchema).optional(),
+    endCard: EndCardSchema.optional(),
   })
   .passthrough();
 export type Cut = z.infer<typeof CutSchema>;
@@ -167,6 +193,8 @@ export const ReelDataSchema = z
     tate: z.object({text: z.string(), outlineColor: z.string()}).optional(),
     /** バッジ下地の不透明度（0〜1）。省略時はエンジン既定 0.6。Timeline のスライダーで調整する */
     badgeOpacity: z.number().min(0).max(1).optional(),
+    /** テロップの見た目（向き・高さ・大きさ・書体・フチ・影・赤タグ・大きい数字）。Timeline の「動画全体」で調整する */
+    telopStyle: TelopStyleSchema.optional(),
     /** サムネイルの文言・背景。省略時は案件から自動で決める（本番レンダーのたびに out/thumbnail.jpg を作る） */
     thumbnail: ThumbnailSchema.optional(),
     cuts: z.array(CutSchema).min(1),

@@ -78,3 +78,13 @@ export const leadingArea = (text: string, area: string): {matched: boolean; rest
   // 残りが無い（＝本文がエリア名だけ）ときは移しても本文が空になるので対象外
   return rest ? {matched: true, rest} : {matched: false, rest: t};
 };
+
+/**
+ * azu 型の締め：最後のカットを黒背景の最終カード（店名ピン＋「詳細はキャプションまで」）にする。
+ * 既に最終カードがある・店名が未入力・azu 以外のテーマなら何もしない（同じ値を返す）。
+ */
+export const withAzuEndCard = <T extends {theme?: string; cuts: {endCard?: {title: string; sub?: string; bg?: 'black' | 'dim'}}[]}>(data: T, shopName: string): T => {
+  const last = data.cuts[data.cuts.length - 1];
+  if (data.theme !== 'azu' || !shopName.trim() || !last || data.cuts.some((c) => c.endCard)) return data;
+  return {...data, cuts: [...data.cuts.slice(0, -1), {...last, endCard: {title: shopName.trim(), sub: '詳細はキャプションまで'}}]};
+};

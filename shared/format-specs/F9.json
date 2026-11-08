@@ -1,0 +1,44 @@
+{
+  "id": "F9",
+  "name": "azu 3店まとめ型（約30秒・37カット）",
+  "maxSec": 35,
+  "targetSec": [29, 32],
+  "nominalSec": 30,
+  "theme": "azu",
+  "reveal": "none",
+  "badge": "shop",
+  "repeat": {
+    "segmentId": "units",
+    "unitLabel": "店",
+    "count": [3, 3],
+    "order": "asGiven",
+    "head": {"cutSec": [0.8, 1.0]},
+    "items": {"cutSec": [0.6, 1.0], "cuts": [9, 11], "lastUnitCuts": [11, 12], "rolePattern": ["proof", "proof", "proof", "sizzle", "sizzle", "sizzle", "sizzle", "sizzle"]}
+  },
+  "segments": [
+    {
+      "id": "1_hook",
+      "label": "①フック（ガチで外さない、大阪の〇〇まとめ3選）",
+      "timeSec": [0, 3],
+      "cutSec": [0.6, 0.8],
+      "cuts": [4, 4],
+      "rolePattern": ["hook", "tease"],
+      "telopGroups": [1, 1],
+      "telopSpanCuts": [4, 4],
+      "rules": {"useUserHook": true, "noSignage": true, "defaultOrientation": "horizontal", "preferKinds": ["exterior", "sizzle", "serving"]}
+    },
+    {
+      "id": "units",
+      "label": "店舗ブロック（1店約8秒・10〜12カット：店名タグ→肩書き→名物＋食感→一言オチ）",
+      "timeSec": [3, 30],
+      "cutSec": [0.6, 1.0],
+      "cuts": [30, 35],
+      "rolePattern": ["proof", "sizzle"],
+      "telopGroups": [6, 9],
+      "telopSpanCuts": [2, 4],
+      "rules": {"defaultOrientation": "horizontal", "allowPrice": true, "closerLastCut": true, "preferKinds": ["cooking", "serving", "sizzle", "eating", "person"]}
+    }
+  ],
+  "tempo": {"totalCuts": [36, 40], "maxCutSec": 1.2, "playbackRateRange": [1.0, 1.25]},
+  "telop": {"maxChars": 20, "secPerChar": 0.13, "floorSec": 1.2, "groupSecTarget": [2.5, 4.0], "maxEllipsis": 3}
+}

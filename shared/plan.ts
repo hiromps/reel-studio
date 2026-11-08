@@ -8,7 +8,7 @@ import {FORMAT_SPECS} from './format-specs';
 import {applyAliasNames} from './alias';
 import {getPersona, type Persona} from './personas';
 import {cutDurationSec, snapSec, round3} from './timeline';
-import {minDisplaySec} from './telop-text';
+import {minDisplaySec, withAzuEndCard} from './telop-text';
 import {stableHash} from './hash';
 
 export class PlanError extends Error {
@@ -949,5 +949,5 @@ export function planCuts(input: PlanInput): PlanResult {
     },
     cuts,
   };
-  return {cuts: data, aliases, table: rows, warnings, markdown: tableToMarkdown(rows)};
+  return {cuts: withAzuEndCard(data, brief.shop.name), aliases, table: rows, warnings, markdown: tableToMarkdown(rows)};
 }

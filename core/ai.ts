@@ -1178,7 +1178,7 @@ const PATCH_SCHEMA = {
       },
     },
     order: {type: 'array', items: {type: 'string'}, description: '並べ替え後の全カット（残す既存の cutId と、add の ref）を先頭から列挙する。並び替えないなら省略'},
-    theme: {type: 'string', enum: ['pop', 'bold', 'human', 'stylish']},
+    theme: {type: 'string', enum: ['pop', 'bold', 'human', 'stylish', 'azu']},
     unapplied: {type: 'array', items: {type: 'string'}, description: 'できなかったこと・判断がつかず確認したいこと'},
     learnedRules: {type: 'array', items: {type: 'string'}, description: '今後の全案件・全台本に共通で守るべき、ユーザーが明示した文体の修正だけ。案件固有の料理・店・構成の指示は含めない。無ければ空配列'},
   },
@@ -1191,7 +1191,7 @@ export type Patch = {
   add?: {ref: string; clipId: string; inSec?: number; outSec?: number; text?: string; after?: string}[];
   cuts?: {cutId: string; inSec?: number; outSec?: number; playbackRate?: number; badge?: string; remove?: boolean; zoom?: Partial<Zoom> | null}[];
   order?: string[];
-  theme?: 'pop' | 'bold' | 'human' | 'stylish';
+  theme?: 'pop' | 'bold' | 'human' | 'stylish' | 'azu';
   unapplied?: string[];
   learnedRules?: string[];
 };

@@ -9,8 +9,10 @@ import F4 from './F4.json';
 import F5 from './F5.json';
 import F6 from './F6.json';
 import F7 from './F7.json';
+import F8 from './F8.json';
+import F9 from './F9.json';
 
-const raw: Record<FormatId, unknown> = {F0, F1, F2, F3, F4, F5, F6, F7};
+const raw: Record<FormatId, unknown> = {F0, F1, F2, F3, F4, F5, F6, F7, F8, F9};
 
 export const FORMAT_SPECS: Record<FormatId, FormatSpec> = Object.fromEntries(
   (Object.keys(raw) as FormatId[]).map((id) => [id, FormatSpecSchema.parse(raw[id])]),

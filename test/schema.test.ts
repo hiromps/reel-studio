@@ -42,8 +42,8 @@ describe('cuts.json スキーマ', () => {
 });
 
 describe('format-specs', () => {
-  it('F0〜F7 が揃い、区間の timeSec が連続している', () => {
-    expect(FORMAT_IDS).toEqual(['F0', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']);
+  it('F0〜F9 が揃い、区間の timeSec が連続している', () => {
+    expect(FORMAT_IDS).toEqual(['F0', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9']);
     for (const id of FORMAT_IDS) {
       const spec = FORMAT_SPECS[id];
       expect(spec.segments[0].timeSec[0]).toBe(0);

@@ -20,6 +20,21 @@ import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
 import {ThumbnailSection} from './ThumbnailSection';
 import {TelopFontSelect} from './TelopFontSelect';
+import {TelopStyleControls} from './TelopStyleControls';
+import {resolveTelopStyle} from '@engine/telops';
+
+/** テロップ文字数の目安。横書きで折り返すなら 2 行分、それ以外は従来の 13 文字 */
+/** テロップの見た目で全カットの向きを決めているとき、その向き（カットごとなら null） */
+const forcedLayout = (cuts: ReelData | null | undefined): 'vertical' | 'horizontal' | null => {
+  const layout = resolveTelopStyle(cuts?.theme, cuts?.telopStyle).layout;
+  return layout === 'auto' ? null : layout;
+};
+const FORCED_TITLE = '動画全体の「テロップの見た目」で全カットの向きを決めています。カットごとに変えるなら、そちらの向きを「カットごと」にしてください';
+
+const telopMaxChars = (cuts: ReelData | null | undefined): number => {
+  const look = resolveTelopStyle(cuts?.theme, cuts?.telopStyle);
+  return look.layout !== 'vertical' && look.lineChars > 0 ? look.lineChars * 2 : 13;
+};
 import {useEmotionTags} from '../hooks/useEmotionTags';
 import {NarrationEmotion} from '../components/NarrationEmotion';
 
@@ -85,14 +100,15 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
           <label>
             テーマ
             <select value={cuts.theme ?? 'pop'} onChange={(e) => patchReel({theme: e.target.value as ReelData['theme']})}>
-              {(['pop', 'bold', 'human', 'stylish'] as const).map((t) => (
+              {(['pop', 'bold', 'human', 'stylish', 'azu'] as const).map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {t === 'azu' ? 'azu（横書き2行・黒フチ・赤タグ）' : t}
                 </option>
               ))}
             </select>
           </label>
           <TelopFontSelect font={cuts.font} onChange={(font) => patchReel({font})} />
+          <TelopStyleControls cuts={cuts} onChange={(telopStyle) => patchReel({telopStyle})} />
           <label title="バッジ（エリア名・順位）の下地の濃さ。0 で下地なし、1 でベタ塗り。文字の濃さは変わりません">
             バッジの濃さ {Math.round((cuts.badgeOpacity ?? BADGE_OPACITY_DEFAULT) * 100)}%
             <input type="range" min={0} max={1} step={0.05} value={cuts.badgeOpacity ?? BADGE_OPACITY_DEFAULT} onChange={(e) => patchReel({badgeOpacity: Number(e.target.value)})} />
@@ -467,7 +483,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
                     onChange={(e) => patchCut(index, (x) => ({...x, main: {...(x.main ?? {}), text: e.target.value}}), {history: false})}
                     onFocus={pushHistory}
                   />
-                  <Counter text={text} />
+                  <Counter text={text.replace(/[【】\s]/g, '')} max={telopMaxChars(cuts)} />
                 </span>
               </label>
             </div>
@@ -475,9 +491,9 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
               {c.main && (
                 <label>
                   向き
-                  <select value={c.main.orientation ?? 'vertical'} onChange={(e) => patchCut(index, {main: {...c.main!, orientation: e.target.value === 'vertical' ? undefined : 'horizontal'}})}>
+                  <select value={forcedLayout(cuts) ?? c.main.orientation ?? 'vertical'} disabled={!!forcedLayout(cuts)} title={forcedLayout(cuts) ? FORCED_TITLE : undefined} onChange={(e) => patchCut(index, {main: {...c.main!, orientation: e.target.value === 'vertical' ? undefined : 'horizontal'}})}>
                     <option value="vertical">縦書き（中央）</option>
-                    <option value="horizontal">横書き（上部）</option>
+                    <option value="horizontal">横書き</option>
                   </select>
                 </label>
               )}
@@ -501,6 +517,49 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
                 />
               </label>
             </div>
+            <div className="row">
+              <label title="黒背景に店名ピン＋一言を出す締めのカード（azu 型）。このカットのテロップは出しません">
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={!!c.endCard}
+                    onChange={(e) =>
+                      patchCut(index, (x) => {
+                        const nx = {...x};
+                        if (e.target.checked) nx.endCard = {title: m.brief?.shop.name || x.main?.text || '店名', sub: '詳細はキャプションまで'};
+                        else delete nx.endCard;
+                        return nx;
+                      })
+                    }
+                  />{' '}
+                  最終カード
+                </span>
+              </label>
+            </div>
+            {c.endCard && (
+              <div className="form">
+                  <label className="full">
+                    店名
+                    <input value={c.endCard.title} onFocus={pushHistory} onChange={(e) => patchCut(index, (x) => ({...x, endCard: {...x.endCard!, title: e.target.value}}), {history: false})} />
+                  </label>
+                  <label>
+                    下の一言
+                    <input
+                      value={c.endCard.sub ?? ''}
+                      placeholder="（無し）"
+                      onFocus={pushHistory}
+                      onChange={(e) => patchCut(index, (x) => ({...x, endCard: {...x.endCard!, sub: e.target.value || undefined}}), {history: false})}
+                    />
+                  </label>
+                  <label>
+                    背景
+                    <select value={c.endCard.bg ?? 'black'} onChange={(e) => patchCut(index, (x) => ({...x, endCard: {...x.endCard!, bg: e.target.value === 'dim' ? 'dim' : undefined}}))}>
+                      <option value="black">黒一色</option>
+                      <option value="dim">映像を暗く残す</option>
+                    </select>
+                  </label>
+              </div>
+            )}
           </>
         )}
         {c.subs && c.subs.length > 0 && (
@@ -590,16 +649,16 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
               setCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) ? {...c, main: {...(c.main ?? {}), text: e.target.value}} : c))});
             }}
           />
-          <Counter text={text} />
+          <Counter text={text.replace(/[【】\s]/g, '')} max={telopMaxChars(cuts)} />
         </span>
       </label>
       {isPlaceholder(text) && <div className="hint">未記入（{text}）。Claude に頼む →「テロップを書いてもらう」でも埋められます</div>}
       <div className="row">
         <label>
           向き
-          <select value={g.def.orientation ?? 'vertical'} onChange={(e) => setGroupOrientation(group, e.target.value as 'vertical' | 'horizontal')}>
+          <select value={forcedLayout(cuts) ?? g.def.orientation ?? 'vertical'} disabled={!!forcedLayout(cuts)} title={forcedLayout(cuts) ? FORCED_TITLE : undefined} onChange={(e) => setGroupOrientation(group, e.target.value as 'vertical' | 'horizontal')}>
             <option value="vertical">縦書き（中央）</option>
-            <option value="horizontal">横書き（上部）</option>
+            <option value="horizontal">横書き</option>
           </select>
         </label>
         <label title="グループの先頭カットに付くバッジ（エリア名など）">

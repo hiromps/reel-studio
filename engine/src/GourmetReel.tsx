@@ -2,8 +2,8 @@ import React from 'react';
 import {AbsoluteFill, OffthreadVideo, Sequence, staticFile, useCurrentFrame} from 'remotion';
 import {zoomStyle, type Zoom} from './zoom';
 import {colorFilter, type ColorAdjustments} from './color';
-import {BadgeTelop, MainTelop, PriceTelop, TateTelop, TelopFont} from './telops';
-import type {ThemeName} from './telops';
+import {BadgeTelop, EndCard, MainTelop, PriceTelop, TateTelop, TelopFont, resolveTelopStyle} from './telops';
+import type {EndCardDef, TelopStyle, ThemeName} from './telops';
 
 export type MainTelopDef = {
   text: string;
@@ -76,11 +76,13 @@ export type Cut = {
   price?: PriceTelopDef;
   badge?: string; // ランキング・まとめ型用（例: "第3位", "①幸楽"）。カット頭にポップイン
   subs?: SubDef[]; // 会話クリップ専用。mainと併用しない
+  // 最終カード（黒背景に店名ピン＋一言）。このカットのメインテロップは出さない
+  endCard?: EndCardDef;
 };
 
 export type ReelData = {
   fps: number;
-  theme?: ThemeName; // pop(既定) | bold | human | stylish
+  theme?: ThemeName; // pop(既定) | bold | human | stylish | azu
   // テロップのフォント。public/fonts/ の中のファイル名（例 "MyFont.otf"）。
   // 省略＝同梱の明朝（Noto Serif JP Bold）。Reel Studio の Settings で取り込んだものが配られる
   font?: string;
@@ -89,6 +91,8 @@ export type ReelData = {
   tate?: {text: string; outlineColor: string};
   // バッジ下地の不透明度（0〜1）。省略時はエンジン既定。Reel Studio の Timeline から調整できる
   badgeOpacity?: number;
+  // テロップの見た目（向き・高さ・大きさ・書体・フチ・影・赤タグ・大きい数字）。省略項目はテーマの既定
+  telopStyle?: TelopStyle;
   cuts: Cut[];
 };
 
@@ -115,6 +119,7 @@ const CutVideo: React.FC<{cut: Cut; fps: number; frames: number}> = ({cut, fps, 
 
 export const GourmetReel: React.FC<ReelData> = (data) => {
   const theme = data.theme ?? 'pop';
+  const look = resolveTelopStyle(theme, data.telopStyle);
 
   // 映像本体（OffthreadVideo・price/badge・subs）はカット単位のSequenceのまま
   let from = 0;
@@ -143,12 +148,13 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
           const {startSec, endSec, ...telop} = s;
           return (
             <Sequence key={`sub${j}`} from={subFrom} durationInFrames={subDur} name={`sub${j + 1}`}>
-              <MainTelop theme={theme} {...telop} />
+              <MainTelop theme={theme} look={look} {...telop} />
             </Sequence>
           );
         })}
         {cut.price ? <PriceTelop theme={theme} {...cut.price} /> : null}
         {cut.badge ? <BadgeTelop theme={theme} text={cut.badge} opacity={data.badgeOpacity} /> : null}
+        {cut.endCard?.title ? <EndCard theme={theme} look={look} {...cut.endCard} /> : null}
       </Sequence>
     );
   });
@@ -160,7 +166,7 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
     let cursor = 0;
     for (const cut of data.cuts) {
       const dur = cutFrames(cut, data.fps);
-      if (cut.main && !cut.subs) {
+      if (cut.main && !cut.subs && !cut.endCard?.title) {
         const last = telopGroups[telopGroups.length - 1];
         const continuous =
           last &&
@@ -185,7 +191,7 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
         {videoElements}
         {telopGroups.map((g, i) => (
           <Sequence key={`telop${i}`} from={g.from} durationInFrames={g.dur} name={`telop${i + 1}`}>
-            <MainTelop theme={theme} {...g.def} hasBadge={g.hasBadge} />
+            <MainTelop theme={theme} look={look} {...g.def} hasBadge={g.hasBadge} />
           </Sequence>
         ))}
         {/* 常駐縦書きテロップは tate 指定時のみ（基本は入れない） */}

@@ -321,7 +321,7 @@ export const BriefPage: React.FC<{onGoTimeline: () => void; onTab: (t: StepTab) 
             テーマ（空 = {spec!.theme}）
             <select value={brief.theme ?? ''} onChange={(e) => set({theme: (e.target.value || undefined) as Brief['theme']})}>
               <option value="">（推奨 {spec!.theme}）</option>
-              {(['pop', 'bold', 'human', 'stylish'] as const).map((t) => (
+              {(['pop', 'bold', 'human', 'stylish', 'azu'] as const).map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>

@@ -38,6 +38,7 @@ import {
   type ScriptProposalReview,
 } from '../shared/script';
 import {getPersona} from '../shared/personas';
+import {withAzuEndCard} from '../shared/telop-text';
 import {FORMAT_SPECS} from '../shared/format-specs';
 import {stableHash} from '../shared/hash';
 import {VARIETY_RULES, isSimilarShot, shotGroupNote, shotGroups} from '../shared/shot-variety';
@@ -134,9 +135,13 @@ const loadScriptEnv = (projectDir: string) => {
       return !!cx && !!cy && isSimilarShot(cx, cy);
     },
   };
-  const toCuts = (plan: ScriptPlan): ReelData =>
-    scriptPlanToCuts(plan, {catalog, theme: brief.theme ?? persona.theme, font: loadSettings().telop.font, specId: spec.id, briefHash: stableHash(brief), catalogHash: stableHash(catalog)});
-  return {script, catalog, brief, persona, spec, sections, check, toCuts};
+  // azu の型（F8/F9）はテロップの配置ごと型の一部なので、人格のテーマより型を優先する
+  const theme = brief.theme ?? (spec.theme === 'azu' ? spec.theme : persona.theme);
+  const toCuts = (plan: ScriptPlan): ReelData => withAzuEndCard(
+    scriptPlanToCuts(plan, {catalog, theme, font: loadSettings().telop.font, specId: spec.id, briefHash: stableHash(brief), catalogHash: stableHash(catalog)}),
+    brief.shop.name,
+  );
+  return {script, catalog, brief, persona, spec, theme, sections, check, toCuts};
 };
 
 /** cuts.json と narration.json を書く（「台本から組み立てる」と「承認して書き込む」の共通部分）。旧版は .studio/backups/ に残る */
@@ -294,7 +299,7 @@ export async function aiScript(
   if (opt.write) assertOrderUnlocked(projectDir);
   await ensureLooks(projectDir, {onLine: log}).catch(() => 0); // 似た構図のまとまりを素材一覧に添えるため
   const env = loadScriptEnv(projectDir);
-  const {script, catalog, brief, persona, spec, sections} = env;
+  const {script, catalog, brief, persona, spec, theme, sections} = env;
 
   const usable = catalog.clips.filter((c) => !c.user.ng);
   if (!usable.length) throw new Error('使える素材がありません（全部 NG になっています）');
@@ -342,7 +347,13 @@ export async function aiScript(
     '',
     '## 守ること',
     `- テロップは ${spec.telop.maxChars} 文字まで。文末に句点（。）を付けない。長い指示は意味を保って縮める。三点リーダーは全角 3 文字の「・・・」で書く（「…」は使わない）`,
-    `- **エリア名（${brief.shop.area || '—'}）は縦書き本文ではなく badge に出す。** 本文はエリア名が無くても通る言い回しに`,
+    ...(theme === 'azu'
+      ? [
+          '- **azu 型**：テロップはナレーションの 1 区切りと同じ文（15〜20 字）。横書き 2 行で出るので、割りたい位置は読点（、）にする。1 つのテロップを約 3 カットにまたがらせる',
+          '- 強調語（名物・絶品など）は【名物】のように隅付き括弧で囲む（赤いタグになる）。1 テロップに 1 つまで。数字は自動で大きく出る',
+          '- 0 秒からナレーションとテロップを同時に出す。最後のカットは店名の最終カードになるので、外観・看板の画を当てる',
+        ]
+      : [    `- **エリア名（${brief.shop.area || '—'}）は縦書き本文ではなく badge に出す。** 本文はエリア名が無くても通る言い回しに`,]),
     ...VARIETY_RULES.map((r) => `- ${r}`),
     brief.videoStyle ? '- 台本のカット割りと選んだ動画の型のカット尺・強弱に合わせる。既定の均一テンポに戻さない。区間の長さに足りない分は別の素材を足す' : '- 台本の「カット割り」の秒数は目安。1 カット 0.7〜0.8 秒に収め、区間の長さに足りない分は上の規則で別の素材を足す',
     '- 台本に無いテロップを足さない。台本に無い情報をナレーションに足さない',
