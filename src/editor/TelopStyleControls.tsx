@@ -62,22 +62,23 @@ export const TelopStyleControls: React.FC<Props> = ({cuts, onChange}) => {
             <option value="serif">同梱の明朝</option>
           </select>
         </label>
-        <label>
-          フチ
-          <select value={own.outline ?? ''} onChange={(e) => set({outline: (e.target.value || undefined) as TelopStyle['outline']})}>
-            <option value="">既定：{look.outline === 'hard' ? '黒フチ' : 'ぼかし'}</option>
-            <option value="hard">くっきり黒フチ</option>
-            <option value="soft">ぼかしフチ</option>
+        <label title="影は書体にかかわらず同梱の明朝と同じぼかしです（くっきりした黒フチは使いません）">
+          影
+          <select
+            value={own.outline === 'none' ? 'none' : own.outline ? 'soft' : ''}
+            onChange={(e) => set({outline: (e.target.value || undefined) as TelopStyle['outline']})}
+          >
+            <option value="">既定：{look.outline === 'none' ? 'なし' : '明朝と同じ影'}</option>
+            <option value="soft">明朝と同じ影</option>
+            <option value="none">影なし</option>
           </select>
         </label>
-        <label>
-          フチの太さ {Math.round(look.outlineWidth)}px
-          <input type="range" min={0} max={24} step={1} value={look.outlineWidth} onChange={(e) => set({outlineWidth: Number(e.target.value)})} />
-        </label>
-        <label>
-          影の濃さ {Math.round(look.shadow * 100)}%
-          <input type="range" min={0} max={1} step={0.05} value={look.shadow} onChange={(e) => set({shadow: Number(e.target.value)})} />
-        </label>
+        {look.outline !== 'none' && (
+          <label>
+            影の広がり {Math.round(look.outlineWidth)}px
+            <input type="range" min={4} max={24} step={1} value={look.outlineWidth} onChange={(e) => set({outlineWidth: Number(e.target.value)})} />
+          </label>
+        )}
         <label className="full" title="文言の【名物】【絶品】のように隅付き括弧で囲んだ語を、赤いタグで出します">
           <span>
             <input type="checkbox" checked={look.tags} onChange={(e) => set({tags: e.target.checked})} /> 【】で囲んだ語を赤タグにする

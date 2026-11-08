@@ -102,7 +102,7 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
             <select value={cuts.theme ?? 'pop'} onChange={(e) => patchReel({theme: e.target.value as ReelData['theme']})}>
               {(['pop', 'bold', 'human', 'stylish', 'azu'] as const).map((t) => (
                 <option key={t} value={t}>
-                  {t === 'azu' ? 'azu（横書き2行・黒フチ・赤タグ）' : t}
+                  {t === 'azu' ? 'azu（横書き2行・ゴシック・赤タグ）' : t}
                 </option>
               ))}
             </select>

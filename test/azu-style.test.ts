@@ -6,9 +6,9 @@ import {parseTelopPieces, resolveTelopStyle, wrapTelop} from '../engine/src/telo
 import {makeBrief, makeCatalog, richClips} from './helpers';
 
 describe('azu 型のテロップ', () => {
-  it('azu テーマの既定は横書き 2 行・高さ 44%・ゴシック・黒フチ・赤タグ', () => {
+  it('azu テーマの既定は横書き 2 行・高さ 44%・ゴシック・明朝と同じぼかし影・赤タグ', () => {
     const look = resolveTelopStyle('azu');
-    expect(look).toMatchObject({layout: 'horizontal', y: 0.44, lineChars: 12, family: 'gothic', outline: 'hard', tags: true, bigNumbers: true});
+    expect(look).toMatchObject({layout: 'horizontal', y: 0.44, lineChars: 12, family: 'gothic', outline: 'soft', outlineWidth: 14, tags: true, bigNumbers: true});
   });
 
   it('従来テーマは今までどおり（縦書き・明朝・ぼかしフチ）で、telopStyle の項目だけ上書きされる', () => {

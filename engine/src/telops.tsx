@@ -81,7 +81,7 @@ export const TelopFont: React.FC<{file?: string; children: React.ReactNode}> = (
 };
 
 // ── ビジュアルテーマ（telop-style.md のテーマ表と対応） ─────────────
-// azu = @azu_osakagourmet の分析から作った型（白文字＋黒フチ・画面高さ44%に横書き2行・赤タグ・数字だけ大きく）
+// azu = @azu_osakagourmet の分析から作った型（白文字＋明朝と同じぼかし影・画面高さ44%に横書き2行・赤タグ・数字だけ大きく）
 export type ThemeName = 'pop' | 'bold' | 'human' | 'stylish' | 'azu';
 
 type Theme = {
@@ -131,7 +131,7 @@ const THEMES: Record<ThemeName, Theme> = {
     priceColor: '#E6C86E',
     strokeColor: '#1A1A1A',
   },
-  // azu 型。白文字＋くっきり黒フチ、強調語は赤タグ
+  // azu 型。白文字＋明朝と同じぼかし影、強調語は赤タグ
   azu: {
     fontWeight: 800,
     highlight: '#FFE600',
@@ -144,7 +144,7 @@ const THEMES: Record<ThemeName, Theme> = {
 
 // ── テロップの見た目（レイアウト・書体・フチ・影） ──────────────────
 // cuts.json の telopStyle で項目ごとに上書きできる。省略した項目はテーマの既定（TELOP_STYLE_PRESETS）。
-// 既定は pop〜stylish が従来どおり（縦書き中央・明朝・ぼかしフチ）、azu が横書き 2 行・ゴシック・黒フチ。
+// 既定は pop〜stylish が従来どおり（縦書き中央・明朝・ぼかしフチ）、azu が横書き 2 行・ゴシック・明朝と同じぼかし影。
 export type TelopLayout = 'auto' | 'vertical' | 'horizontal';
 export type TelopFamily = 'custom' | 'gothic' | 'serif';
 export type TelopStyle = {
@@ -158,11 +158,12 @@ export type TelopStyle = {
   lineChars?: number;
   /** custom = 設定のフォント（無ければ同梱の明朝）/ gothic = 太めのゴシック / serif = 同梱の明朝 */
   family?: TelopFamily;
-  /** soft = ぼかしフチ（従来）/ hard = くっきりした黒フチ */
-  outline?: 'soft' | 'hard';
-  /** フチの太さ（px） */
+  /** soft = 同梱の明朝と同じ影（ぼかしフチ）/ none = 影なし。
+   *  hard（くっきり黒フチ）は素人っぽく見えるので 2026-11-08 に廃止。古い cuts.json の hard は soft として描く */
+  outline?: 'soft' | 'none' | 'hard';
+  /** 影の広がり（px） */
   outlineWidth?: number;
-  /** 下方向の影の濃さ（0〜1。0 で影なし） */
+  /** 赤タグの箱の影の濃さ（0〜1）。文字の影は outline で決める */
   shadow?: number;
   /** 【名物】のように隅付き括弧で囲んだ語を赤いタグにする */
   tags?: boolean;
@@ -175,7 +176,7 @@ export type ResolvedTelopStyle = {
   size: number;
   lineChars: number;
   family: TelopFamily;
-  outline: 'soft' | 'hard';
+  outline: 'soft' | 'none';
   outlineWidth: number;
   shadow: number;
   tags: boolean;
@@ -200,15 +201,16 @@ export const TELOP_STYLE_PRESETS: Record<ThemeName, ResolvedTelopStyle> = {
   bold: LEGACY_STYLE,
   human: LEGACY_STYLE,
   stylish: LEGACY_STYLE,
-  // azu の 101 本の画像解析：画面高さの 44%（39〜48%）に 2 行・中央揃え、1 行 8〜12 字、白文字＋黒フチ
+  // azu の 101 本の画像解析：画面高さの 44%（39〜48%）に 2 行・中央揃え、1 行 8〜12 字。
+  // 元は白文字＋黒フチだが、黒フチは素人っぽく見えるので影は同梱の明朝と同じぼかし（2026-11-08 ユーザー指定）
   azu: {
     layout: 'horizontal',
     y: 0.44,
     size: 64,
     lineChars: 12,
     family: 'gothic',
-    outline: 'hard',
-    outlineWidth: 12,
+    outline: 'soft',
+    outlineWidth: 14,
     shadow: 0.55,
     tags: true,
     bigNumbers: true,
@@ -228,7 +230,7 @@ export const resolveTelopStyle = (theme: ThemeName | undefined, style?: TelopSty
     size: clampNum(s.size, 30, 140, base.size),
     lineChars: Math.round(clampNum(s.lineChars, 0, 30, base.lineChars)),
     family: s.family ?? base.family,
-    outline: s.outline ?? base.outline,
+    outline: s.outline === 'none' ? 'none' : s.outline ? 'soft' : base.outline,
     outlineWidth: clampNum(s.outlineWidth, 0, 30, base.outlineWidth),
     shadow: clampNum(s.shadow, 0, 1, base.shadow),
     tags: s.tags ?? base.tags,
@@ -392,18 +394,9 @@ const outlined = (width: number, color: string): React.CSSProperties => {
   };
 };
 
-// くっきりした黒フチ（azu 型）。paint-order で塗りを上に重ね、フチは文字の外側にだけ出す。
-// 影は下方向に 1 枚だけ（濃さ shadow）。
-const hardOutlined = (width: number, color: string, shadow: number): React.CSSProperties => ({
-  color: '#fff',
-  WebkitTextStroke: width > 0 ? `${width}px ${color}` : undefined,
-  paintOrder: 'stroke fill',
-  strokeLinejoin: 'round',
-  textShadow:
-    shadow > 0
-      ? [`0 ${Math.max(2, Math.round(width * 0.35))}px ${Math.max(4, Math.round(width * 0.9))}px rgba(0,0,0,${shadow.toFixed(2)})`, `0 0 ${Math.max(2, Math.round(width * 0.4))}px rgba(0,0,0,${(shadow * 0.6).toFixed(2)})`].join(', ')
-      : undefined,
-});
+// 文字の影は書体にかかわらず明朝と同じぼかし（outlined）だけ。くっきりした黒フチは使わない（2026-11-08 ユーザー指定）
+const telopShadow = (outline: ResolvedTelopStyle['outline'], width: number, color: string): React.CSSProperties =>
+  outline === 'none' || width <= 0 ? {color: '#fff'} : outlined(width, color);
 
 const fontStackFor = (family: TelopFamily, contextStack: string): string =>
   family === 'gothic' ? GOTHIC_STACK : family === 'serif' ? fontStack : contextStack;
@@ -453,7 +446,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
     fontWeight: t.fontWeight,
     fontSize,
     whiteSpace: 'nowrap',
-    ...(look.outline === 'hard' ? hardOutlined(look.outlineWidth, t.strokeColor, look.shadow) : outlined(look.outlineWidth, t.strokeColor)),
+    ...telopShadow(look.outline, look.outlineWidth, t.strokeColor),
   };
 
   // 中心の高さを指定した横書き（azu 型の 44%）。バッジ・価格とは位置が離れているので逃がさない
@@ -643,11 +636,11 @@ export const EndCard: React.FC<EndCardDef & {theme: ThemeName; look?: ResolvedTe
   return (
     <AbsoluteFill style={{background: bg === 'dim' ? 'rgba(0,0,0,0.62)' : '#000', justifyContent: 'center', alignItems: 'center'}}>
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 36, fontFamily, color: '#fff', fontWeight: t.fontWeight}}>
-        <div style={{display: 'flex', alignItems: 'center', gap: 18, fontSize: titleSize, lineHeight: 1.2, whiteSpace: 'nowrap', ...(bg === 'dim' ? hardOutlined(8, '#000', 0.5) : {})}}>
+        <div style={{display: 'flex', alignItems: 'center', gap: 18, fontSize: titleSize, lineHeight: 1.2, whiteSpace: 'nowrap', ...(bg === 'dim' ? outlined(14, '#000') : {})}}>
           <PinIcon size={Math.round(titleSize * 1.05)} color={t.accent} />
           <span>{title}</span>
         </div>
-        {sub ? <div style={{fontSize: 46, opacity: 0.92, whiteSpace: 'nowrap', ...(bg === 'dim' ? hardOutlined(6, '#000', 0.5) : {})}}>{sub}</div> : null}
+        {sub ? <div style={{fontSize: 46, opacity: 0.92, whiteSpace: 'nowrap', ...(bg === 'dim' ? outlined(10, '#000') : {})}}>{sub}</div> : null}
       </div>
     </AbsoluteFill>
   );

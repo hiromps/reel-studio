@@ -35,7 +35,8 @@ export const TelopStyleSchema = z.object({
   size: z.number().min(30).max(140).optional(),
   lineChars: z.number().int().min(0).max(30).optional(),
   family: z.enum(['custom', 'gothic', 'serif']).optional(),
-  outline: z.enum(['soft', 'hard']).optional(),
+  outline: z.enum(['soft', 'none', 'hard']) // hard は廃止（soft として描く）。古い cuts.json を読めるよう残す
+    .optional(),
   outlineWidth: z.number().min(0).max(30).optional(),
   shadow: z.number().min(0).max(1).optional(),
   tags: z.boolean().optional(),
