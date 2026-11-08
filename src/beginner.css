@@ -34,6 +34,9 @@
 .skill-preview {background: var(--panel2); border-radius: var(--radius-sm); padding: 16px; overflow-wrap: anywhere;}
 .skill-preview > p {line-height: 1.7; margin: 8px 0;}
 .skill-preview textarea {width: 100%;}
+.skill-rename {display: flex; flex-direction: column; gap: 4px; margin: 8px 0;}
+.skill-rename .btns {display: flex; gap: 8px; flex-wrap: wrap; align-items: center;}
+.skill-rename input {flex: 1 1 200px; min-width: 0;}
 .skill-manage {align-self: center;}
 .skill-manage[open] {width: 100%;}
 .skill-status {display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-radius: var(--radius-sm); color: var(--tint-blue-fg); background: var(--tint-blue); line-height: 1.6; overflow-wrap: anywhere;}

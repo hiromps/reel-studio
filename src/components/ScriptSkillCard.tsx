@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {SCRIPT_SKILL_MAX_BYTES, ScriptSkillSchema, sameScriptSkill, scriptSkillCatalog, scriptSkillInfo, skillWithoutId, type ScriptSkill, type ScriptSkillEntry} from '@shared/script-skill';
+import {SCRIPT_SKILL_MAX_BYTES, SCRIPT_SKILL_NAME_MAX, ScriptSkillSchema, renameScriptSkill, sameScriptSkill, scriptSkillCatalog, scriptSkillInfo, scriptSkillLabels, skillWithoutId, type ScriptSkill, type ScriptSkillEntry} from '@shared/script-skill';
 import type {SettingsPatch} from '@shared/schema/settings';
 
 export const ScriptSkillCard: React.FC<{
@@ -20,6 +20,11 @@ export const ScriptSkillCard: React.FC<{
   const selected = entries.find((s) => s.id === selectedId);
   const shown = candidate ?? selected;
   const info = shown ? scriptSkillInfo(shown.content) : null;
+  const labels = useMemo(() => scriptSkillLabels(entries), [entries]);
+  // 同じ名前のスキルがあるか（あれば名前を変えるよう促す）
+  const duplicated = !!info && entries.some((e) => e.id !== (candidate ? undefined : selected?.id) && scriptSkillInfo(e.content).name === info.name);
+  const [nameDraft, setNameDraft] = useState('');
+  useEffect(() => setNameDraft(info?.name ?? ''), [info?.name, selectedId, !!candidate]);
 
   const read = async (file: File) => {
     setBusy(true); setError(null); setStatus('ファイルを読み込んでいます…');
@@ -63,6 +68,21 @@ export const ScriptSkillCard: React.FC<{
     const next = {...selected, enabled: !selected.enabled};
     void persist({scriptSkills: entries.map((e) => e.id === next.id ? next : e), ...(sameScriptSkill(selected, skill) ? {scriptSkill: skillWithoutId(next)} : {})}, next.enabled ? '台本スキルを有効にしました' : '新しく選ぶ候補から外しました。案件の選択は保持されます');
   };
+  const rename = () => {
+    const name = nameDraft.trim();
+    if (!name || !info || name === info.name) return;
+    if (candidate) {
+      const parsed = ScriptSkillSchema.safeParse({...candidate, content: renameScriptSkill(candidate.content, name)});
+      if (!parsed.success) {setError(parsed.error.issues[0].message); return;}
+      setCandidate(parsed.data); setError(null); setStatus('名前を変えました。内容を確認して保存してください');
+      return;
+    }
+    if (!selected) return;
+    const parsed = ScriptSkillSchema.safeParse({...skillWithoutId(selected), content: renameScriptSkill(selected.content, name)});
+    if (!parsed.success) {setError(parsed.error.issues[0].message); return;}
+    const next = {...parsed.data, id: selected.id};
+    void persist({scriptSkills: entries.map((e) => e.id === selected.id ? next : e), ...(sameScriptSkill(selected, skill) ? {scriptSkill: skillWithoutId(next)} : {})}, `名前を「${name}」に変えました。案件に保存済みの内容は保持されます`, next.id);
+  };
   const remove = () => selected && void persist({scriptSkills: entries.filter((e) => e.id !== selected.id), ...(sameScriptSkill(selected, skill) ? {scriptSkill: null} : {})}, 'スキルを削除しました。案件に保存済みの内容は保持されます');
 
   return <section className="card skill-library" aria-labelledby="script-skill-title" aria-busy={busy}>
@@ -76,12 +96,19 @@ export const ScriptSkillCard: React.FC<{
       <p id="script-skill-help" className="hint full">SKILL.mdなどのMarkdown（UTF-8・128 KBまで）。登録後は「AIで台本」の画面で選択できます。</p>
       {entries.length > 0 && <label className="full">登録済みのスキル
         <select value={selectedId} disabled={busy || !!candidate} onChange={(e) => {setSelectedId(e.target.value); setError(null); setStatus('');}}>
-          {entries.map((e) => <option key={e.id} value={e.id}>{scriptSkillInfo(e.content).name}{!e.enabled ? '（無効）' : ''}{sameScriptSkill(e, skill) && skill?.enabled ? '（既定）' : ''}</option>)}
+          {entries.map((e) => <option key={e.id} value={e.id}>{labels.get(e.id)}{!e.enabled ? '（無効）' : ''}{sameScriptSkill(e, skill) && skill?.enabled ? '（既定）' : ''}</option>)}
         </select>
       </label>}
       {shown && info && <div className="full skill-preview">
         <strong>{info.name}</strong> {candidate && <span className="pill warn">未保存</span>}
         {info.description && <p>{info.description}</p>}
+        <label className="skill-rename">名前（一覧に出る名前）
+          <span className="btns">
+            <input type="text" value={nameDraft} maxLength={SCRIPT_SKILL_NAME_MAX} disabled={busy} aria-label="スキルの名前" onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => {if (e.key === 'Enter') {e.preventDefault(); rename();}}} />
+            <button type="button" disabled={busy || !nameDraft.trim() || nameDraft.trim() === info.name} onClick={rename}>名前を変更</button>
+          </span>
+        </label>
+        {duplicated && <p className="hint warn-text">同じ名前のスキルがほかにもあります。名前を変えると、案件で選ぶときに見分けやすくなります。</p>}
         <details open={candidate ? true : undefined}><summary>内容を確認する <span className="hint">{shown.fileName}</span></summary><label>読み込んだ内容<textarea value={shown.content} readOnly rows={8} spellCheck={false} /></label><p className="hint">referencesなど、別ファイルへのリンク先は取り込まれません。</p></details>
       </div>}
     </div>

@@ -64,6 +64,50 @@ export function scriptSkillInfo(content: string): {name: string; description: st
   return {name: field('name') || body.match(/^#\s+(.+)$/m)?.[1]?.trim() || '台本スキル', description: field('description'), body};
 }
 
+export const SCRIPT_SKILL_NAME_MAX = 60;
+
+/**
+ * 表示名（先頭メタデータの name:）を書き換えた本文を返す。
+ * 名前はファイルの中にしか無いので、同じ name のファイルを 2 つ入れると一覧で見分けられなかった。
+ * 保存形式（fileName / content / enabled）を変えずに直せるよう、本文の name: を差し替える。
+ */
+export function renameScriptSkill(content: string, name: string): string {
+  const clean = name.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SCRIPT_SKILL_NAME_MAX);
+  if (!clean) return normalize(content);
+  // YAML として読まれても崩れない書き方にする（記号で始まる・": " や " #" を含むときは引用符で囲む）
+  const value = /^[-?:,[\]{}#&*!|>'"%@`]|: | #|:$/.test(clean) ? `"${clean.replace(/["\\]/g, '')}"` : clean;
+  const text = normalize(content);
+  const match = /^---[ \t]*\n/.test(text) ? text.match(/^---[ \t]*\n([\s\S]*?)^---[ \t]*(?:\n|$)/m) : null;
+  if (!match) return `---\nname: ${value}\n---\n${text}`;
+  const head = match[1];
+  const line = head.match(/^name:[ \t]*(.*)$/m);
+  if (!line) return `---\nname: ${value}\n${text.slice(text.indexOf('\n') + 1)}`;
+  const start = line.index!;
+  let end = start + line[0].length;
+  // name: > や name: | の続き（字下げされた行）もまとめて置き換える
+  if (/^[>|][-+]?$/.test(line[1].trim())) end += head.slice(end).match(/^(?:\n[ \t]+[^\n]*)*/)![0].length;
+  const offset = text.indexOf('\n') + 1;
+  return text.slice(0, offset + start) + `name: ${value}` + text.slice(offset + end);
+}
+
+/**
+ * 一覧（select）に出す名前。同じ名前が複数あるときは説明・ファイル名・番号を添えて見分けられるようにする。
+ */
+export function scriptSkillLabels(entries: ScriptSkillEntry[]): Map<string, string> {
+  const infos = entries.map((e) => ({id: e.id, fileName: e.fileName, ...scriptSkillInfo(e.content)}));
+  const labels = new Map<string, string>();
+  for (const info of infos) {
+    const same = infos.filter((x) => x.name === info.name);
+    if (same.length === 1) {labels.set(info.id, info.name); continue;}
+    const short = (s: string) => (s.length > 24 ? `${s.slice(0, 24)}…` : s);
+    const hint = info.description && same.filter((x) => x.description === info.description).length === 1 ? short(info.description)
+      : same.filter((x) => x.fileName === info.fileName).length === 1 ? info.fileName
+      : `${same.indexOf(info) + 1}`;
+    labels.set(info.id, `${info.name}（${hint}）`);
+  }
+  return labels;
+}
+
 export function scriptSkillPrompt(skill: ScriptSkill | undefined): string {
   if (!skill?.enabled) return '';
   return [

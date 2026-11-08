@@ -145,3 +145,29 @@ it('二つの案件で異なる台本スキルを生成へ渡し、使わない�
     if (selection === other) expect(prompt).not.toContain(selected.content);
   }
 });
+
+describe('台本スキルの名前', () => {
+  it('先頭メタデータの name だけを書き換え、本文と説明は変えない', async () => {
+    const {renameScriptSkill} = await import('../shared/script-skill');
+    const renamed = renameScriptSkill(content, 'azu-osaka-reel');
+    expect(scriptSkillInfo(renamed)).toMatchObject({name: 'azu-osaka-reel', description: '関西グルメの台本を作る', body: scriptSkillInfo(content).body});
+    expect(ScriptSkillSchema.safeParse({fileName: 'SKILL.md', content: renamed}).success).toBe(true);
+    // 折り返し（>）の name、name の無いメタデータ、メタデータの無い本文
+    expect(scriptSkillInfo(renameScriptSkill('---\nname: >\n  長い\n  名前\ndescription: 説明\n---\n# 本文', 'Azu')).name).toBe('Azu');
+    expect(scriptSkillInfo(renameScriptSkill('---\nname: >\n  長い\n  名前\ndescription: 説明\n---\n# 本文', 'Azu')).description).toBe('説明');
+    expect(scriptSkillInfo(renameScriptSkill('---\ndescription: 説明\n---\n# 本文', 'Azu'))).toMatchObject({name: 'Azu', description: '説明'});
+    expect(scriptSkillInfo(renameScriptSkill('# 見出し\n本文', 'Azu'))).toMatchObject({name: 'Azu', body: '# 見出し\n本文'});
+    // 記号や改行を含んでも 1 行の名前として読める
+    expect(scriptSkillInfo(renameScriptSkill(content, 'Azu: 大阪\n#2')).name).toBe('Azu: 大阪 #2');
+    expect(renameScriptSkill(content, '   ')).toBe(content);
+  });
+
+  it('同じ名前のスキルは、説明・ファイル名・番号を添えて一覧で見分けられる', async () => {
+    const {scriptSkillLabels} = await import('../shared/script-skill');
+    const entry = (id: string, description: string, fileName = 'SKILL.md') => ({id, fileName, enabled: true, content: `---\nname: oc-eat-reel-script\ndescription: ${description}\n---\n# 台本`});
+    const labels = scriptSkillLabels([entry('a', 'oc.eat の台本'), entry('b', 'azu の台本'), {...skill, id: 'c', content: '# カフェ\n本文'}]);
+    expect([...labels.values()]).toEqual(['oc-eat-reel-script（oc.eat の台本）', 'oc-eat-reel-script（azu の台本）', 'カフェ']);
+    expect([...scriptSkillLabels([entry('a', '同じ', 'oc.md'), entry('b', '同じ', 'azu.md')]).values()]).toEqual(['oc-eat-reel-script（oc.md）', 'oc-eat-reel-script（azu.md）']);
+    expect([...scriptSkillLabels([entry('a', '同じ'), entry('b', '同じ')]).values()]).toEqual(['oc-eat-reel-script（1）', 'oc-eat-reel-script（2）']);
+  });
+});
