@@ -173,6 +173,90 @@ def mosaic_yuv420(frame, width, height, boxes, cells):
         pixelate_plane(v_plane, gx1 // 2, gy1 // 2, gx2 // 2, gy2 // 2, half)
 
 
+# ぼかしの楕円は検出枠（--mask-scale で広げた後）より少し大きく取り、外周をなめらかに薄くする
+BLUR_ELLIPSE = 1.15
+BLUR_FEATHER = 0.2  # 楕円の外側 2 割で 1 → 0 に薄める
+
+
+def blur_sigma(box, strength):
+    """ぼかしの強さ（1〜10）を顔の大きさに比例した sigma（px）にする。遠くの小さな顔も近くの顔も同じ見え方になるように"""
+    size = max(box[2] - box[0], box[3] - box[1])
+    return max(2.0, size * 0.025 * strength)
+
+
+def ellipse_rect(box, width, height, pad=0.0):
+    cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+    rx, ry = (box[2] - box[0]) / 2.0 * BLUR_ELLIPSE + pad, (box[3] - box[1]) / 2.0 * BLUR_ELLIPSE + pad
+    return [max(0, int(math.floor(cx - rx))), max(0, int(math.floor(cy - ry))), min(width, int(math.ceil(cx + rx))), min(height, int(math.ceil(cy + ry)))]
+
+
+def ellipse_alpha(rect, boxes):
+    """rect の範囲の不透明度（0〜1）。顔ごとの楕円の最大を取り、外周は smoothstep で薄める（境目が線にならない）"""
+    import numpy as np
+
+    x0, y0, x1, y1 = rect
+    xs = np.arange(x0, x1, dtype=np.float32)[None, :] + 0.5
+    ys = np.arange(y0, y1, dtype=np.float32)[:, None] + 0.5
+    alpha = np.zeros((y1 - y0, x1 - x0), np.float32)
+    for b in boxes:
+        cx, cy = (b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0
+        rx, ry = max(1.0, (b[2] - b[0]) / 2.0 * BLUR_ELLIPSE), max(1.0, (b[3] - b[1]) / 2.0 * BLUR_ELLIPSE)
+        d = np.sqrt(((xs - cx) / rx) ** 2 + ((ys - cy) / ry) ** 2)
+        np.maximum(alpha, np.clip((1.0 - d) / BLUR_FEATHER, 0.0, 1.0), out=alpha)
+    return alpha * alpha * (3.0 - 2.0 * alpha)
+
+
+def gaussian(region, sigma):
+    """大きな sigma は縮小 → ぼかし → 拡大で近似する（顔の寄りでも 1 フレーム数 ms で済む）"""
+    import cv2
+
+    h, w = region.shape
+    if sigma <= 6:
+        return cv2.GaussianBlur(region, (0, 0), sigma)
+    f = sigma / 3.0
+    small = cv2.resize(region, (max(1, int(round(w / f))), max(1, int(round(h / f)))), interpolation=cv2.INTER_AREA)
+    small = cv2.GaussianBlur(small, (0, 0), 3.0)
+    return cv2.resize(small, (w, h), interpolation=cv2.INTER_CUBIC)
+
+
+def blend_plane(plane, rect, alpha, sigma):
+    import numpy as np
+
+    x0, y0, x1, y1 = rect
+    region = plane[y0:y1, x0:x1].astype(np.float32)
+    if region.size == 0:
+        return
+    blurred = gaussian(region, sigma)
+    plane[y0:y1, x0:x1] = np.clip(region + (blurred - region) * alpha, 0, 255).round().astype(np.uint8)
+
+
+def blur_yuv420(frame, width, height, boxes, strength):
+    """I420 のフレームの顔を、輪郭のなめらかな楕円のガウスぼかしで隠す（升目が出ない）"""
+    import cv2
+
+    y_size = width * height
+    c_w, c_h = width // 2, height // 2
+    y_plane = frame[:y_size].reshape(height, width)
+    u_plane = frame[y_size:y_size + c_w * c_h].reshape(c_h, c_w)
+    v_plane = frame[y_size + c_w * c_h:].reshape(c_h, c_w)
+    boxes = [b for b in boxes if b[2] > b[0] and b[3] > b[1]]
+    # ぼかしは周りの画素も混ぜるので、sigma の 2 倍だけ広く切り出す。重なる顔は 1 つの範囲にまとめて 1 回で処理する
+    padded = [ellipse_rect(b, width, height, pad=2 * blur_sigma(b, strength)) for b in boxes]
+    for rect in merge_boxes(padded):
+        # 色差は縦横 1/2 なので、範囲を偶数にそろえる
+        rect = [rect[0] - rect[0] % 2, rect[1] - rect[1] % 2, min(width, rect[2] + rect[2] % 2), min(height, rect[3] + rect[3] % 2)]
+        inside = [b for b, p in zip(boxes, padded) if overlaps_any(p, [rect])]
+        if not inside:
+            continue
+        sigma = max(blur_sigma(b, strength) for b in inside)
+        alpha = ellipse_alpha(rect, inside)
+        blend_plane(y_plane, rect, alpha, sigma)
+        c_rect = [rect[0] // 2, rect[1] // 2, rect[2] // 2, rect[3] // 2]
+        c_alpha = cv2.resize(alpha, (c_rect[2] - c_rect[0], c_rect[3] - c_rect[1]), interpolation=cv2.INTER_AREA)
+        blend_plane(u_plane, c_rect, c_alpha, sigma / 2)
+        blend_plane(v_plane, c_rect, c_alpha, sigma / 2)
+
+
 def run(args):
     import numpy as np
     import cv2
@@ -246,7 +330,11 @@ def run(args):
             ahead = [e['confirmed'] or [] for e in list(pending)[:hold]]
             window = [b for bs in past for b in bs] + (entry['confirmed'] or []) + [b for bs in ahead for b in bs]
             if window:
-                mosaic_yuv420(entry['frame'], width, height, merge_boxes(window), args.cells)
+                if args.style == 'blur':
+                    # 重なる枠をまとめず楕円のまま重ねる（まとめると四角い範囲がぼける）
+                    blur_yuv420(entry['frame'], width, height, window, args.blur)
+                else:
+                    mosaic_yuv420(entry['frame'], width, height, merge_boxes(window), args.cells)
             enc.stdin.write(entry['frame'])
             past.append(entry['confirmed'] or [])
             counts.append(len(entry['confirmed'] or []))
@@ -336,6 +424,8 @@ def main():
     ap.add_argument('--threshold', type=float, default=0.6, help='顔とみなすスコア。料理の寄りの誤検出は実測で 0.59 まで、実際の顔は 0.7〜0.93')
     ap.add_argument('--no-confirm', dest='confirm', action='store_false', help='前後のフレームに裏付けの無い検出も使う')
     ap.add_argument('--mask-scale', type=float, default=1.3)
+    ap.add_argument('--style', choices=['blur', 'mosaic'], default='mosaic', help='blur = 楕円のガウスぼかし / mosaic = 升目のモザイク')
+    ap.add_argument('--blur', type=int, default=6, help='ぼかしの強さ 1〜10（--style blur のとき）')
     ap.add_argument('--cells', type=int, default=8, help='顔 1 つを何マスに割るか（少ないほど粗い）')
     ap.add_argument('--detect-short', type=int, default=720, help='検出に使う短辺の px（0 = 原寸）')
     ap.add_argument('--detect-every', type=int, default=1, help='何フレームに 1 回検出するか')

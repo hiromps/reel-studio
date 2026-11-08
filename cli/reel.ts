@@ -47,7 +47,7 @@
 //   reel mosaic status [--refresh]                                                （顔モザイク：deface が使えるか）
 //   reel mosaic setup [--gpu] [--python <venvを作るpython>]                         （~/.reel-studio/deface-venv に deface を入れる。--gpu は Windows なら DirectML 版）
 //   reel mosaic list --project P                                                   （クリップごとのモザイクの状態）
-//   reel mosaic apply --project P (--ids 01,02 | --all | --kinds person,interior) [--threshold 0.6] [--cells 8] [--mask-scale 1.3] [--detect-short 720] [--detect-every 1] [--hold-sec 0.1]
+//   reel mosaic apply --project P (--ids 01,02 | --all | --kinds person,interior) [--threshold 0.6] [--style blur|mosaic] [--blur 6] [--cells 8] [--mask-scale 1.3] [--detect-short 720] [--detect-every 1] [--hold-sec 0.1]
 //   reel mosaic revert --project P (--ids 01,02 | --all)                           （元のファイルに戻す）
 //   reel cuts validate --file <array.json> | import --file <array.json> --project P
 //   reel cuts show --project P | script --project P | config [--out <config.json>]
@@ -1068,7 +1068,7 @@ async function main() {
       if (sub !== 'apply') throw new Error(`不明なサブコマンド: mosaic ${sub}（status / setup / list / apply / revert）`);
       const r = await applyMosaic(dir, {
         ids,
-        params: {threshold: num(flags, 'threshold'), cells: num(flags, 'cells'), maskScale: num(flags, 'mask-scale'), detectShort: num(flags, 'detect-short'), detectEvery: num(flags, 'detect-every'), holdSec: num(flags, 'hold-sec')},
+        params: {threshold: num(flags, 'threshold'), style: str(flags, 'style') as 'blur' | 'mosaic' | undefined, blur: num(flags, 'blur'), cells: num(flags, 'cells'), maskScale: num(flags, 'mask-scale'), detectShort: num(flags, 'detect-short'), detectEvery: num(flags, 'detect-every'), holdSec: num(flags, 'hold-sec')},
         onLine: (l) => err(l),
       });
       for (const it of r.items) out(`${it.id}	${it.result}${it.faceSec !== undefined ? `	顔 ${it.faceSec} 秒・最大 ${it.maxFaces} 人` : ''}${it.message ? `	${it.message}` : ''}`);

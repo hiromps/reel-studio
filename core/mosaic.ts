@@ -19,7 +19,7 @@ import {makePreviewProxy} from './proxy';
 import {readCuts} from './project';
 import {loadSettings, settingsDir} from './settings';
 import {studioConfig} from '../studio.config';
-import {holdFrames, MosaicReportSchema, resolveMosaicParams, spansText, summarizeMosaicReport, type MosaicInfo, type MosaicParams} from '../shared/mosaic';
+import {holdFrames, MosaicReportSchema, resolveMosaicParams, spansText, styleText, summarizeMosaicReport, type MosaicInfo, type MosaicParams} from '../shared/mosaic';
 import type {Clip} from '../shared/schema/catalog';
 import type {MosaicStatus} from '../shared/schema/settings';
 
@@ -259,6 +259,8 @@ export const mosaicScriptArgs = (o: {script: string; input: string; output: stri
     '--fps', probe.fps,
     '--frames', String(probe.frames),
     '--threshold', String(params.threshold),
+    '--style', params.style,
+    '--blur', String(params.blur),
     '--cells', String(params.cells),
     '--mask-scale', String(params.maskScale),
     '--detect-short', String(params.detectShort),
@@ -431,7 +433,7 @@ export const applyMosaic = async (projectDir: string, opt: MosaicOptions): Promi
     else items.push({id, result: 'skipped', message: 'catalog に無い'});
   }
   if (!targets.length) throw new Error('対象のクリップがありません');
-  log(`顔モザイク ${targets.length} 本 / しきい値 ${params.threshold} / ${params.cells} マス / 範囲 ×${params.maskScale} / ${status.message}`);
+  log(`顔モザイク ${targets.length} 本 / しきい値 ${params.threshold} / ${styleText(params)} / 範囲 ×${params.maskScale} / ${status.message}`);
 
   // 進捗はフレーム数で按分する（長いクリップで止まって見えないように）
   const framesOf = (c: Clip) => Math.max(1, Math.round(c.probe.durationSec * c.probe.fps));

@@ -12,7 +12,11 @@ import {z} from 'zod';
 export const MosaicParamsSchema = z.object({
   /** 顔とみなすスコア。下げるほど拾うが、料理を顔と取り違えやすくなる */
   threshold: z.number().min(0.2).max(0.95).default(0.6),
-  /** 顔 1 つを何マスに割るか。少ないほど粗い */
+  /** 隠し方。blur = 輪郭のなめらかな楕円のぼかし（既定）/ mosaic = 升目のモザイク */
+  style: z.enum(['blur', 'mosaic']).default('blur'),
+  /** ぼかしの強さ（style が blur のとき）。顔の大きさに比例するので、遠くの顔も近くの顔も同じ見え方 */
+  blur: z.number().int().min(1).max(10).default(6),
+  /** 顔 1 つを何マスに割るか（style が mosaic のとき）。少ないほど粗い */
   cells: z.number().int().min(4).max(24).default(8),
   /** 検出した枠を何倍に広げて隠すか（髪・輪郭まで隠す） */
   maskScale: z.number().min(1).max(2).default(1.3),
@@ -89,7 +93,8 @@ export const MosaicInfoSchema = z.object({
   /** 退避した元のファイル（.studio からの相対）。applied のときだけ */
   original: z.string().optional(),
   checkedAt: z.string(),
-  params: MosaicParamsSchema,
+  /** style の無い記録はぼかしの追加前にかけたもの（= モザイク） */
+  params: z.preprocess((v) => (v && typeof v === 'object' && !('style' in v) ? {...v, style: 'mosaic'} : v), MosaicParamsSchema),
   frames: z.number().int(),
   framesWithFaces: z.number().int(),
   maxFaces: z.number().int(),
@@ -101,12 +106,15 @@ export type MosaicInfo = z.infer<typeof MosaicInfoSchema>;
 
 const fmtSec = (s: number) => `${Math.round(s * 10) / 10}`;
 
+/** 隠し方の要約（「ぼかし 強さ 6」「モザイク 8 マス」） */
+export const styleText = (p: Pick<MosaicParams, 'style' | 'blur' | 'cells'>): string => (p.style === 'blur' ? `ぼかし 強さ ${p.blur}` : `モザイク ${p.cells} マス`);
+
 /** 一覧・詳細に出す 1 行 */
 export const mosaicLabel = (m: MosaicInfo | undefined): string => {
   if (!m) return '未チェック';
   if (!m.applied) return '顔なし（確認済み）';
   const sec = m.spans.reduce((s, x) => s + (x.endSec - x.startSec), 0);
-  return `モザイク済み（顔 ${fmtSec(sec)} 秒・最大 ${m.maxFaces} 人）`;
+  return `${m.params.style === 'blur' ? 'ぼかし済み' : 'モザイク済み'}（顔 ${fmtSec(sec)} 秒・最大 ${m.maxFaces} 人）`;
 };
 
 /** 区間の一覧（「0.0〜1.2 秒 / 3.4〜5.0 秒」） */

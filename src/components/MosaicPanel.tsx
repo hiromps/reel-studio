@@ -6,17 +6,22 @@ import {useStudio} from '../state/store';
 import {usePref} from '../hooks/usePref';
 import {AiJobStatus} from './AiJobStatus';
 import {localDate} from '@shared/time';
-import {MOSAIC_DEFAULTS, mosaicLabel, resolveMosaicParams, spansText, type MosaicParams} from '@shared/mosaic';
+import {MOSAIC_DEFAULTS, mosaicLabel, resolveMosaicParams, spansText, styleText, type MosaicParams} from '@shared/mosaic';
 import type {MosaicStatus} from '@shared/schema/settings';
 import type {Clip} from '@shared/schema';
 
 const RESTART_HINT = 'Reel Studio を再起動してください（画面だけ新しく、サーバーが古いプロセスです）';
 
 /** 画面で変えられる設定（検出サイズ・間引き・保持秒は CLI の reel mosaic apply で） */
-export type MosaicForm = Pick<MosaicParams, 'threshold' | 'cells' | 'maskScale'>;
-const FORM_DEFAULTS: MosaicForm = {threshold: MOSAIC_DEFAULTS.threshold, cells: MOSAIC_DEFAULTS.cells, maskScale: MOSAIC_DEFAULTS.maskScale};
+export type MosaicForm = Pick<MosaicParams, 'threshold' | 'style' | 'blur' | 'cells' | 'maskScale'>;
+const FORM_DEFAULTS: MosaicForm = {threshold: MOSAIC_DEFAULTS.threshold, style: MOSAIC_DEFAULTS.style, blur: MOSAIC_DEFAULTS.blur, cells: MOSAIC_DEFAULTS.cells, maskScale: MOSAIC_DEFAULTS.maskScale};
+const isDefaultForm = (f: MosaicForm) => (Object.keys(FORM_DEFAULTS) as (keyof MosaicForm)[]).every((k) => f[k] === FORM_DEFAULTS[k]);
 
-export const useMosaicForm = () => usePref<MosaicForm>('reel.mosaic.form', FORM_DEFAULTS);
+/** 保存済みの設定（ぼかし追加前は style / blur が無い）は既定値で埋める */
+export const useMosaicForm = (): [MosaicForm, (f: MosaicForm) => void] => {
+  const [form, setForm] = usePref<MosaicForm>('reel.mosaic.form', FORM_DEFAULTS);
+  return [{...FORM_DEFAULTS, ...form}, setForm];
+};
 
 /** deface が使えるか（サーバーが結果を覚えているので 2 回目からは速い） */
 export const useMosaicStatus = () => {
@@ -52,7 +57,7 @@ const useMosaicJobs = () => {
       try {
         params = resolveMosaicParams(form);
       } catch {
-        return void s.toast('設定の値が範囲外です（しきい値 0.2〜0.95・マス 4〜24・範囲 1.0〜2.0）', 'error');
+        return void s.toast('設定の値が範囲外です（しきい値 0.2〜0.95・ぼかし 1〜10・マス 4〜24・範囲 1.0〜2.0）', 'error');
       }
     }
     await s.addJob(type, type === 'mosaic' ? {ids, params} : {ids});
@@ -110,15 +115,29 @@ export const MosaicCard: React.FC<{clips: Clip[]; shown: Clip[]; form: MosaicFor
             しきい値
             <input type="number" step={0.05} min={0.2} max={0.95} value={form.threshold} onChange={(e) => setForm({...form, threshold: Number(e.target.value)})} style={{width: 70}} />
           </label>
-          <label title="顔 1 つを何マスに割るか。少ないほど粗く、誰だか分からなくなります">
-            マス数（少ないほど粗い）
-            <input type="number" step={1} min={4} max={24} value={form.cells} onChange={(e) => setForm({...form, cells: Number(e.target.value)})} style={{width: 60}} />
+          <label title="ぼかし = 顔の形に沿った楕円でなめらかにぼかします（升目が出ない）／モザイク = 従来の升目">
+            隠し方
+            <select value={form.style} onChange={(e) => setForm({...form, style: e.target.value as MosaicForm['style']})}>
+              <option value="blur">ぼかし</option>
+              <option value="mosaic">モザイク</option>
+            </select>
           </label>
+          {form.style === 'blur' ? (
+            <label title="1〜10。顔の大きさに合わせて効くので、遠くの顔も近くの顔も同じくらいぼけます。弱すぎると誰だか分かるので 5 以上がおすすめ">
+              ぼかしの強さ
+              <input type="number" step={1} min={1} max={10} value={form.blur} onChange={(e) => setForm({...form, blur: Number(e.target.value)})} style={{width: 60}} />
+            </label>
+          ) : (
+            <label title="顔 1 つを何マスに割るか。少ないほど粗く、誰だか分からなくなります">
+              マス数（少ないほど粗い）
+              <input type="number" step={1} min={4} max={24} value={form.cells} onChange={(e) => setForm({...form, cells: Number(e.target.value)})} style={{width: 60}} />
+            </label>
+          )}
           <label title="見つけた顔の枠を何倍に広げて隠すか。髪や輪郭まで隠したいときは大きく">
             隠す範囲（倍）
             <input type="number" step={0.1} min={1} max={2} value={form.maskScale} onChange={(e) => setForm({...form, maskScale: Number(e.target.value)})} style={{width: 60}} />
           </label>
-          <button className="small" onClick={() => setForm(FORM_DEFAULTS)} disabled={form.threshold === FORM_DEFAULTS.threshold && form.cells === FORM_DEFAULTS.cells && form.maskScale === FORM_DEFAULTS.maskScale}>
+          <button className="small" onClick={() => setForm(FORM_DEFAULTS)} disabled={isDefaultForm(form)}>
             既定に戻す
           </button>
           <span style={{flex: 1}} />
@@ -152,7 +171,7 @@ export const MosaicClipSection: React.FC<{clip: Clip; form: MosaicForm; onSeek: 
         顔モザイク <span className="hint">{mosaicLabel(m)}</span>
       </h3>
       <div className="row">
-        <button className="small" onClick={() => void start('mosaic', [clip.id], form)} disabled={!!job || stale} title={stale ? RESTART_HINT : `しきい値 ${form.threshold}・${form.cells} マス・範囲 ×${form.maskScale}（上の「顔モザイク」カードの設定）`}>
+        <button className="small" onClick={() => void start('mosaic', [clip.id], form)} disabled={!!job || stale} title={stale ? RESTART_HINT : `しきい値 ${form.threshold}・${styleText(form)}・範囲 ×${form.maskScale}（上の「顔モザイク」カードの設定）`}>
           {m?.applied ? '今の設定でかけ直す' : m ? 'もう一度調べる' : 'このクリップにかける'}
         </button>
         {m && (
@@ -169,7 +188,7 @@ export const MosaicClipSection: React.FC<{clip: Clip; form: MosaicForm; onSeek: 
       </div>
       {m && (
         <div className="hint">
-          {localDate(m.checkedAt)} / しきい値 {m.params.threshold}・{m.params.cells} マス・範囲 ×{m.params.maskScale} / {m.engine}
+          {localDate(m.checkedAt)} / しきい値 {m.params.threshold}・{styleText(m.params)}・範囲 ×{m.params.maskScale} / {m.engine}
           {m.spans.length > 8 ? ` / ほか ${m.spans.length - 8} か所` : ''}
         </div>
       )}

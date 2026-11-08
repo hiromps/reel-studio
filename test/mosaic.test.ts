@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {describe, expect, it} from 'vitest';
-import {faceSpans, holdFrames, MOSAIC_DEFAULTS, mosaicLabel, resolveMosaicParams, spansText, summarizeMosaicReport, type MosaicInfo} from '@shared/mosaic';
+import {faceSpans, holdFrames, MOSAIC_DEFAULTS, MosaicInfoSchema, mosaicLabel, resolveMosaicParams, spansText, styleText, summarizeMosaicReport, type MosaicInfo} from '@shared/mosaic';
 import {ClipSchema} from '@shared/schema';
 import {HEAVY_JOBS, PROJECTLESS_JOBS} from '@shared/jobs';
 import {mosaicScriptArgs, refreshAliases, restoreOriginal, swapInMosaic, type MosaicSourceProbe} from '../core/mosaic';
@@ -24,7 +24,21 @@ const info = (over: Partial<MosaicInfo> = {}): MosaicInfo => ({
 
 describe('resolveMosaicParams', () => {
   it('既定値は料理動画向け（しきい値 0.6）', () => {
-    expect(resolveMosaicParams()).toEqual({threshold: 0.6, cells: 8, maskScale: 1.3, detectShort: 720, detectEvery: 1, holdSec: 0.1});
+    expect(resolveMosaicParams()).toEqual({threshold: 0.6, style: 'blur', blur: 6, cells: 8, maskScale: 1.3, detectShort: 720, detectEvery: 1, holdSec: 0.1});
+  });
+
+  it('ぼかしの強さは 1〜10 の整数、隠し方は blur / mosaic だけ', () => {
+    expect(resolveMosaicParams({style: 'mosaic', blur: 10})).toMatchObject({style: 'mosaic', blur: 10});
+    expect(() => resolveMosaicParams({blur: 0})).toThrow();
+    expect(() => resolveMosaicParams({blur: 11})).toThrow();
+    expect(() => resolveMosaicParams({style: 'pixel' as 'blur'})).toThrow();
+  });
+
+  it('style の無い古い記録はモザイクとして読む', () => {
+    const {style: _s, blur: _b, ...old} = MOSAIC_DEFAULTS;
+    const parsed = MosaicInfoSchema.parse({...info(), params: old});
+    expect(parsed.params).toMatchObject({style: 'mosaic', cells: 8});
+    expect(mosaicLabel(parsed)).toBe('モザイク済み（顔 1 秒・最大 2 人）');
   });
 
   it('undefined と NaN（CLI の未指定・空欄）は既定値のまま', () => {
@@ -68,7 +82,10 @@ describe('表示', () => {
   it('mosaicLabel', () => {
     expect(mosaicLabel(undefined)).toBe('未チェック');
     expect(mosaicLabel(info({applied: false, original: undefined, spans: []}))).toBe('顔なし（確認済み）');
-    expect(mosaicLabel(info())).toBe('モザイク済み（顔 1 秒・最大 2 人）');
+    expect(mosaicLabel(info())).toBe('ぼかし済み（顔 1 秒・最大 2 人）');
+    expect(mosaicLabel(info({params: {...MOSAIC_DEFAULTS, style: 'mosaic'}}))).toBe('モザイク済み（顔 1 秒・最大 2 人）');
+    expect(styleText(MOSAIC_DEFAULTS)).toBe('ぼかし 強さ 6');
+    expect(styleText({...MOSAIC_DEFAULTS, style: 'mosaic'})).toBe('モザイク 8 マス');
   });
 
   it('spansText は多いと省略する', () => {
@@ -105,6 +122,8 @@ describe('mosaicScriptArgs', () => {
     expect(value(a, '--hold')).toBe('6');
     expect(value(a, '--threshold')).toBe('0.6');
     expect(value(a, '--audio')).toBe('copy');
+    expect(value(a, '--style')).toBe('blur');
+    expect(value(a, '--blur')).toBe('6');
   });
 
   it('色の情報は分かっているものだけ、音声が無ければ none', () => {
