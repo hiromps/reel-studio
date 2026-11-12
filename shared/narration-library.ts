@@ -11,6 +11,7 @@ export const NarrationLibraryEntrySchema = z.object({
   durSec: z.number().positive(),
   trimSec: z.number().positive().optional(),
   startSec: z.number().min(0).optional(),
+  gainDb: z.number().min(-30).max(12).optional(),
   createdAt: z.string(),
 });
 export type NarrationLibraryEntry = z.infer<typeof NarrationLibraryEntrySchema>;

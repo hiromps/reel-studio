@@ -36,7 +36,7 @@ export const saveNarrationToLibrary = (body: {project: string; segment: unknown;
   const entry = NarrationLibrarySchema.shape.entries.element.parse({
     id: randomUUID(), title, text: segment.text, voice: body.narration.voice,
     voiceTitle: body.narration.voiceTitle, speed: body.narration.speed, latency: body.narration.latency,
-    durSec: segment.durSec, trimSec: segment.trimSec, startSec: segment.startSec, createdAt: new Date().toISOString(),
+    durSec: segment.durSec, trimSec: segment.trimSec, startSec: segment.startSec, gainDb: segment.gainDb, createdAt: new Date().toISOString(),
   });
   fs.mkdirSync(dir(), {recursive: true});
   fs.copyFileSync(source, audioPath(entry.id), fs.constants.COPYFILE_EXCL);

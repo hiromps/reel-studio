@@ -150,9 +150,21 @@ const sfxChains = sfxList.map((s, i) => {
   return `[${idx}:a]${parts.join(',')}[sfx${i}]`;
 });
 
+// ブロックごとの音量（gainDb）。Step 2 の speechnorm はブロック間の差をならしてしまうので、
+// ならした後の帯域に「そのブロックが鳴っている間だけ」掛ける（時刻で切り替わる volume）
+const segGain = segs
+  .filter((s) => typeof s.gainDb === 'number' && s.gainDb !== 0)
+  .map((s) => {
+    const start = typeof s.startSec === 'number' && s.startSec > 0 ? s.startSec : 0;
+    const end = typeof s.trimSec === 'number' && s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || 0);
+    return `if(between(t,${s.at.toFixed(3)},${(s.at + Math.max(0, end - start)).toFixed(3)}),${Math.pow(10, s.gainDb / 20).toFixed(4)},1)`;
+  });
+const segGainFilter = segGain.length ? `,volume='${segGain.join('*')}':eval=frame` : '';
+if (segGain.length) console.log(`■ ブロックごとの音量: ${segs.filter((s) => s.gainDb).map((s) => `${s.id} ${s.gainDb > 0 ? '+' : ''}${s.gainDb}dB`).join(' / ')}`);
+
 const chains = [
   `[0:a]volume=${AMBIENT_GAIN},aresample=48000:resampler=soxr[amb]`,
-  ...(segs.length ? [`[1:a]volume=${NARR_GAIN_DB}dB,aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000[narrRawLvl]`] : []),
+  ...(segs.length ? [`[1:a]volume=${NARR_GAIN_DB}dB${segGainFilter},aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000[narrRawLvl]`] : []),
   ...sfxChains,
 ];
 let narrLabel = segs.length ? '[narrRawLvl]' : null;

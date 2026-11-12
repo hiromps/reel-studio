@@ -342,7 +342,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     await api.post(`/api/narration-library/${encodeURIComponent(entry.id)}/use`, {project: s.active, segmentId: id});
     const base: Narration = narration ?? {voice: entry.voice, voiceTitle: entry.voiceTitle, speed: entry.speed, latency: entry.latency, segments: []};
     const index = base.segments.length;
-    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec, startSec: entry.startSec}]});
+    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec, startSec: entry.startSec, gainDb: entry.gainDb}]});
     setSelection({kind: 'narr', index});
     setMultiSelection([]);
     s.toast(`「${entry.title}」を再生位置に追加しました`, 'ok');

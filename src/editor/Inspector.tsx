@@ -716,6 +716,8 @@ export const NarrationInspector: React.FC<
     patchSeg(index, trimNarrationHead(seg, seconds));
   };
   const trimmed = headSec > 0 || endSec < fullSec;
+  /** スライダーを動かしている間は履歴を積まない（つかんだ時に 1 手だけ積む） */
+  const setGainLive = (db: number) => setNarr({...narration, segments: narration.segments.map((x, k) => (k === index ? {...x, gainDb: db || undefined} : x))});
   const cutAt = ranges.findIndex((r) => seg.at >= r.startSec && seg.at < r.endSec);
   const text = draft ?? seg.text;
   const commitText = () => {
@@ -791,6 +793,17 @@ export const NarrationInspector: React.FC<
         <input type="range" aria-label="ナレーションの終わりの位置" min={0} max={fullSec} step={0.01} value={endSec} onChange={(e) => setTrim(Number(e.target.value))} />
       </div>}
       {trimmed && <span className="hint">出力に反映するには保存後、ナレーション合成を再実行してください。</span>}
+      <div className="row">
+        <label title="このナレーションだけの音量（dB）。0 が既定。動画全体の声の大きさは「音の設計」で変えます" style={{flex: 1}}>
+          音量
+          <span className="btns" style={{width: '100%'}}>
+            <input type="range" aria-label="このナレーションの音量" min={-20} max={12} step={0.5} value={seg.gainDb ?? 0} onPointerDown={pushHistory} onKeyDown={pushHistory} onChange={(e) => setGainLive(Number(e.target.value))} style={{flex: 1}} />
+            <input type="number" aria-label="このナレーションの音量（dB）" min={-30} max={12} step={0.5} value={seg.gainDb ?? 0} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) patchSeg(index, {gainDb: Math.max(-30, Math.min(12, v)) || undefined}); }} style={{width: 62}} />
+            <span className="hint">dB</span>
+          </span>
+        </label>
+        <button className="small" onClick={() => patchSeg(index, {gainDb: undefined})} disabled={!seg.gainDb}>0 dB に戻す</button>
+      </div>
       <div className="row">
         <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec, seg.startSec)} disabled={playing === seg.id || (!recorded && !seg.text.trim()) || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
           {playing === seg.id ? '再生中…' : '▶ 聴く'}

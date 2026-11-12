@@ -61,7 +61,7 @@ def validate_render(payload):
         for s in n.get("segments", []):
             if not isinstance(s, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", s.get("id", "")) or s.get("needsTts"):
                 raise ValueError("invalid narration")
-            if not finite(s.get("at")) or not finite(s.get("durSec"), 0.001) or not finite(s.get("trimSec", 1), 0.001) or not finite(s.get("startSec", 0)):
+            if not finite(s.get("at")) or not finite(s.get("durSec"), 0.001) or not finite(s.get("trimSec", 1), 0.001) or not finite(s.get("startSec", 0)) or not finite(s.get("gainDb", 0), -30, 12):
                 raise ValueError("invalid narration timing")
         for s in n.get("sfx", []):
             if not isinstance(s, dict) or not safe_asset("sfx/" + str(s.get("file", ""))) or not finite(s.get("at")):

@@ -10,6 +10,8 @@ export const NarrationSegmentSchema = z
     durSec: z.number().optional(), // ffprobe 実測
     trimSec: z.number().positive().optional(), // 使う範囲の終わり（wav の頭からの秒）。元の wav は残す
     startSec: z.number().min(0).optional(), // 使う範囲の始まり（wav の頭から飛ばす秒）。省略＝0
+    /** このブロックだけの音量の増減（dB）。0 が既定。声の音量ならし（speechnorm）の後に掛けるので差が残る */
+    gainDb: z.number().min(-30).max(12).optional(),
     text: z.string(),
     emotion_tag: EmotionValueSchema.optional(),
     /** マイクで録音した音声。text はメモ扱いで、TTS で作り直さない（声やモデルを変えても wav はそのまま） */
