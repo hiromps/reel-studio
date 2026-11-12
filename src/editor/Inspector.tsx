@@ -701,6 +701,7 @@ export const NarrationInspector: React.FC<
   if (!narration || !seg) return null;
   const hints = ttsReadingHints(seg.text);
   const needsTts = !!(seg as {needsTts?: boolean}).needsTts || !seg.durSec;
+  const recorded = !!seg.recorded;
   const fullSec = seg.durSec ?? 0;
   const usedSec = Math.min(fullSec, seg.trimSec ?? fullSec);
   const setTrim = (seconds: number) => {
@@ -723,19 +724,19 @@ export const NarrationInspector: React.FC<
           {cutAt >= 0 ? <span className="hint"> ／ カット {cutAt + 1} の上</span> : null}
         </>
       }
-      right={<span className={`pill${needsTts ? ' warn' : ''}`}>{needsTts ? '要再生成' : '音声あり'}</span>}
+      right={<span className={`pill${needsTts ? ' warn' : ''}`}>{recorded ? 'マイク録音' : needsTts ? '要再生成' : '音声あり'}</span>}
     >
       <label style={{width: '100%'}}>
-        本文（1 ブロック 1 文。変えると音声は作り直しになります）
+        {recorded ? 'メモ（録音した内容。変えても音声はそのまま）' : '本文（1 ブロック 1 文。変えると音声は作り直しになります）'}
         <textarea value={text} onChange={(e) => setDraft(e.target.value.replace(/[\r\n]+/g, ' '))} onBlur={commitText} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), (e.target as HTMLTextAreaElement).blur())} style={{minHeight: 64}} />
       </label>
-      <NarrationEmotion segment={seg} options={emotionOptions} disabled={!!ttsBlockedBy}
-        onChange={emotion_tag => patchSeg(index, {emotion_tag, needsTts: true, durSec: undefined})} />
+      {!recorded && <NarrationEmotion segment={seg} options={emotionOptions} disabled={!!ttsBlockedBy}
+        onChange={emotion_tag => patchSeg(index, {emotion_tag, needsTts: true, durSec: undefined})} />}
       <div className="row">
         <span className="counter" title={seg.durSec ? '実測' : '見積もり'}>
           {[...seg.text].length}字 / {estimateSec(seg).toFixed(1)}s{seg.durSec ? '' : '（見積）'}
         </span>
-        {hints.length > 0 && (
+        {!recorded && hints.length > 0 && (
           <button className="small warn" onClick={() => patchSeg(index, {text: applyReadingHints(seg.text)}, true)} title={`TTS が誤読しやすい表記: ${hints.map((h) => `${h.from}→${h.to}`).join('・')}`}>
             かなに開く
           </button>
@@ -777,12 +778,12 @@ export const NarrationInspector: React.FC<
       {fullSec > 0 && !needsTts && <input type="range" aria-label="ナレーションの使用する長さ" min={Math.min(0.1, fullSec)} max={fullSec} step={0.01} value={usedSec} onChange={(e) => setTrim(Number(e.target.value))} style={{width: '100%'}} />}
       {seg.trimSec && <span className="hint">出力に反映するには保存後、ナレーション合成を再実行してください。</span>}
       <div className="row">
-        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec)} disabled={playing === seg.id || !seg.text.trim() || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
+        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec)} disabled={playing === seg.id || (!recorded && !seg.text.trim()) || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
           {playing === seg.id ? '再生中…' : '▶ 聴く'}
         </button>
-        <button className="primary small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim() || !emotionOptions.ready} title={ttsBlockedBy ?? '変更を保存し、選択した感情でこの音声だけを生成します'}>
+        {!recorded && <button className="primary small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim() || !emotionOptions.ready} title={ttsBlockedBy ?? '変更を保存し、選択した感情でこの音声だけを生成します'}>
           保存してこの感情で生成
-        </button>
+        </button>}
         <button className="small" onClick={onSaveToLibrary} disabled={needsTts} title={needsTts ? '先に音声を生成してください' : 'この音声を名前付きで保存して別案件でも使う'}>
           音声を保存
         </button>

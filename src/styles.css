@@ -1373,6 +1373,11 @@ pre.md {
   color: var(--accent);
 }
 .narration-library { width: min(680px, 100%); }
+.mic-recorder { width: min(560px, 100%); }
+.mic-recorder .modal-body { display: flex; flex-direction: column; gap: 10px; }
+.mic-meter { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.mic-meter-bar { height: 100%; background: var(--ok); transition: width 60ms linear; }
+.mic-meter-bar.clip { background: var(--warn); }
 .narration-library-save { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 .narration-library-save > div { flex: 1 1 100%; }
 .narration-library-save p, .narration-library-item p { margin: 4px 0; }

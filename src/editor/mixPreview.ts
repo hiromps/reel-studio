@@ -29,7 +29,7 @@ export const DRIFT_TOLERANCE_SEC = 0.25;
 
 export const dbToGain = (db: number): number => Math.pow(10, db / 20);
 
-const wavReady = (s: NarrationSegment): boolean => !(s as {needsTts?: boolean}).needsTts && !!s.durSec && s.durSec > 0 && !!s.text.trim();
+const wavReady = (s: NarrationSegment): boolean => !(s as {needsTts?: boolean}).needsTts && !!s.durSec && s.durSec > 0 && (!!s.text.trim() || !!s.recorded);
 
 /**
  * narration.json から鳴らす候補を作る。**音声が未生成（needsTts）のブロックは鳴らさない**

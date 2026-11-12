@@ -312,8 +312,8 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
         segments: narration.segments.map((sg, k) => {
           if (k !== i) return sg;
           const n: NarrationSegment = {...sg, ...patch};
-          // 文言を変えたら既存の wav は使えない。実測尺も無効にする
-          if (retts) {
+          // 文言を変えたら既存の wav は使えない。実測尺も無効にする（マイク録音は文言がメモなのでそのまま）
+          if (retts && !sg.recorded) {
             (n as {needsTts?: boolean}).needsTts = true;
             delete (n as {durSec?: number}).durSec;
             delete n.trimSec;
@@ -389,6 +389,8 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
         ...narration,
         ...patch,
         segments: narration.segments.map((sg) => {
+          // マイク録音は声・話速の変更と無関係
+          if (sg.recorded) return sg;
           const n: NarrationSegment = {...sg, needsTts: true} as NarrationSegment;
           delete (n as {durSec?: number}).durSec;
           delete n.trimSec;

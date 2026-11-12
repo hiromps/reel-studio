@@ -104,8 +104,8 @@ async function startup() {
     server.on('message', (message) => { if (message?.type === 'reel-ready') finish(null, message.port); });
   });
   origin = `http://127.0.0.1:${port}`;
-  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(permissionAllowed(permission, details.requestingUrl || contents.getURL(), origin)));
-  session.defaultSession.setPermissionCheckHandler((_contents, permission, requestingOrigin) => permissionAllowed(permission, requestingOrigin, origin));
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(permissionAllowed(permission, details.requestingUrl || contents.getURL(), origin, details.mediaTypes ?? [])));
+  session.defaultSession.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) => permissionAllowed(permission, requestingOrigin, origin, details?.mediaType));
   session.defaultSession.webRequest.onBeforeSendHeaders({urls: [`${origin}/*`]}, (details, callback) => callback({requestHeaders: {...details.requestHeaders, 'X-Reel-Desktop-Token': token}}));
   secureWindow(mainWindow);
   server.on('exit', (code) => {

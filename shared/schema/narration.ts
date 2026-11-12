@@ -11,6 +11,8 @@ export const NarrationSegmentSchema = z
     trimSec: z.number().positive().optional(), // 先頭から使う秒数。元の wav は残す
     text: z.string(),
     emotion_tag: EmotionValueSchema.optional(),
+    /** マイクで録音した音声。text はメモ扱いで、TTS で作り直さない（声やモデルを変えても wav はそのまま） */
+    recorded: z.boolean().optional(),
   })
   .passthrough();
 export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;

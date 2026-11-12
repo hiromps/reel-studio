@@ -38,9 +38,13 @@ function externalUrl(value) {
   } catch { return false; }
 }
 
-function permissionAllowed(permission, requestingUrl, origin) {
+function permissionAllowed(permission, requestingUrl, origin, mediaTypes) {
   try {
-    return permission === 'clipboard-sanitized-write' && new URL(requestingUrl).origin === origin;
+    if (new URL(requestingUrl).origin !== origin) return false;
+    if (permission === 'clipboard-sanitized-write') return true;
+    // ナレーション録音用にマイクだけ許す。カメラ（video）が混ざる要求は断る
+    if (permission === 'media') return Array.isArray(mediaTypes) ? mediaTypes.length > 0 && mediaTypes.every((t) => t === 'audio') : mediaTypes !== 'video';
+    return false;
   } catch { return false; }
 }
 

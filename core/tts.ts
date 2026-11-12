@@ -193,9 +193,9 @@ export const listVoices = async (opt: {signal?: AbortSignal} = {}): Promise<{voi
   return {voices, apiError};
 };
 
-/** 音声を作り直す必要があるブロック（本文が変わった or wav が無い） */
+/** 音声を作り直す必要があるブロック（本文が変わった or wav が無い）。マイク録音のブロックは対象外 */
 export const needsTtsIds = (dir: string, narration: Narration): string[] =>
-  hasReelCuts(dir) ? reelAudioNeedsIds(dir, narration) : narration.segments.filter((s) => s.needsTts || !fs.existsSync(path.join(dir, 'narration', `${s.id}.wav`)) || (s.emotion_tag !== undefined && !taggedAudioMatches(dir, s, narration))).map((s) => s.id);
+  hasReelCuts(dir) ? reelAudioNeedsIds(dir, narration) : narration.segments.filter((s) => !s.recorded).filter((s) => s.needsTts || !fs.existsSync(path.join(dir, 'narration', `${s.id}.wav`)) || (s.emotion_tag !== undefined && !taggedAudioMatches(dir, s, narration))).map((s) => s.id);
 
 const wavDurationSec = async (file: string): Promise<number> => {
   const r = await execOk('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nokey=1', file]);
@@ -271,6 +271,7 @@ export const reelAudioNeedsIds = (dir: string, narration: Narration): string[] =
   const model = process.env.FISH_MODEL_ID?.trim() || loadSettings().tts.modelId || DEFAULT_MODEL;
   const cache = readReelAudioCache(dir);
   return narration.segments.filter((seg) => {
+    if (seg.recorded) return false;
     if (seg.needsTts) return true;
     const cached = cache?.[seg.id];
     try {
@@ -420,6 +421,8 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   fs.mkdirSync(outDir, {recursive: true});
 
   const want = new Set(opt.ids ?? (opt.force ? narration.segments.map((s) => s.id) : narration.segments.filter((s) => s.needsTts || !fs.existsSync(path.join(outDir, `${s.id}.wav`)) || ((reelConfig || s.emotion_tag !== undefined) && !cachedAudio(s))).map(s => s.id)));
+  // マイク録音のブロックは force・id 指定でも作り直さない（録った声を TTS で潰さない）
+  for (const s of narration.segments) if (s.recorded) want.delete(s.id);
   const targets = narration.segments.filter((s) => want.has(s.id));
   const skipped = narration.segments.filter((s) => !want.has(s.id)).map((s) => s.id);
   if (!targets.length) {

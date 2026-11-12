@@ -35,6 +35,7 @@ import {PreviewReady} from '../components/PreviewReady';
 import {sameSelection, type Selection} from './selection';
 import {readEditorClipboard, writeEditorClipboard} from './clipboard';
 import {NarrationLibrary} from './NarrationLibrary';
+import {MicRecorder} from './MicRecorder';
 import {TelopNarrationDialog} from './TelopNarrationDialog';
 import {ResizeHandle} from './ResizeHandle';
 import {EditorMoreActions} from './EditorMoreActions';
@@ -104,6 +105,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const audio = useRef<HTMLAudioElement | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [micOpen, setMicOpen] = useState(false);
   const [telopNarrationOpen, setTelopNarrationOpen] = useState(false);
   const [emotionOpen, setEmotionOpen] = useState(false);
 
@@ -344,6 +346,20 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     setSelection({kind: 'narr', index});
     setMultiSelection([]);
     s.toast(`「${entry.title}」を再生位置に追加しました`, 'ok');
+  };
+
+  /** マイク録音を narration/<id>.wav に置き、再生位置にブロックとして足す。文言はメモ扱いで TTS の対象外 */
+  const addRecording = async (wav: Blob, memo: string, durSec: number) => {
+    if (!s.active) return;
+    const id = `mic_${crypto.randomUUID().replace(/-/g, '')}`;
+    const r = await api.upload<{durSec: number}>(`/api/projects/${encodeURIComponent(s.active)}/narration-recording/${id}`, new File([wav], `${id}.wav`, {type: 'audio/wav'}));
+    const base: Narration = narration ?? {voice: '', segments: []};
+    const index = base.segments.length;
+    const label = memo ? [...memo].slice(0, 40).join('') : `マイク録音 ${index + 1}`;
+    m.commitNarr({...base, segments: [...base.segments, {id, label, at: round3(getFrame() / m.fps), text: memo, durSec: r.data.durSec || durSec, recorded: true}]});
+    setSelection({kind: 'narr', index});
+    setMultiSelection([]);
+    s.toast('録音を再生位置に追加しました。保存（Ctrl+S）してください', 'ok');
   };
 
   // ---- ショートカット ----
@@ -595,6 +611,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           {ttsBusy ? '音声を生成中…' : `音声を生成（${needsTts}）`}
         </button>
         <button className="small" onClick={() => setLibraryOpen(true)} title="保存したナレーション音声を聴いて、再生位置へ追加する">音声ライブラリ</button>
+        {!s.isCloud && <button className="small" onClick={() => {preview.current?.pause(); setMicOpen(true);}} title="PC につないだマイクで自分の声を録り、再生位置へ追加する">マイク録音</button>}
         <button className="small" disabled={!cuts || ttsBusy} onClick={() => {preview.current?.pause(); setTelopNarrationOpen(true);}} title="テロップの文言をそのまま取り込み、Fish Audio でナレーション音声を作ります">テロップを音声化</button>
         <span className="sep" />
         <label className="sb-inline" title="ナレーション・効果音をドラッグしたときカット境界に吸着する（Alt を押しながらで一時的に無効）">
@@ -698,6 +715,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         </div>
       </div>
 
+      {micOpen && s.active && <MicRecorder onAdd={addRecording} onClose={() => setMicOpen(false)} />}
       {libraryOpen && s.active && <NarrationLibrary project={s.active} narration={narration} selected={selection?.kind === 'narr' ? narration?.segments[selection.index] ?? null : null} onUse={useSavedNarration} onClose={() => setLibraryOpen(false)} />}
 
       {prefsSafe.storyboard && cuts && (
