@@ -19,6 +19,7 @@ import {FIT_DEFAULTS} from '@shared/fit';
 import type {EditorModel} from './useEditorModel';
 import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './labels';
 import {ThumbnailSection} from './ThumbnailSection';
+import {WaveformCanvas} from './WaveformCanvas';
 import {TelopFontSelect} from './TelopFontSelect';
 import {TelopStyleControls} from './TelopStyleControls';
 import {resolveTelopStyle} from '@engine/telops';
@@ -788,6 +789,11 @@ export const NarrationInspector: React.FC<
         <span className="hint">使う {usedSec.toFixed(2)} 秒 ／ 元音声 {fullSec.toFixed(2)} 秒</span>
         <button className="small" onClick={() => patchSeg(index, {...trimNarrationHead({...seg, trimSec: undefined}, 0), trimSec: undefined})} disabled={needsTts || !trimmed}>全体を使う</button>
       </div>
+      {fullSec > 0 && !needsTts && m.s?.mediaBase && <div className="narr-wave" style={{'--head': `${(headSec / fullSec) * 100}%`, '--end': `${(endSec / fullSec) * 100}%`} as React.CSSProperties}>
+        <WaveformCanvas url={`${m.s?.mediaBase}/narration/${encodeURIComponent(seg.id)}.wav`} cacheKey={`narr:${seg.id}:${seg.durSec}`} fromSec={0} toSec={fullSec} highlight={{start: headSec, end: endSec}} />
+        <span className="narr-wave-cut head" />
+        <span className="narr-wave-cut end" />
+      </div>}
       {fullSec > 0 && !needsTts && <div className="narr-range" style={{'--head': `${(headSec / fullSec) * 100}%`, '--end': `${(endSec / fullSec) * 100}%`} as React.CSSProperties}>
         <input type="range" aria-label="ナレーションの頭のカット位置" min={0} max={fullSec} step={0.01} value={headSec} onChange={(e) => setHead(Number(e.target.value))} />
         <input type="range" aria-label="ナレーションの終わりの位置" min={0} max={fullSec} step={0.01} value={endSec} onChange={(e) => setTrim(Number(e.target.value))} />

@@ -11,6 +11,7 @@ import {cutDurationSec, cutRanges, type TelopGroup} from '@shared/timeline';
 import {colorFilter} from '@shared/color';
 import type {SfxLibrary} from '@shared/sfx';
 import {narrationDisplayName, narrationRange, trimNarrationHead, trimNarrationTail} from '@shared/narration';
+import {WaveformCanvas} from './WaveformCanvas';
 import {useDragReorder} from '../components/useDragReorder';
 import {caretRectFor, destIndexOf, insertIndexAt, type Caret, type Rect} from '../components/reorder';
 import {applyTrim, fallbackDuration, type TrimHandle, type TrimRange} from '../components/trim';
@@ -720,6 +721,13 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                     }
                   }}
                 >
+                  {/* 波形（使っている範囲だけ）。どこに声があるかを見ながら頭・終わりを削れるように */}
+                  {mediaBase && !b.estimated && !b.needsTts && (() => {
+                    const seg = narration?.segments[b.index];
+                    if (!seg?.durSec) return null;
+                    const {start, end} = narrationRange(seg);
+                    return <WaveformCanvas className="tl-narr-wave" url={`${mediaBase}/narration/${encodeURIComponent(seg.id)}.wav`} cacheKey={`narr:${seg.id}:${seg.durSec}`} fromSec={start} toSec={end} />;
+                  })()}
                   <span className="tl-narr-id">{narration?.segments[b.index] ? narrationDisplayName(narration.segments[b.index]) : b.id}</span>
                   <span className="tl-narr-text">{b.text}</span>
                   {!b.estimated && !b.needsTts && <span className="tl-narr-trim" role="slider" tabIndex={0} aria-label={`${b.id} の音声を使う長さ`} aria-valuemin={Math.min(0.1, narration?.segments[b.index]?.durSec ?? 0)} aria-valuemax={narration?.segments[b.index]?.durSec ?? 0} aria-valuenow={Math.round((b.endSec - b.at) * 100) / 100} title="ドラッグでナレーションの末尾をトリミング" onPointerDown={beginNarrTrim(b.index)} onClick={stop} onKeyDown={(e) => {
