@@ -48,6 +48,7 @@
     "start:dev": "node scripts/launch.mjs --dev",
     "update": "node scripts/update.mjs",
     "desktop:update": "node scripts/update.mjs --desktop",
+    "desktop:quick": "node scripts/quick-desktop.mjs",
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
