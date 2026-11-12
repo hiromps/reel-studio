@@ -101,6 +101,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
         const n: NarrationSegment = {...sg, needsTts: true};
         delete (n as {durSec?: number}).durSec;
         delete n.trimSec;
+        delete n.startSec;
         return n;
       }),
     });

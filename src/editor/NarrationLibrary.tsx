@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import type {Narration, NarrationSegment} from '@shared/schema';
 import type {NarrationLibraryEntry} from '@shared/narration-library';
 import {api} from '../api';
+import {narrationUsedSec} from '@shared/narration';
 
 type Props = {
   project: string;
@@ -41,7 +42,7 @@ export const NarrationLibrary: React.FC<Props> = ({project, narration, selected,
   });
   const play = (entry: NarrationLibraryEntry) => {
     audio.current?.pause();
-    const next = new Audio(`/api/narration-library/${encodeURIComponent(entry.id)}/audio`);
+    const next = new Audio(`/api/narration-library/${encodeURIComponent(entry.id)}/audio${entry.startSec && entry.startSec > 0 ? `#t=${entry.startSec}` : ''}`);
     audio.current = next;
     if (entry.trimSec && entry.trimSec > 0) next.ontimeupdate = () => {
       if (next.currentTime >= entry.trimSec!) next.pause();
@@ -72,7 +73,7 @@ export const NarrationLibrary: React.FC<Props> = ({project, narration, selected,
           <div className="narration-library-list">
             {visible.length === 0 && <p className="hint">保存した音声はありません</p>}
             {visible.map((entry) => <div className="narration-library-item" key={entry.id}>
-              <div><strong>{entry.title}</strong><p>{entry.text}</p><small className="hint">{entry.voiceTitle ?? entry.voice} · {entry.durSec.toFixed(1)} 秒</small></div>
+              <div><strong>{entry.title}</strong><p>{entry.text}</p><small className="hint">{entry.voiceTitle ?? entry.voice} · {narrationUsedSec(entry).toFixed(1)} 秒</small></div>
               <div className="btns">
                 <button className="small" onClick={() => play(entry)}>▶ 聴く</button>
                 <button className="small primary" disabled={busy} onClick={() => void run(async () => { await onUse(entry); onClose(); })}>再生位置に追加</button>

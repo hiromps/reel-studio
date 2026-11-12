@@ -317,6 +317,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
             (n as {needsTts?: boolean}).needsTts = true;
             delete (n as {durSec?: number}).durSec;
             delete n.trimSec;
+            delete n.startSec;
           }
           return n;
         }),
@@ -394,6 +395,7 @@ export const useEditorModel = (sfxLib: SfxLibrary | null) => {
           const n: NarrationSegment = {...sg, needsTts: true} as NarrationSegment;
           delete (n as {durSec?: number}).durSec;
           delete n.trimSec;
+          delete n.startSec;
           return n;
         }),
       });

@@ -15,8 +15,10 @@ export type MixClip = {
   at: number;
   /** 線形ゲイン */
   gain: number;
-  /** 頭から使う長さ（秒）。無ければ wav の全長 */
+  /** 使う範囲の終わり（wav の頭からの秒）。無ければ wav の全長 */
   trimSec?: number;
+  /** 使う範囲の始まり（wav の頭から飛ばす秒）。無ければ 0 */
+  startSec?: number;
   fadeOutSec?: number;
 };
 
@@ -41,7 +43,7 @@ export const mixClipsOf = (narration: Narration | null, mediaBase: string | null
   const narrGain = NARR_BASE_GAIN * dbToGain(narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT);
   for (const s of narration.segments) {
     if (!wavReady(s)) continue;
-    out.push({key: `narr:${s.id}:${s.durSec}`, url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`, kind: 'narr', id: s.id, at: s.at, gain: narrGain, trimSec: s.trimSec});
+    out.push({key: `narr:${s.id}:${s.durSec}`, url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`, kind: 'narr', id: s.id, at: s.at, gain: narrGain, trimSec: s.trimSec, startSec: s.startSec});
   }
   const sfxGain = dbToGain(narration.sfxGainDb ?? 0);
   for (const x of narration.sfx ?? []) {
@@ -84,14 +86,16 @@ export const planPlayback = (clips: readonly MixClip[], bufferSec: (key: string)
   for (const c of clips) {
     const full = bufferSec(c.key);
     if (full === undefined || full <= 0) continue;
-    const len = Math.min(full, c.trimSec && c.trimSec > 0 ? c.trimSec : full);
+    const stop = Math.min(full, c.trimSec && c.trimSec > 0 ? c.trimSec : full);
+    const head = Math.min(Math.max(0, c.startSec ?? 0), stop);
+    const len = stop - head;
     const end = c.at + len;
     if (end <= mediaSec + 0.001) continue;
     const offset = Math.max(0, mediaSec - c.at);
     out.push({
       key: c.key,
       delaySec: Math.max(0, c.at - mediaSec),
-      offsetSec: offset,
+      offsetSec: head + offset,
       durationSec: Math.max(0, len - offset),
       gain: c.gain,
       fadeOutSec: Math.min(c.fadeOutSec ?? 0, Math.max(0, len - offset)),

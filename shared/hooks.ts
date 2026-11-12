@@ -190,7 +190,7 @@ export const applyHookNarration = (
   const segs = [...narration.segments].sort((a, b) => a.at - b.at);
   const kept = segs.filter((s) => !replaced.includes(s.id));
   const first = segs.find((s) => s.id === firstId)!;
-  const merged = {...first, id: wavId, text: v.narration.trim(), needsTts: true, durSec: undefined, trimSec: undefined};
+  const merged = {...first, id: wavId, text: v.narration.trim(), needsTts: true, durSec: undefined, trimSec: undefined, startSec: undefined};
   const nextAt = kept.find((s) => s.at > first.at)?.at ?? null;
   return {
     narration: {...narration, segments: [merged, ...kept].sort((a, b) => a.at - b.at)},

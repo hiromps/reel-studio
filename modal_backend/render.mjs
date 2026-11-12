@@ -58,7 +58,7 @@ try {
       segments: narration.segments.map((s, i) => {
         if (!/^[A-Za-z0-9_-]{1,80}$/.test(s.id)) throw new Error('Invalid audio ID');
         fs.copyFileSync(path.join(publicDir, 'narration', s.id + '.wav'), path.join(audio, `n${i}.wav`));
-        return {id: `n${i}`, text: '', at: finite(s.at, 0, 3600, 0), durSec: finite(s.durSec, 0.001, 3600, 1), ...(s.trimSec ? {trimSec: finite(s.trimSec, 0.001, 3600, 1)} : {})};
+        return {id: `n${i}`, text: '', at: finite(s.at, 0, 3600, 0), durSec: finite(s.durSec, 0.001, 3600, 1), ...(s.trimSec ? {trimSec: finite(s.trimSec, 0.001, 3600, 1)} : {}), ...(s.startSec ? {startSec: finite(s.startSec, 0, 3600, 0)} : {})};
       }),
       sfx: narration.sfx.map((s, i) => {
         const source = path.resolve(publicDir, 'sfx', s.file);

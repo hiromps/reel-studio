@@ -290,7 +290,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             }
           }
           const ready = new Set(eligible.filter((_, i) => copiedAudio[i]).map((pair) => pair.to));
-          const inserted = segments.map((segment) => ready.has(segment.id) ? segment : {...segment, needsTts: true, durSec: undefined, trimSec: undefined});
+          const inserted = segments.map((segment) => ready.has(segment.id) ? segment : {...segment, needsTts: true, durSec: undefined, trimSec: undefined, startSec: undefined});
           const start = base.segments.length;
           m.commitNarr({...base, segments: [...base.segments, ...inserted]});
           setSelection({kind: 'narr', index: start});
@@ -342,7 +342,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     await api.post(`/api/narration-library/${encodeURIComponent(entry.id)}/use`, {project: s.active, segmentId: id});
     const base: Narration = narration ?? {voice: entry.voice, voiceTitle: entry.voiceTitle, speed: entry.speed, latency: entry.latency, segments: []};
     const index = base.segments.length;
-    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec}]});
+    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec, startSec: entry.startSec}]});
     setSelection({kind: 'narr', index});
     setMultiSelection([]);
     s.toast(`「${entry.title}」を再生位置に追加しました`, 'ok');
@@ -419,10 +419,11 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     audio.current = null;
     setPreviewingId(null);
   };
-  const playNarr = async (id: string, text: string, needsTts: boolean, trimSec?: number) => {
+  const playNarr = async (id: string, text: string, needsTts: boolean, trimSec?: number, startSec?: number) => {
     stopAudio();
     if (!needsTts && s.mediaBase) {
-      const a = new Audio(`${s.mediaBase}/narration/${encodeURIComponent(id)}.wav?t=${Date.now()}`);
+      // #t= で頭を飛ばした位置から鳴らす（使う範囲の始まり）
+      const a = new Audio(`${s.mediaBase}/narration/${encodeURIComponent(id)}.wav?t=${Date.now()}${startSec && startSec > 0 ? `#t=${startSec}` : ''}`);
       audio.current = a;
       setPreviewingId(id);
       a.onended = () => setPreviewingId(null);

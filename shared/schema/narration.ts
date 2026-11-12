@@ -8,7 +8,8 @@ export const NarrationSegmentSchema = z
     label: z.string().max(80).optional(), // 画面に表示する名前。音声ファイルの ID とは独立
     at: z.number(), // 配置秒
     durSec: z.number().optional(), // ffprobe 実測
-    trimSec: z.number().positive().optional(), // 先頭から使う秒数。元の wav は残す
+    trimSec: z.number().positive().optional(), // 使う範囲の終わり（wav の頭からの秒）。元の wav は残す
+    startSec: z.number().min(0).optional(), // 使う範囲の始まり（wav の頭から飛ばす秒）。省略＝0
     text: z.string(),
     emotion_tag: EmotionValueSchema.optional(),
     /** マイクで録音した音声。text はメモ扱いで、TTS で作り直さない（声やモデルを変えても wav はそのまま） */

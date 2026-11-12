@@ -26,7 +26,7 @@ export const ModalRenderNarrationSchema = z.object({
   narrationGainDb: z.number().min(-12).max(12).default(8),
   ambientGain: z.number().min(0).max(1).default(0.22),
   sfxGainDb: z.number().min(-30).max(12).default(0),
-  segments: z.array(z.object({id: z.string().regex(/^[\w-]{1,80}$/), at: finiteTime, durSec: z.number().positive().max(3600), trimSec: z.number().positive().max(3600).optional(), text: z.string().max(10000).default(''), emotion_tag: z.string().nullable().optional(), needsTts: z.literal(false).optional()})).max(100),
+  segments: z.array(z.object({id: z.string().regex(/^[\w-]{1,80}$/), at: finiteTime, durSec: z.number().positive().max(3600), trimSec: z.number().positive().max(3600).optional(), startSec: z.number().min(0).max(3600).optional(), text: z.string().max(10000).default(''), emotion_tag: z.string().nullable().optional(), needsTts: z.literal(false).optional()})).max(100),
   sfx: z.array(z.object({id: z.string().max(80), at: finiteTime, file: z.string().max(200).refine(f => safeModalAsset('sfx/' + f)), trimSec: z.number().positive().max(180).optional(), fadeOutSec: z.number().min(0).max(10).optional(), gainDb: z.number().min(-30).max(12).optional()})).max(100).default([]),
 });
 export const ModalRenderInputSchema = z.object({

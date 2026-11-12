@@ -3,7 +3,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import type {Cut, ReelData} from '@shared/schema';
 import {cutDurationSec} from '@shared/timeline';
 import {countChars, isPlaceholder} from '@shared/telop-text';
-import {applyReadingHints, narrationDisplayName, ttsReadingHints} from '@shared/narration';
+import {applyReadingHints, narrationDisplayName, narrationRange, trimNarrationHead, trimNarrationTail, ttsReadingHints} from '@shared/narration';
 import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
@@ -691,7 +691,7 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
 
 // ───────────────────────── ナレーション ─────────────────────────
 export const NarrationInspector: React.FC<
-  Common & {index: number; onPlay: (id: string, text: string, needsTts: boolean, trimSec?: number) => void; playing: string | null; onRegenerate: (id: string) => void; onSaveToLibrary: () => void; ttsBlockedBy: string | null}
+  Common & {index: number; onPlay: (id: string, text: string, needsTts: boolean, trimSec?: number, startSec?: number) => void; playing: string | null; onRegenerate: (id: string) => void; onSaveToLibrary: () => void; ttsBlockedBy: string | null}
 > = ({m, index, onPlay, playing, onRegenerate, onSaveToLibrary, ttsBlockedBy}) => {
   const {narration, patchSeg, removeSeg, pushHistory, setNarr, estimateSec, ranges} = m;
   const [draft, setDraft] = useState<string | null>(null);
@@ -703,12 +703,19 @@ export const NarrationInspector: React.FC<
   const needsTts = !!(seg as {needsTts?: boolean}).needsTts || !seg.durSec;
   const recorded = !!seg.recorded;
   const fullSec = seg.durSec ?? 0;
-  const usedSec = Math.min(fullSec, seg.trimSec ?? fullSec);
+  // 使う範囲は wav の頭からの秒で headSec〜endSec
+  const {start: headSec, end: endSec} = narrationRange(seg);
+  const usedSec = endSec - headSec;
   const setTrim = (seconds: number) => {
     if (!fullSec || !Number.isFinite(seconds)) return;
-    const next = Math.round(Math.max(Math.min(0.1, fullSec), Math.min(fullSec, seconds)) * 1000) / 1000;
-    patchSeg(index, {trimSec: next >= fullSec ? undefined : next});
+    patchSeg(index, {trimSec: trimNarrationTail(seg, seconds)});
   };
+  /** 頭のカット。声の位置は動かさないので配置秒もずれる */
+  const setHead = (seconds: number) => {
+    if (!fullSec || !Number.isFinite(seconds)) return;
+    patchSeg(index, trimNarrationHead(seg, seconds));
+  };
+  const trimmed = headSec > 0 || endSec < fullSec;
   const cutAt = ranges.findIndex((r) => seg.at >= r.startSec && seg.at < r.endSec);
   const text = draft ?? seg.text;
   const commitText = () => {
@@ -768,17 +775,24 @@ export const NarrationInspector: React.FC<
         </button>
       </div>
       <div className="row">
-        <label title="生成済み音声の先頭から使う長さ。元の音声は残ります">
-          使用する長さ（秒）
-          <input type="number" min={Math.min(0.1, fullSec)} max={fullSec} step={0.05} value={fullSec ? usedSec : ''} disabled={needsTts} onChange={(e) => setTrim(Number(e.target.value))} style={{width: 82}} />
+        <label title="音声の頭から飛ばす秒数。声の位置は動かさないので、配置秒も同じだけ後ろへずれます。元の音声は残ります">
+          頭をカット（秒）
+          <input type="number" min={0} max={endSec} step={0.05} value={fullSec ? headSec : ''} disabled={needsTts} onChange={(e) => setHead(Number(e.target.value))} style={{width: 82}} aria-label="ナレーションの頭をカットする秒数" />
         </label>
-        <span className="hint">元音声 {fullSec.toFixed(2)} 秒</span>
-        <button className="small" onClick={() => patchSeg(index, {trimSec: undefined})} disabled={needsTts || !seg.trimSec}>全体を使う</button>
+        <label title="音声のどこまで使うか（元音声の頭からの秒）。元の音声は残ります">
+          終わり（秒）
+          <input type="number" min={headSec} max={fullSec} step={0.05} value={fullSec ? endSec : ''} disabled={needsTts} onChange={(e) => setTrim(Number(e.target.value))} style={{width: 82}} aria-label="ナレーションの終わりの位置" />
+        </label>
+        <span className="hint">使う {usedSec.toFixed(2)} 秒 ／ 元音声 {fullSec.toFixed(2)} 秒</span>
+        <button className="small" onClick={() => patchSeg(index, {...trimNarrationHead({...seg, trimSec: undefined}, 0), trimSec: undefined})} disabled={needsTts || !trimmed}>全体を使う</button>
       </div>
-      {fullSec > 0 && !needsTts && <input type="range" aria-label="ナレーションの使用する長さ" min={Math.min(0.1, fullSec)} max={fullSec} step={0.01} value={usedSec} onChange={(e) => setTrim(Number(e.target.value))} style={{width: '100%'}} />}
-      {seg.trimSec && <span className="hint">出力に反映するには保存後、ナレーション合成を再実行してください。</span>}
+      {fullSec > 0 && !needsTts && <div className="narr-range" style={{'--head': `${(headSec / fullSec) * 100}%`, '--end': `${(endSec / fullSec) * 100}%`} as React.CSSProperties}>
+        <input type="range" aria-label="ナレーションの頭のカット位置" min={0} max={fullSec} step={0.01} value={headSec} onChange={(e) => setHead(Number(e.target.value))} />
+        <input type="range" aria-label="ナレーションの終わりの位置" min={0} max={fullSec} step={0.01} value={endSec} onChange={(e) => setTrim(Number(e.target.value))} />
+      </div>}
+      {trimmed && <span className="hint">出力に反映するには保存後、ナレーション合成を再実行してください。</span>}
       <div className="row">
-        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec)} disabled={playing === seg.id || (!recorded && !seg.text.trim()) || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
+        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec, seg.startSec)} disabled={playing === seg.id || (!recorded && !seg.text.trim()) || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
           {playing === seg.id ? '再生中…' : '▶ 聴く'}
         </button>
         {!recorded && <button className="primary small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim() || !emotionOptions.ready} title={ttsBlockedBy ?? '変更を保存し、選択した感情でこの音声だけを生成します'}>

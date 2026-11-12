@@ -40,6 +40,8 @@ export const MicRecorder: React.FC<Props> = ({onAdd, onClose}) => {
   const [deviceId, setDeviceId] = useState(readDevice);
   const [level, setLevel] = useState(0);
   const [recording, setRecording] = useState(false);
+  /** 録音開始までの残り秒（3→2→1）。null はカウントしていない */
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [take, setTake] = useState<Take | null>(null);
   const [memo, setMemo] = useState('');
@@ -125,10 +127,15 @@ export const MicRecorder: React.FC<Props> = ({onAdd, onClose}) => {
   }, []);
   useEffect(() => () => { if (take) URL.revokeObjectURL(take.url); }, [take]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !recording) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // カウント中の Esc は録音の取りやめ。録音中は閉じない
+      if (countdown !== null) setCountdown(null);
+      else if (!recording) onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, recording]);
+  }, [onClose, recording, countdown]);
   useEffect(() => {
     if (!recording) return;
     const started = Date.now();
@@ -136,10 +143,8 @@ export const MicRecorder: React.FC<Props> = ({onAdd, onClose}) => {
     return () => clearInterval(t);
   }, [recording]);
 
-  const start = () => {
+  const beginRecording = () => {
     if (!stream.current) return;
-    setError('');
-    setTake(null);
     const chunks: Blob[] = [];
     const r = new MediaRecorder(stream.current);
     recorder.current = r;
@@ -156,6 +161,25 @@ export const MicRecorder: React.FC<Props> = ({onAdd, onClose}) => {
     setElapsed(0);
     setRecording(true);
   };
+  /** 開始ボタン: ③②① と数えてから録り始める（話し出しの頭が切れないように） */
+  const start = () => {
+    setError('');
+    setTake(null);
+    setCountdown(3);
+  };
+  useEffect(() => {
+    if (countdown === null) return;
+    const t = setTimeout(() => {
+      if (countdown > 1) setCountdown(countdown - 1);
+      else {
+        setCountdown(null);
+        beginRecording();
+      }
+    }, 1000);
+    return () => clearTimeout(t);
+    // beginRecording は毎回作り直されるが、中身は ref だけを読む
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown]);
   const stop = () => { if (recorder.current?.state === 'recording') recorder.current.stop(); };
   const add = async () => {
     if (!take) return;
@@ -172,31 +196,35 @@ export const MicRecorder: React.FC<Props> = ({onAdd, onClose}) => {
   };
 
   const clipping = level >= 0.98;
+  const locked = recording || countdown !== null;
   return (
-    <div className="modal-root" onClick={() => !recording && onClose()}>
+    <div className="modal-root" onClick={() => !locked && onClose()}>
       <div className="modal mic-recorder" role="dialog" aria-modal="true" aria-label="マイクでナレーションを録音" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head"><b>マイクでナレーションを録音</b><span style={{flex: 1}} /><button className="small" disabled={recording} onClick={onClose}>閉じる（Esc）</button></div>
+        <div className="modal-head"><b>マイクでナレーションを録音</b><span style={{flex: 1}} /><button className="small" disabled={locked} onClick={onClose}>閉じる（Esc）</button></div>
         <div className="modal-body">
           <div className="row">
             <label style={{flex: 1}}>マイク
-              <select value={deviceId} disabled={recording || !devices.length} onChange={(e) => { setDeviceId(e.target.value); saveDevice(e.target.value); void open(e.target.value); }}>
+              <select value={deviceId} disabled={locked || !devices.length} onChange={(e) => { setDeviceId(e.target.value); saveDevice(e.target.value); void open(e.target.value); }}>
                 {!devices.length && <option value="">マイクが見つかりません</option>}
                 {devices.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `マイク ${i + 1}`}</option>)}
               </select>
             </label>
-            <button className="small" disabled={recording} onClick={() => void open(deviceId)} title="つなぎ直したマイクを探し直す">再検出</button>
+            <button className="small" disabled={locked} onClick={() => void open(deviceId)} title="つなぎ直したマイクを探し直す">再検出</button>
           </div>
           <div className="mic-meter" aria-label="入力レベル" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
             <div className={`mic-meter-bar${clipping ? ' clip' : ''}`} style={{width: `${Math.min(100, Math.sqrt(level) * 100)}%`}} />
           </div>
           <p className="hint">{clipping ? '音が割れています。マイクから少し離れるか、入力音量を下げてください' : '話してみてバーが動けば録音できます'}</p>
           {error && <p className="error" role="alert">{error}</p>}
+          {countdown !== null && <div key={countdown} className="mic-countdown" role="status" aria-live="assertive" aria-label={`あと ${countdown} 秒で録音開始`}>{['①', '②', '③'][countdown - 1]}</div>}
           <div className="row">
-            {recording
+            {countdown !== null
+              ? <button onClick={() => setCountdown(null)}>やめる（Esc）</button>
+              : recording
               ? <button className="danger" onClick={stop}>■ 停止（{elapsed.toFixed(1)} 秒）</button>
               : <button className="primary" disabled={busy || !ready} onClick={start}>● {take ? '録り直す' : '録音開始'}</button>}
           </div>
-          {take && !recording && <>
+          {take && !locked && <>
             <audio src={take.url} controls style={{width: '100%'}} />
             <label>メモ（話した内容。画面の表示名に使います）
               <input value={memo} maxLength={200} onChange={(e) => setMemo(e.target.value)} placeholder="例: まずはこのチーズの伸びを見てください" />

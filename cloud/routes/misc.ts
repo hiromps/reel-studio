@@ -59,7 +59,7 @@ miscRouter.post('/narration-library', async (req, res) => {
   const entry = NarrationLibraryEntrySchema.parse({
     id: randomUUID(), title, text: segment.data.text, voice: String(req.body?.narration?.voice ?? ''),
     voiceTitle: req.body?.narration?.voiceTitle, speed: req.body?.narration?.speed,
-    latency: req.body?.narration?.latency, durSec: segment.data.durSec, trimSec: segment.data.trimSec, createdAt: new Date().toISOString(),
+    latency: req.body?.narration?.latency, durSec: segment.data.durSec, trimSec: segment.data.trimSec, startSec: segment.data.startSec, createdAt: new Date().toISOString(),
   });
   const relPath = `${entry.id}.wav`;
   const file = path.join(localMediaRoot(), '_global', 'full', 'narration', relPath);

@@ -119,7 +119,10 @@ if (segs.length) {
   const rawInputs = segs.map((s) => `-i ${q(path.join(narrDir, s.id + '.wav'))}`).join(' ');
   const delayChains = segs.map((s, i) => {
     const ms = Math.round(s.at * 1000);
-    const trim = typeof s.trimSec === 'number' && s.trimSec > 0 ? `,atrim=0:${Math.min(s.trimSec, s.durSec || s.trimSec)},asetpts=N/SR/TB` : '';
+    // 使う範囲は wav の頭からの秒で start〜end（startSec で頭を飛ばし、trimSec が終わり）
+    const start = typeof s.startSec === 'number' && s.startSec > 0 ? s.startSec : 0;
+    const end = typeof s.trimSec === 'number' && s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : 0;
+    const trim = start > 0 || end > 0 ? `,atrim=start=${start}${end > 0 ? `:end=${end}` : ''},asetpts=N/SR/TB` : '';
     return `[${i}:a]aformat=sample_fmts=fltp:channel_layouts=stereo${trim},adelay=${ms}|${ms}[d${i}]`;
   });
   const mixChain = `${segs.map((_, i) => `[d${i}]`).join('')}amix=inputs=${segs.length}:duration=longest:normalize=0[narrRaw]`;
@@ -223,7 +226,7 @@ for (const s of segs) {
     const g = capture(`ffmpeg -hide_banner -nostats -ss ${prevEnd.toFixed(2)} -t ${Math.min(gap, 0.5).toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
     console.log(`   谷 ${prevEnd.toFixed(2)}-${s.at.toFixed(2)}s: ${(g.match(/mean_volume: .*/) || ['?'])[0]}`);
   }
-  const usedSec = s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || 1);
+  const usedSec = Math.max(0.01, (s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || 1)) - (s.startSec > 0 ? s.startSec : 0));
   const v = capture(`ffmpeg -hide_banner -nostats -ss ${s.at.toFixed(2)} -t ${usedSec.toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
   const mean = (v.match(/mean_volume: .*/) || ['?'])[0];
   const max = (v.match(/max_volume: .*/) || ['?'])[0];

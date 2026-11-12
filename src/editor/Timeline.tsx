@@ -10,7 +10,7 @@ import type {Clip, Cut, Narration, NarrationSegment, ReelData} from '@shared/sch
 import {cutDurationSec, cutRanges, type TelopGroup} from '@shared/timeline';
 import {colorFilter} from '@shared/color';
 import type {SfxLibrary} from '@shared/sfx';
-import {narrationDisplayName} from '@shared/narration';
+import {narrationDisplayName, narrationRange, trimNarrationHead, trimNarrationTail} from '@shared/narration';
 import {useDragReorder} from '../components/useDragReorder';
 import {caretRectFor, destIndexOf, insertIndexAt, type Caret, type Rect} from '../components/reorder';
 import {applyTrim, fallbackDuration, type TrimHandle, type TrimRange} from '../components/trim';
@@ -85,6 +85,7 @@ type Props = {
 type Drag =
   | {kind: 'trim'; index: number; handle: TrimHandle; startX: number; base: TrimRange; durationSec: number; rate: number; last: TrimRange; pushed: boolean}
   | {kind: 'narr-trim'; index: number; startX: number; baseSec: number; fullSec: number; last: number; pushed: boolean}
+  | {kind: 'narr-head'; index: number; startX: number; baseStart: number; last: number; pushed: boolean}
   | {kind: 'scrub'}
   | {kind: 'narr' | 'sfx'; index: number; startX: number; baseAt: number; last: number; pushed: boolean};
 
@@ -323,7 +324,19 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     if (!seg?.durSec || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = {kind: 'narr-trim', index, startX: e.clientX, baseSec: Math.min(seg.trimSec ?? seg.durSec, seg.durSec), fullSec: seg.durSec, last: Math.min(seg.trimSec ?? seg.durSec, seg.durSec), pushed: false};
+    const {end} = narrationRange(seg);
+    dragRef.current = {kind: 'narr-trim', index, startX: e.clientX, baseSec: end, fullSec: seg.durSec, last: end, pushed: false};
+    capture(e);
+    onSelectQuiet({kind: 'narr', index});
+  };
+  /** 頭のカット。左端をつかんで右へ動かすと、その分だけ音声の頭を飛ばす（中身の時刻はそのまま） */
+  const beginNarrHead = (index: number) => (e: React.PointerEvent) => {
+    const seg = narration?.segments[index];
+    if (!seg?.durSec || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const {start} = narrationRange(seg);
+    dragRef.current = {kind: 'narr-head', index, startX: e.clientX, baseStart: start, last: start, pushed: false};
     capture(e);
     onSelectQuiet({kind: 'narr', index});
   };
@@ -344,12 +357,25 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
       return;
     }
     if (d.kind === 'narr-trim' && narration) {
-      const min = Math.min(0.1, d.fullSec);
-      const next = Math.round(Math.max(min, Math.min(d.fullSec, d.baseSec + (e.clientX - d.startX) / pxPerSec)) * 1000) / 1000;
+      const seg = narration.segments[d.index];
+      if (!seg) return;
+      const trimSec = trimNarrationTail(seg, d.baseSec + (e.clientX - d.startX) / pxPerSec);
+      const next = trimSec ?? d.fullSec;
       if (next === d.last) return;
       if (!d.pushed) { onStart(); d.pushed = true; }
       d.last = next;
-      onNarrationChange({...narration, segments: narration.segments.map((s, i) => i === d.index ? {...s, trimSec: next >= d.fullSec ? undefined : next} : s)});
+      onNarrationChange({...narration, segments: narration.segments.map((s, i) => i === d.index ? {...s, trimSec} : s)});
+      return;
+    }
+    if (d.kind === 'narr-head' && narration) {
+      const seg = narration.segments[d.index];
+      if (!seg) return;
+      const head = trimNarrationHead(seg, d.baseStart + (e.clientX - d.startX) / pxPerSec);
+      const next = head.startSec ?? 0;
+      if (next === d.last) return;
+      if (!d.pushed) { onStart(); d.pushed = true; }
+      d.last = next;
+      onNarrationChange({...narration, segments: narration.segments.map((s, i) => i === d.index ? {...s, ...head} : s)});
       return;
     }
     if ((d.kind === 'narr' || d.kind === 'sfx') && narration) {
@@ -702,11 +728,21 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                     const currentNarration = narration;
                     const seg = currentNarration?.segments[b.index];
                     if (!currentNarration || !seg?.durSec) return;
-                    const full = seg.durSec;
                     const step = e.shiftKey ? 0.5 : 0.1;
-                    const next = Math.round(Math.max(Math.min(0.1, full), Math.min(full, (seg.trimSec ?? full) + (e.key === 'ArrowRight' ? step : -step))) * 1000) / 1000;
+                    const trimSec = trimNarrationTail(seg, narrationRange(seg).end + (e.key === 'ArrowRight' ? step : -step));
                     onStart();
-                    onNarrationChange({...currentNarration, segments: currentNarration.segments.map((s, i) => i === b.index ? {...s, trimSec: next >= full ? undefined : next} : s)});
+                    onNarrationChange({...currentNarration, segments: currentNarration.segments.map((s, i) => i === b.index ? {...s, trimSec} : s)});
+                  }} />}
+                  {!b.estimated && !b.needsTts && <span className="tl-narr-trim head" role="slider" tabIndex={0} aria-label={`${b.id} の音声の頭をカット`} aria-valuemin={0} aria-valuemax={narration?.segments[b.index]?.durSec ?? 0} aria-valuenow={narration?.segments[b.index]?.startSec ?? 0} title="ドラッグでナレーションの頭をトリミング（声の位置はそのまま）" onPointerDown={beginNarrHead(b.index)} onClick={stop} onKeyDown={(e) => {
+                    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                    e.preventDefault(); e.stopPropagation();
+                    const currentNarration = narration;
+                    const seg = currentNarration?.segments[b.index];
+                    if (!currentNarration || !seg?.durSec) return;
+                    const step = e.shiftKey ? 0.5 : 0.1;
+                    const head = trimNarrationHead(seg, narrationRange(seg).start + (e.key === 'ArrowRight' ? step : -step));
+                    onStart();
+                    onNarrationChange({...currentNarration, segments: currentNarration.segments.map((s, i) => i === b.index ? {...s, ...head} : s)});
                   }} />}
                 </div>
               ))}

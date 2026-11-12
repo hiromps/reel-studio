@@ -17,10 +17,44 @@ export const SILENCE_WARN_SEC = 2;
 /** 動画尺をこれ以上はみ出すと警告する */
 export const OVERRUN_TOLERANCE_SEC = 0.05;
 
-/** 元音声を残したまま、先頭から実際に使う長さ。 */
-export const narrationUsedSec = (s: Pick<NarrationSegment, 'durSec' | 'trimSec'>, fallback = 0): number => {
+/**
+ * 元音声のどこからどこまでを使うか（wav の頭からの秒）。
+ * startSec で頭を飛ばし、trimSec が終わり。どちらも省略なら全体
+ */
+export const narrationRange = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec'>, fallback = 0): {start: number; end: number} => {
   const full = s.durSec && s.durSec > 0 ? s.durSec : fallback;
-  return s.trimSec && s.trimSec > 0 ? Math.min(full, s.trimSec) : full;
+  const end = s.trimSec && s.trimSec > 0 ? Math.min(full, s.trimSec) : full;
+  return {start: Math.min(Math.max(0, s.startSec ?? 0), end), end};
+};
+
+/** トリミングしても最低これだけは残す（秒）。元音声がこれより短ければ元音声の長さ */
+const MIN_USED_SEC = 0.1;
+const r3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/**
+ * 頭のカット位置を変える。**鳴る中身の時刻は動かさない**（動画編集ソフトの頭トリムと同じ）ので、
+ * 飛ばした分だけ配置秒 at も後ろへずれる。at が 0 未満になる手前、終わりの 0.1 秒手前で止める
+ */
+export const trimNarrationHead = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec' | 'at'>, nextStart: number): {startSec: number | undefined; at: number} => {
+  const {start, end} = narrationRange(s);
+  const min = Math.max(0, start - s.at);
+  const max = Math.max(min, end - Math.min(MIN_USED_SEC, end));
+  const next = r3(Math.min(max, Math.max(min, Number.isFinite(nextStart) ? nextStart : start)));
+  return {startSec: next > 0 ? next : undefined, at: r3(Math.max(0, s.at + next - start))};
+};
+
+/** 終わりのカット位置（wav の頭からの秒）を変える。全長まで戻したら trimSec は外す */
+export const trimNarrationTail = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec'>, nextEnd: number): number | undefined => {
+  const full = s.durSec ?? 0;
+  const {start} = narrationRange(s);
+  const next = r3(Math.min(full, Math.max(start + Math.min(MIN_USED_SEC, full - start), Number.isFinite(nextEnd) ? nextEnd : full)));
+  return next >= full ? undefined : next;
+};
+
+/** 元音声を残したまま、実際に使う長さ（頭を飛ばした分も引く）。 */
+export const narrationUsedSec = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec'>, fallback = 0): number => {
+  const {start, end} = narrationRange(s, fallback);
+  return end - start;
 };
 
 export const narrationDisplayName = (s: Pick<NarrationSegment, 'id' | 'label'>): string => s.label?.trim() || s.id;

@@ -10,6 +10,7 @@ export const NarrationLibraryEntrySchema = z.object({
   latency: z.string().optional(),
   durSec: z.number().positive(),
   trimSec: z.number().positive().optional(),
+  startSec: z.number().min(0).optional(),
   createdAt: z.string(),
 });
 export type NarrationLibraryEntry = z.infer<typeof NarrationLibraryEntrySchema>;

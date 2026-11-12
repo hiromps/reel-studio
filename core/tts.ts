@@ -489,6 +489,8 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
     patch(seg.id, (s) => {
       s.durSec = dur;
       if (!reelConfig) delete s.trimSec;
+      // 作り直した音声は頭の位置も変わるので、頭のカットは外す
+      delete s.startSec;
       delete (s as {needsTts?: boolean}).needsTts;
     });
     if (reelConfig && seg.trimSec && dur > seg.trimSec) log(`  ! ${seg.id}: 音声 ${dur.toFixed(2)}秒 が発話枠 ${seg.trimSec.toFixed(2)}秒 を超えます。末尾を切るため、カット尺・話速・台詞を調整してください`);

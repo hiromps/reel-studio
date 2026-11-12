@@ -1378,6 +1378,9 @@ pre.md {
 .mic-meter { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
 .mic-meter-bar { height: 100%; background: var(--ok); transition: width 60ms linear; }
 .mic-meter-bar.clip { background: var(--warn); }
+.mic-countdown { align-self: center; font-size: 96px; line-height: 1; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; animation: mic-count 1s ease-out; }
+@keyframes mic-count { from { transform: scale(1.4); opacity: 0.3; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mic-countdown { animation: none; } }
 .narration-library-save { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 .narration-library-save > div { flex: 1 1 100%; }
 .narration-library-save p, .narration-library-item p { margin: 4px 0; }
@@ -3326,6 +3329,7 @@ a.btn-like:hover {
 }
 .tl-narr-trim:hover, .tl-narr-trim:focus-visible { background: rgba(255, 255, 255, 0.3); outline: 2px solid var(--accent); }
 @media (pointer: coarse) { .tl-narr-trim { width: 24px; } }
+.tl-narr-trim.head { right: auto; left: 0; }
 /* S 段：橙のピル */
 .tl-sfx {
   position: absolute;
@@ -4786,3 +4790,14 @@ a.btn-like:hover {
 .sb-zoom { padding: 8px; border-top: 1px solid var(--line); cursor: default; }
 .sb-zoom summary { min-height: 44px; cursor: pointer; overflow-wrap: anywhere; }
 .sb-zoom .zoom-pair { grid-template-columns: minmax(0, 1fr); }
+
+/* ナレーションの使う範囲（頭と終わりのつまみを 1 本のバーに重ねる） */
+.narr-range { position: relative; height: 24px; width: 100%; }
+.narr-range::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 6px; transform: translateY(-50%); border-radius: 3px;
+  background: linear-gradient(to right, var(--line) var(--head), var(--accent) var(--head), var(--accent) var(--end), var(--line) var(--end)); }
+.narr-range input[type='range'] { position: absolute; inset: 0; width: 100%; margin: 0; background: none; pointer-events: none; appearance: none; -webkit-appearance: none; }
+.narr-range input[type='range']::-webkit-slider-runnable-track { background: none; }
+.narr-range input[type='range']::-moz-range-track { background: none; }
+.narr-range input[type='range']::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--accent); cursor: ew-resize; }
+.narr-range input[type='range']::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; cursor: ew-resize; }
+.narr-range input[type='range']:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
