@@ -41,6 +41,7 @@ export const TelopStyleSchema = z.object({
   shadow: z.number().min(0).max(1).optional(),
   tags: z.boolean().optional(),
   bigNumbers: z.boolean().optional(),
+  markOpacity: z.number().min(0).max(1).optional(),
 });
 export type TelopStyleDef = z.infer<typeof TelopStyleSchema>;
 

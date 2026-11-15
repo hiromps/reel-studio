@@ -2,7 +2,7 @@ import React from 'react';
 import {AbsoluteFill, OffthreadVideo, Sequence, staticFile, useCurrentFrame} from 'remotion';
 import {zoomStyle, type Zoom} from './zoom';
 import {colorFilter, type ColorAdjustments} from './color';
-import {BadgeTelop, EndCard, MainTelop, PriceTelop, TateTelop, TelopFont, resolveTelopStyle} from './telops';
+import {BadgeTelop, badgeLines, EndCard, MainTelop, PriceTelop, TateTelop, TelopFont, resolveTelopStyle} from './telops';
 import type {EndCardDef, TelopStyle, ThemeName} from './telops';
 
 export type MainTelopDef = {
@@ -161,7 +161,7 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
 
   // メインテロップ：同一文言（text・orientation一致）で連続するカットは1つの
   // Sequenceにまとめる。カットの境目で再フェードインせず、映像だけが切り替わる。
-  const telopGroups: {from: number; dur: number; def: MainTelopDef; hasBadge: boolean}[] = [];
+  const telopGroups: {from: number; dur: number; def: MainTelopDef; hasBadge: boolean; badgeLineCount: number}[] = [];
   {
     let cursor = 0;
     for (const cut of data.cuts) {
@@ -175,9 +175,12 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
           (last.def.orientation ?? 'vertical') === (cut.main.orientation ?? 'vertical');
         if (continuous) {
           last.dur += dur;
-          if (cut.badge) last.hasBadge = true;
+          if (cut.badge) {
+            last.hasBadge = true;
+            last.badgeLineCount = Math.max(last.badgeLineCount, badgeLines(cut.badge).length);
+          }
         } else {
-          telopGroups.push({from: cursor, dur, def: cut.main, hasBadge: !!cut.badge});
+          telopGroups.push({from: cursor, dur, def: cut.main, hasBadge: !!cut.badge, badgeLineCount: cut.badge ? badgeLines(cut.badge).length : 1});
         }
       }
       cursor += dur;
@@ -191,7 +194,7 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
         {videoElements}
         {telopGroups.map((g, i) => (
           <Sequence key={`telop${i}`} from={g.from} durationInFrames={g.dur} name={`telop${i + 1}`}>
-            <MainTelop theme={theme} look={look} {...g.def} hasBadge={g.hasBadge} />
+            <MainTelop theme={theme} look={look} {...g.def} hasBadge={g.hasBadge} badgeLineCount={g.badgeLineCount} />
           </Sequence>
         ))}
         {/* 常駐縦書きテロップは tate 指定時のみ（基本は入れない） */}

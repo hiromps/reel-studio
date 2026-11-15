@@ -1,7 +1,23 @@
 // テロップ文の計測・禁則（telop-style.md の規則を関数化）。
 
-/** 文字数（コードポイント単位。「・・・」は 3 文字として数える） */
-export const countChars = (text: string): number => Array.from(text).length;
+/**
+ * 背景色の範囲指定。〖文字〗は既定の色、〖文字|#RRGGBB〗はその色（engine/src/telops.tsx の TELOP_MARK_RE と同じ規則）。
+ * エンジンは案件ごとに複製されて shared を読めないため、規則を両方に置いている。
+ */
+export const TELOP_MARK_RE = /〖([^〖〗|]+)(?:\|(#[0-9a-fA-F]{6}))?〗/g;
+export const TELOP_MARK_DEFAULT_BG = '#FFE14D';
+/** 背景色の指定を外した、画面に出る文字だけ */
+export const stripTelopMarks = (text: string): string => text.replace(TELOP_MARK_RE, '$1');
+/** 選んだ範囲を背景色の指定で包む。既定の色なら色指定を省く */
+export const wrapTelopMark = (text: string, start: number, end: number, color = TELOP_MARK_DEFAULT_BG): string => {
+  const inner = stripTelopMarks(text.slice(start, end)).replace(/[〖〗|]/g, '');
+  if (!inner) return text;
+  const suffix = color.toUpperCase() === TELOP_MARK_DEFAULT_BG ? '' : `|${color.toUpperCase()}`;
+  return `${text.slice(0, start)}〖${inner}${suffix}〗${text.slice(end)}`;
+};
+
+/** 文字数（コードポイント単位。「・・・」は 3 文字として数える。背景色の指定は数えない） */
+export const countChars = (text: string): number => Array.from(stripTelopMarks(text)).length;
 
 export const PLACEHOLDER_RE = /\{\{[^}]*\}\}/;
 export const isPlaceholder = (text: string): boolean => PLACEHOLDER_RE.test(text);

@@ -9,7 +9,7 @@
 // 描くのは engine/src/Thumbnail.tsx。そちらには**ここで埋め終わったもの**を渡す。
 import type {Brief} from './schema/brief';
 import type {Crop, Cut, ReelData, ThumbnailDef} from './schema/cuts';
-import {isPlaceholder} from './telop-text';
+import {isPlaceholder, stripTelopMarks} from './telop-text';
 
 /** 英字・縦書きの地名が決められないときの既定（このスタジオの主戦場） */
 export const DEFAULT_REGION = {ja: '大阪', en: 'OSAKA'} as const;
@@ -54,7 +54,7 @@ export const sideTextOf = (regionJa: string, area?: string): string => {
 export const titleTextOf = (brief: Pick<Brief, 'shop'> | null | undefined, cuts: Pick<ReelData, 'cuts'> | null | undefined): string => {
   const genre = brief?.shop.genre?.trim() ?? '';
   if (genre && Array.from(genre).length <= 10) return genre;
-  const hook = cuts?.cuts.map((c) => c.main?.text?.trim() ?? '').find((t) => t && !isPlaceholder(t));
+  const hook = cuts?.cuts.map((c) => stripTelopMarks(c.main?.text?.trim() ?? '')).find((t) => t && !isPlaceholder(t));
   if (hook && Array.from(hook).length <= 12) return hook;
   return brief?.shop.name?.trim() ?? '';
 };

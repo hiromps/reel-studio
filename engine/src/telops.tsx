@@ -169,6 +169,8 @@ export type TelopStyle = {
   tags?: boolean;
   /** 数字（「100倍」「2000円」など）だけ大きくする */
   bigNumbers?: boolean;
+  /** 〖…〗で付けた背景色の濃さ（0〜1）。バッジの濃さと同じく、下げると映像が透ける */
+  markOpacity?: number;
 };
 export type ResolvedTelopStyle = {
   layout: TelopLayout;
@@ -181,7 +183,11 @@ export type ResolvedTelopStyle = {
   shadow: number;
   tags: boolean;
   bigNumbers: boolean;
+  markOpacity: number;
 };
+
+/** 背景色の濃さの既定。バッジの下地（badgeBgAlpha）と同じ 0.6 */
+export const MARK_OPACITY_DEFAULT = 0.6;
 
 const LEGACY_STYLE: ResolvedTelopStyle = {
   layout: 'auto',
@@ -194,6 +200,7 @@ const LEGACY_STYLE: ResolvedTelopStyle = {
   shadow: 0.3,
   tags: false,
   bigNumbers: false,
+  markOpacity: MARK_OPACITY_DEFAULT,
 };
 
 export const TELOP_STYLE_PRESETS: Record<ThemeName, ResolvedTelopStyle> = {
@@ -214,6 +221,7 @@ export const TELOP_STYLE_PRESETS: Record<ThemeName, ResolvedTelopStyle> = {
     shadow: 0.55,
     tags: true,
     bigNumbers: true,
+    markOpacity: MARK_OPACITY_DEFAULT,
   },
 };
 
@@ -235,19 +243,49 @@ export const resolveTelopStyle = (theme: ThemeName | undefined, style?: TelopSty
     shadow: clampNum(s.shadow, 0, 1, base.shadow),
     tags: s.tags ?? base.tags,
     bigNumbers: s.bigNumbers ?? base.bigNumbers,
+    markOpacity: clampNum(s.markOpacity, 0, 1, base.markOpacity),
   };
 };
 
 const GOTHIC_STACK = '"Noto Sans JP", "Yu Gothic UI", "Yu Gothic", "YuGothic", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif';
 
 // ── 横書きの折り返し・赤タグ・大きい数字 ─────────────────────────
-type Piece = {kind: 'text' | 'tag' | 'num'; text: string};
+type Piece = {kind: 'text' | 'tag' | 'num' | 'mark'; text: string; bg?: string};
+
+/**
+ * 背景色を付ける範囲。〖文字〗は既定の色、〖文字|#RRGGBB〗はその色。テーマに関係なく効く。
+ * 文字数・折り返しでは括弧と色指定を数えない（shared/telop-text.ts の stripTelopMarks と同じ規則）。
+ */
+export const TELOP_MARK_RE = /〖([^〖〗|]+)(?:\|(#[0-9a-fA-F]{6}))?〗/g;
+export const TELOP_MARK_DEFAULT_BG = '#FFE14D';
+export const stripTelopMarks = (text: string): string => text.replace(TELOP_MARK_RE, '$1');
+/** 背景色に対して読める文字色（明るい背景なら黒、暗い背景なら白） */
+export const markTextColor = (bg: string): string => {
+  const n = parseInt(bg.slice(1), 16);
+  const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return lum > 150 ? '#111' : '#fff';
+};
+/** 〖…〗で分ける。mark 以外の部分はそのまま返す */
+const splitMarks = (text: string): {text: string; bg?: string}[] => {
+  const out: {text: string; bg?: string}[] = [];
+  let last = 0;
+  for (const m of text.matchAll(TELOP_MARK_RE)) {
+    if (m.index! > last) out.push({text: text.slice(last, m.index)});
+    out.push({text: m[1], bg: m[2] ?? TELOP_MARK_DEFAULT_BG});
+    last = m.index! + m[0].length;
+  }
+  if (last < text.length) out.push({text: text.slice(last)});
+  return out;
+};
 
 /** 数字のかたまり（単位つき）。大きく出す範囲であり、折り返さない範囲でもある */
 const NUM_RE = /[0-9０-９][0-9０-９,，.．]*(?:万|千|百)?(?:倍|円|%|％|秒|分|年|個|品|貫|杯|本|人|cm|g|kg)?/g;
 
 /** 【…】を赤タグ、数字のかたまり（単位つき）を num に分ける。tags / bigNumbers が off のものは text のまま */
-export const parseTelopPieces = (text: string, opt: {tags: boolean; bigNumbers: boolean}): Piece[] => {
+export const parseTelopPieces = (text: string, opt: {tags: boolean; bigNumbers: boolean}): Piece[] =>
+  splitMarks(text).flatMap((part) => (part.bg ? [{kind: 'mark' as const, text: part.text, bg: part.bg}] : parseUnmarked(part.text, opt)));
+
+const parseUnmarked = (text: string, opt: {tags: boolean; bigNumbers: boolean}): Piece[] => {
   const out: Piece[] = [];
   const push = (kind: Piece['kind'], t: string) => {
     if (!t) return;
@@ -281,7 +319,10 @@ export const parseTelopPieces = (text: string, opt: {tags: boolean; bigNumbers: 
 };
 
 /** 表示上の文字数（タグの括弧は数えない） */
-const visibleLength = (text: string, tags: boolean): number => (tags ? text.replace(/[【】]/g, '') : text).length;
+const visibleLength = (text: string, tags: boolean): number => {
+  const plain = stripTelopMarks(text);
+  return (tags ? plain.replace(/[【】]/g, '') : plain).length;
+};
 
 /**
  * 横書きを最大 2 行に分ける。改行（\n）があればそれに従う。
@@ -295,7 +336,7 @@ export const wrapTelop = (text: string, lineChars: number, tags: boolean): strin
   if (lineChars <= 0 || visibleLength(t, tags) <= lineChars) return [t];
   // 割ってよい位置（文字列の index。その位置の前で改行する）
   const forbidden = new Set<number>();
-  for (const re of [/【[^【】]*】/g, NUM_RE]) {
+  for (const re of [/【[^【】]*】/g, NUM_RE, TELOP_MARK_RE]) {
     for (const m of t.matchAll(re)) for (let i = m.index! + 1; i < m.index! + m[0].length; i++) forbidden.add(i);
   }
   // 行頭禁則（句読点・長音・小書きの仮名・閉じ括弧で行を始めない）
@@ -314,6 +355,46 @@ export const wrapTelop = (text: string, lineChars: number, tags: boolean): strin
     Math.ceil(mid);
   return [t.slice(0, at).trim(), t.slice(at).trim()].filter(Boolean);
 };
+
+/**
+ * 背景色を付けた範囲。濃さ（opacity）はバッジと同じく下地だけに効き、文字は透けない。
+ * 濃いときは影が濁るので外して背景の明るさで文字色を決め、薄いときは映像が勝つので白文字＋いつもの影のまま。
+ */
+const MarkSpan: React.FC<{bg: string; opacity: number; vertical?: boolean; children: React.ReactNode}> = ({bg, opacity, vertical, children}) => {
+  const alpha = Math.max(0, Math.min(1, opacity));
+  const solid = alpha >= 0.75;
+  return (
+  <span
+    style={{
+      background: hexToRgba(bg, alpha),
+      color: solid ? markTextColor(bg) : '#fff',
+      ...(solid ? {textShadow: 'none'} : {}),
+      WebkitTextStroke: '0px transparent',
+      padding: vertical ? '0.08em 0.04em' : '0.02em 0.12em 0.06em',
+      borderRadius: '0.1em',
+      boxDecorationBreak: 'clone',
+      WebkitBoxDecorationBreak: 'clone',
+    }}
+  >
+    {children}
+  </span>
+  );
+};
+
+/** 縦書き：〖…〗の範囲に背景色を付け、半角数字の縦中横は VerticalText に任せる */
+const VerticalMarked: React.FC<{text: string; opacity: number}> = ({text, opacity}) => (
+  <>
+    {splitMarks(text).map((part, i) =>
+      part.bg ? (
+        <MarkSpan key={i} bg={part.bg} opacity={opacity} vertical>
+          <VerticalText text={part.text} />
+        </MarkSpan>
+      ) : (
+        <VerticalText key={i} text={part.text} />
+      ),
+    )}
+  </>
+);
 
 const TelopPieces: React.FC<{text: string; look: ResolvedTelopStyle; accent: string}> = ({text, look, accent}) => (
   <>
@@ -338,6 +419,10 @@ const TelopPieces: React.FC<{text: string; look: ResolvedTelopStyle; accent: str
         >
           {p.text}
         </span>
+      ) : p.kind === 'mark' ? (
+        <MarkSpan key={i} bg={p.bg!} opacity={look.markOpacity}>
+          {p.text}
+        </MarkSpan>
       ) : p.kind === 'num' ? (
         <span key={i} style={{fontSize: '1.45em', lineHeight: 1}}>
           {p.text}
@@ -402,18 +487,21 @@ const fontStackFor = (family: TelopFamily, contextStack: string): string =>
   family === 'gothic' ? GOTHIC_STACK : family === 'serif' ? fontStack : contextStack;
 
 // バッジの外形高さ（フォント×行間＋上下パディング）。メインテロップの逃がし量に使う
-const badgeBoxHeight = () => Math.round(LAYOUT.badgeFontSize * 1.05) + LAYOUT.badgePadY * 2;
+/** バッジの行（改行で区切る。空行は詰める） */
+export const badgeLines = (text: string): string[] => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+const badgeBoxHeight = (lines = 1) => Math.round(LAYOUT.badgeFontSize * 1.05 * Math.max(1, lines)) + LAYOUT.badgePadY * 2;
 
 // ── 層2: メインテロップ（カット同期） ─────────────────────────────
 // 基本は縦書き・画面中央（映像との被りは許容）。下部配置は禁止。
 // 人物・会話シーンのみ orientation: "horizontal" で上部横書きにできる。
-export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: ResolvedTelopStyle; hasPrice?: boolean; hasBadge?: boolean}> = ({
+export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: ResolvedTelopStyle; hasPrice?: boolean; hasBadge?: boolean; badgeLineCount?: number}> = ({
   text,
   orientation = 'vertical',
   theme,
   look: lookProp,
   hasPrice = false,
   hasBadge = false,
+  badgeLineCount = 1,
 }) => {
   const t = THEMES[theme] ?? THEMES.pop;
   const look = lookProp ?? resolveTelopStyle(theme);
@@ -427,13 +515,13 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
   // 長文の安全弁：縦は高さ1300px・横は幅900pxに収まるよう自動縮小
   // （2026-08-12にセーフゾーン余白を広げるため1400/980から縮小。
   // 原則は台本側で13文字以内に収める）
-  const fontSize = Math.min(look.size, Math.floor((vertical ? 1300 : 900) / Math.max(1, vertical ? verticalTextCells(text) : longest)));
+  const fontSize = Math.min(look.size, Math.floor((vertical ? 1300 : 900) / Math.max(1, vertical ? verticalTextCells(stripTelopMarks(text)) : longest)));
 
   // 2026-08-12：キーワード色分けを廃止（ユーザー指示「色を使わずに」）。
   // highlight/highlightColorはcuts.jsonの互換のため型としては残るが、描画では使わない。
   // 例外は telopStyle.tags（【…】を赤タグ）と bigNumbers（数字だけ大きく）。azu 型の既定で on
   const content =
-    look.tags || look.bigNumbers || lines.length > 1
+    look.tags || look.bigNumbers || lines.length > 1 || stripTelopMarks(text) !== text
       ? lines.map((line, i) => (
           <div key={i}>
             <TelopPieces text={line} look={look} accent={t.accent} />
@@ -475,7 +563,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
     // （2026-08-13にユーザー指摘「下すぎる」で、コンテナごと下にずらす方式から
     // テキストへの小さいmarginTopに変更。中心のズレをtopInset/2からmarginTop/2に縮小）
     // バッジは上部中央に出るので、縦書きの上端がその下に来るまで下げる（marginTop の半分だけ中心がずれる）
-    const badgeNudge = hasBadge ? 120 : 0;
+    const badgeNudge = hasBadge ? 120 + Math.round(LAYOUT.badgeFontSize * 1.05 * (Math.max(1, badgeLineCount) - 1)) : 0;
     const priceNudge = Math.max(hasPrice ? 80 : 0, badgeNudge);
     return (
       <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center'}}>
@@ -489,7 +577,7 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
             marginTop: priceNudge,
           }}
         >
-          <VerticalText text={text} />
+          <VerticalMarked text={text} opacity={look.markOpacity} />
         </div>
       </AbsoluteFill>
     );
@@ -500,8 +588,10 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
       <div
         style={{
           ...textStyle,
+          // 2行以上でも各行を中央にそろえる（短い行が左に寄らないように）
+          textAlign: 'center',
           // 横書きはバッジと同じ高さに来るので、バッジがあるときはその下へ送る
-          marginTop: hasBadge ? LAYOUT.badgeTop + badgeBoxHeight() + LAYOUT.badgeGap : LAYOUT.mainTopHorizontal,
+          marginTop: hasBadge ? LAYOUT.badgeTop + badgeBoxHeight(badgeLineCount) + LAYOUT.badgeGap : LAYOUT.mainTopHorizontal,
         }}
       >
         {content}
@@ -566,8 +656,10 @@ export const BadgeTelop: React.FC<{text: string; theme: ThemeName; opacity?: num
           borderRadius: LAYOUT.badgeRadius,
           padding: `${LAYOUT.badgePadY}px ${LAYOUT.badgePadX}px`,
           display: 'inline-flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
+          textAlign: 'center',
           fontFamily,
           fontWeight: t.fontWeight,
           fontSize: LAYOUT.badgeFontSize,
@@ -583,7 +675,9 @@ export const BadgeTelop: React.FC<{text: string; theme: ThemeName; opacity?: num
           ].join(', '),
         }}
       >
-        {text}
+        {badgeLines(text).map((line, i) => (
+          <div key={i}>{line}</div>
+        ))}
       </div>
     </div>
   );

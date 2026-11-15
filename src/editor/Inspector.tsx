@@ -21,7 +21,8 @@ import {BADGE_OPACITY_DEFAULT, GROUP_COLORS, KIND_LABEL, ROLE_LABEL} from './lab
 import {ThumbnailSection} from './ThumbnailSection';
 import {WaveformCanvas} from './WaveformCanvas';
 import {TelopFontSelect} from './TelopFontSelect';
-import {TelopStyleControls} from './TelopStyleControls';
+import {HorizontalTelopHeight, MarkOpacitySlider, TelopStyleControls} from './TelopStyleControls';
+import {TelopMarkButtons} from './TelopMarkButtons';
 import {resolveTelopStyle} from '@engine/telops';
 
 /** テロップ文字数の目安。横書きで折り返すなら 2 行分、それ以外は従来の 13 文字 */
@@ -488,6 +489,8 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
                 </span>
               </label>
             </div>
+            {c.main && <TelopMarkButtons inputRef={telopRef} text={text} onChange={(next) => patchCut(index, (x) => ({...x, main: {...(x.main ?? {}), text: next}}))} />}
+            {c.main && /〖/.test(text) && <MarkOpacitySlider cuts={cuts!} onChange={(telopStyle) => m.patchReel({telopStyle})} />}
             <div className="row">
               {c.main && (
                 <label>
@@ -498,9 +501,12 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
                   </select>
                 </label>
               )}
-              <label title="左上に出すバッジ。F0 はエリア名（任意）、F2 は順位、F6 は店名">
+              {c.main && (forcedLayout(cuts) ?? c.main.orientation) === 'horizontal' && <HorizontalTelopHeight cuts={cuts!} onChange={(telopStyle) => m.patchReel({telopStyle})} />}
+              <label title="上部中央に出すバッジ。Enter で改行できます。F0 はエリア名（任意）、F2 は順位、F6 は店名">
                 バッジ
-                <input
+                <textarea
+                  rows={Math.min(3, Math.max(1, (c.badge ?? '').split('\n').length))}
+                  style={{resize: 'vertical', minHeight: 34}}
                   value={c.badge ?? ''}
                   onFocus={pushHistory}
                   onChange={(e) =>
@@ -612,6 +618,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
 // ───────────────────────── テロップグループ ─────────────────────────
 export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, onSeekCut}) => {
   const {cuts, groups, setGroupText, setGroupOrientation, patchCut, pushHistory, setCuts} = m;
+  const groupTelopRef = useRef<HTMLInputElement>(null);
   const g = groups[group];
   if (!cuts || !g) return null;
   const head = cuts.cuts[g.cutIndices[0]];
@@ -640,6 +647,7 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
         文言（グループ内の {g.cutIndices.length} カットにまとめて入ります）
         <span className="btns" style={{width: '100%'}}>
           <input
+            ref={groupTelopRef}
             className={`telop${isPlaceholder(text) ? ' placeholder' : ''}`}
             style={{flex: 1}}
             value={text}
@@ -653,6 +661,16 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
           <Counter text={text.replace(/[【】\s]/g, '')} max={telopMaxChars(cuts)} />
         </span>
       </label>
+      <TelopMarkButtons
+        inputRef={groupTelopRef}
+        text={text}
+        onChange={(next) => {
+          pushHistory();
+          const idx = new Set(g.cutIndices);
+          setCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) ? {...c, main: {...(c.main ?? {}), text: next}} : c))});
+        }}
+      />
+      {/〖/.test(text) && <MarkOpacitySlider cuts={cuts} onChange={(telopStyle) => m.patchReel({telopStyle})} />}
       {isPlaceholder(text) && <div className="hint">未記入（{text}）。Claude に頼む →「テロップを書いてもらう」でも埋められます</div>}
       <div className="row">
         <label>
@@ -662,9 +680,12 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
             <option value="horizontal">横書き</option>
           </select>
         </label>
-        <label title="グループの先頭カットに付くバッジ（エリア名など）">
+        {(forcedLayout(cuts) ?? g.def.orientation) === 'horizontal' && <HorizontalTelopHeight cuts={cuts} onChange={(telopStyle) => m.patchReel({telopStyle})} />}
+        <label title="グループの先頭カットに付くバッジ（エリア名など）。Enter で改行できます">
           バッジ
-          <input
+          <textarea
+            rows={Math.min(3, Math.max(1, (head.badge ?? '').split('\n').length))}
+            style={{resize: 'vertical', minHeight: 34}}
             value={head.badge ?? ''}
             onFocus={pushHistory}
             onChange={(e) =>
@@ -794,7 +815,7 @@ export const NarrationInspector: React.FC<
         <span className="narr-wave-cut head" />
         <span className="narr-wave-cut end" />
       </div>}
-      {fullSec > 0 && !needsTts && <div className="narr-range" style={{'--head': `${(headSec / fullSec) * 100}%`, '--end': `${(endSec / fullSec) * 100}%`} as React.CSSProperties}>
+      {fullSec > 0 && !needsTts && <div className="narr-range"style={{'--head': `${(headSec / fullSec) * 100}%`, '--end': `${(endSec / fullSec) * 100}%`} as React.CSSProperties}>
         <input type="range" aria-label="ナレーションの頭のカット位置" min={0} max={fullSec} step={0.01} value={headSec} onChange={(e) => setHead(Number(e.target.value))} />
         <input type="range" aria-label="ナレーションの終わりの位置" min={0} max={fullSec} step={0.01} value={endSec} onChange={(e) => setTrim(Number(e.target.value))} />
       </div>}

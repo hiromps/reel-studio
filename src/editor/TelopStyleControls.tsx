@@ -3,7 +3,7 @@
 // 判定はエンジンと同じ resolveTelopStyle を使うので、表示中の値とレンダー結果がずれない。
 import React from 'react';
 import type {ReelData} from '@shared/schema';
-import {resolveTelopStyle, type TelopStyle} from '@engine/telops';
+import {MARK_OPACITY_DEFAULT, resolveTelopStyle, type TelopStyle} from '@engine/telops';
 
 type Props = {cuts: ReelData; onChange: (telopStyle: TelopStyle | undefined) => void};
 
@@ -32,17 +32,9 @@ export const TelopStyleControls: React.FC<Props> = ({cuts, onChange}) => {
           </select>
         </label>
         {horizontalOn && (
-          <label title="横書きの中心の高さ（画面の高さに対する割合）。azu は 44%（39〜48%）">
-            横書きの高さ {look.y !== null ? `${Math.round(look.y * 100)}%` : '（上部・従来）'}
-            {look.y !== null ? (
-              <input type="range" min={0.2} max={0.8} step={0.01} value={look.y} onChange={(e) => set({y: Number(e.target.value)})} />
-            ) : (
-              <button type="button" className="small" onClick={() => set({y: 0.44})}>
-                画面の 44% に置く
-              </button>
-            )}
-          </label>
+          <HorizontalTelopHeight cuts={cuts} onChange={onChange} />
         )}
+        <MarkOpacitySlider cuts={cuts} onChange={onChange} />
         <label title="1080×1920 基準の文字の大きさ。長い行は画面幅に収まるよう自動で縮みます">
           文字の大きさ {Math.round(look.size)}px
           <input type="range" min={40} max={110} step={1} value={look.size} onChange={(e) => set({size: Number(e.target.value)})} />
@@ -96,5 +88,53 @@ export const TelopStyleControls: React.FC<Props> = ({cuts, onChange}) => {
         </button>
       )}
     </details>
+  );
+};
+
+/**
+ * 横書きテロップの高さ（全カット共通の telopStyle.y）。上部固定のテーマでも中央へ動かせるよう、
+ * カットのテロップ欄の「向き」の隣にも同じものを出す。
+ */
+export const HorizontalTelopHeight: React.FC<Props> = ({cuts, onChange}) => {
+  const own = (cuts.telopStyle ?? {}) as TelopStyle;
+  const look = resolveTelopStyle(cuts.theme, own);
+  const themeTop = resolveTelopStyle(cuts.theme, {}).y === null;
+  const setY = (y: number | undefined) => {
+    const next: TelopStyle = {...own, y};
+    if (y === undefined) delete next.y;
+    onChange(Object.keys(next).length ? next : undefined);
+  };
+  return (
+    <label title="横書きテロップの中心の高さ（画面の高さに対する割合）。全カット共通です">
+      横書きの位置 {look.y !== null ? `${Math.round(look.y * 100)}%` : '（画面上部）'}
+      <span className="row" style={{gap: 6, flexWrap: 'wrap'}}>
+        {themeTop && (
+          <button type="button" className="small" disabled={look.y === null} onClick={() => setY(undefined)}>
+            上部
+          </button>
+        )}
+        <button type="button" className="small" disabled={look.y === 0.5} onClick={() => setY(0.5)}>
+          中央
+        </button>
+      </span>
+      {look.y !== null && <input type="range" min={0.2} max={0.8} step={0.01} value={look.y} onChange={(e) => setY(Number(e.target.value))} />}
+    </label>
+  );
+};
+
+/** 〖…〗の背景色の濃さ（全カット共通の telopStyle.markOpacity）。バッジの濃さと同じく、下げると映像が透ける */
+export const MarkOpacitySlider: React.FC<Props> = ({cuts, onChange}) => {
+  const own = (cuts.telopStyle ?? {}) as TelopStyle;
+  const look = resolveTelopStyle(cuts.theme, own);
+  const setOpacity = (v: number) => {
+    const next: TelopStyle = {...own, markOpacity: v};
+    if (v === MARK_OPACITY_DEFAULT) delete next.markOpacity;
+    onChange(Object.keys(next).length ? next : undefined);
+  };
+  return (
+    <label title="文言で背景色を付けた範囲の下地の濃さ。0 で下地なし、1 でベタ塗り。文字の濃さは変わりません（全カット共通）">
+      背景色の濃さ {Math.round(look.markOpacity * 100)}%
+      <input type="range" min={0} max={1} step={0.05} value={look.markOpacity} onChange={(e) => setOpacity(Number(e.target.value))} />
+    </label>
   );
 };
