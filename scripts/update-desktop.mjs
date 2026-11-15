@@ -49,9 +49,11 @@ export const updateDesktop = async ({checkOnly = false, buildOnly = false, prepa
   const original = new Map(settings.map(({file}) => [file, digest(file)]));
   const backup = path.join(appRoot, '.runtime', 'desktop-update-backups', new Date().toISOString().replace(/[:.]/g, '-'));
   fs.mkdirSync(backup, {recursive: true});
-  const who = spawnSync('whoami.exe', ['/user', '/fo', 'csv', '/nh'], {encoding: 'utf8', windowsHide: true});
+  // Git Bash などから起動すると PATH 上の別の whoami が先に見つかるため、Windows 標準のものを直接呼ぶ
+  const system32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+  const who = spawnSync(path.join(system32, 'whoami.exe'), ['/user', '/fo', 'csv', '/nh'], {encoding: 'utf8', windowsHide: true});
   const sid = who.stdout?.match(/S-1-[0-9-]+/)?.[0];
-  if (!sid || spawnSync('icacls.exe', [path.dirname(backup), '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F'], {windowsHide: true, stdio: 'ignore'}).status !== 0) throw new Error('設定バックアップのアクセス権を保護できません。');
+  if (!sid || spawnSync(path.join(system32, 'icacls.exe'), [path.dirname(backup), '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F'], {windowsHide: true, stdio: 'ignore'}).status !== 0) throw new Error('設定バックアップのアクセス権を保護できません。');
   for (const {name, file} of settings) if (fs.existsSync(file)) fs.copyFileSync(file, path.join(backup, name), fs.constants.COPYFILE_EXCL);
   console.log('検証済みのインストーラーを適用しています…');
   run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', installerScript, '-Installer', installer, '-ExpectedVersion', version]);
