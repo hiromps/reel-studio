@@ -107,6 +107,22 @@ describe('settings: merge と保存', () => {
   });
 });
 
+describe('settings: 起動中の外部変更', () => {
+  it('起動中に settings.json を書き換えると読み直し、続く保存で変更を消さない', () => {
+    saveSettings(mergeSettings(defaultSettings(), {dataRoot: path.join(home, 'a')}));
+    expect(loadSettings().dataRoot).toBe(path.join(home, 'a'));
+    // アプリの外（手作業やスクリプト）での書き換え。大きさも変わるようにする
+    const raw = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    raw.dataRoot = path.join(home, 'changed-outside');
+    fs.writeFileSync(settingsFile(), JSON.stringify(raw, null, 2));
+    expect(loadSettings().dataRoot).toBe(path.join(home, 'changed-outside'));
+    // 別の項目を画面から保存しても、外での変更は残る
+    saveSettings(mergeSettings(loadSettings(), {paths: {workDir: 'projects'}}));
+    resetSettings();
+    expect(loadSettings()).toMatchObject({dataRoot: path.join(home, 'changed-outside'), paths: {workDir: 'projects'}});
+  });
+});
+
 describe('settings: 鍵の扱い', () => {
   it('maskSecret は末尾 4 文字だけ見せる', () => {
     expect(maskSecret('abcdefgh')).toBe('••••efgh');

@@ -20,7 +20,17 @@ export const settingsBackupDir = (): string => path.join(settingsDir(), 'backups
 
 export const defaultSettings = (): Settings => SettingsSchema.parse({version: 1});
 
-type Cache = {file: string; settings: Settings; problem: string | null};
+type Cache = {file: string; stamp: string; settings: Settings; problem: string | null};
+
+/** ファイルの更新時刻と大きさ。手で書き換えた設定も、起動し直さずに読み直すための目印 */
+const fileStamp = (file: string): string => {
+  try {
+    const st = fs.statSync(file);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return 'missing';
+  }
+};
 let cache: Cache | null = null;
 
 /**
@@ -29,7 +39,9 @@ let cache: Cache | null = null;
  */
 export const loadSettings = (): Settings => {
   const file = settingsFile();
-  if (cache && cache.file === file) return cache.settings;
+  // 起動中に外から書き換えられたら読み直す（古い控えのまま保存して、変更を元に戻さないため）
+  const stamp = fileStamp(file);
+  if (cache && cache.file === file && cache.stamp === stamp) return cache.settings;
   let settings = defaultSettings();
   let problem: string | null = null;
   if (fs.existsSync(file)) {
@@ -44,7 +56,7 @@ export const loadSettings = (): Settings => {
       problem = `${file} を読めません: ${(e as Error).message}（既定値で動いています）`;
     }
   }
-  cache = {file, settings, problem};
+  cache = {file, stamp, settings, problem};
   return settings;
 };
 
