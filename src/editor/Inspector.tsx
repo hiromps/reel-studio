@@ -4,7 +4,7 @@ import type {Cut, ReelData} from '@shared/schema';
 import {cutDurationSec} from '@shared/timeline';
 import {countChars, isPlaceholder} from '@shared/telop-text';
 import {applyReadingHints, narrationDisplayName, narrationRange, trimNarrationHead, trimNarrationTail, ttsReadingHints} from '@shared/narration';
-import {SFX_ROLES, SFX_ROLE_LABEL, type SfxLibrary} from '@shared/sfx';
+import {SFX_ROLES, SFX_ROLE_LABEL, sfxCategories, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
 import {ZoomControls} from '../components/ZoomControls';
@@ -863,10 +863,14 @@ export const SfxInspector: React.FC<Common & {index: number; lib: SfxLibrary | n
           音源
           <select value={x.file} onChange={(e) => patchSfx(index, {file: e.target.value, label: sounds.find((y) => y.file === e.target.value)?.label})}>
             {!sounds.some((y) => y.file === x.file) && <option value={x.file}>{x.file}（ライブラリに無い）</option>}
-            {sounds.map((y) => (
-              <option key={y.file} value={y.file}>
-                {y.label}
-              </option>
+            {sfxCategories(lib).map((c) => (
+              <optgroup key={c.name} label={c.name}>
+                {c.sounds.map((y) => (
+                  <option key={y.file} value={y.file}>
+                    {y.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>

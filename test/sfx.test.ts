@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {SFX_DEFAULTS, assignSounds, checkSfx, sfxCandidates, sfxEndSec, thinCandidates, type SfxCandidate, type SfxLibrary} from '@shared/sfx';
+import {SFX_DEFAULTS, SFX_UNCATEGORIZED, assignSounds, sfxCategories, checkSfx, sfxCandidates, sfxEndSec, thinCandidates, type SfxCandidate, type SfxLibrary} from '@shared/sfx';
 import type {ReelData} from '@shared/schema';
 
 /** 1.5 秒ずつの n カット。texts[i] があればそのテロップを付ける */
@@ -144,5 +144,23 @@ describe('sfxEndSec', () => {
   it('trim と素材尺の短い方で終わる', () => {
     expect(sfxEndSec({id: 'a', at: 2, file: 'alarm.mp3', trimSec: 1.2}, lib)).toBeCloseTo(3.2);
     expect(sfxEndSec({id: 'a', at: 2, file: 'pop.mp3', trimSec: 5}, lib)).toBeCloseTo(2.4); // 素材が 0.4 秒
+  });
+});
+
+describe('sfxCategories', () => {
+  it('フォルダ名でまとめ、直下の音は未分類として最後に並べる', () => {
+    const l: SfxLibrary = {
+      version: 1,
+      sounds: [
+        {file: 'alarm.mp3', label: 'アラーム', roles: []},
+        {file: '調理/ジュー.mp3', label: 'ジュー', roles: []},
+        {file: 'テロップ/sub/ポン.mp3', label: 'ポン', roles: []},
+        {file: '調理\\カット.mp3', label: 'カット', roles: []},
+      ],
+    };
+    const c = sfxCategories(l);
+    expect(c.map((x) => x.name)).toEqual(['テロップ', '調理', SFX_UNCATEGORIZED]);
+    expect(c[1].sounds.map((x) => x.label)).toEqual(['カット', 'ジュー']);
+    expect(sfxCategories(null)).toEqual([]);
   });
 });

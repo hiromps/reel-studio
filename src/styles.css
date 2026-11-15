@@ -1391,6 +1391,28 @@ pre.md {
 .narration-library-item > div:first-child { min-width: 0; }
 .narration-library-item .btns { flex: 0 0 auto; }
 @media (max-width: 600px) { .narration-library-item { align-items: stretch; flex-direction: column; } }
+/* 効果音を選ぶ画面：左にカテゴリー（フォルダ）、右にその中の音 */
+.sfx-picker { width: min(720px, 100%); }
+.sfx-picker-body { display: flex; min-height: 0; flex: 1 1 auto; }
+.sfx-picker-cats { flex: 0 0 190px; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; border-right: 1px solid var(--line); overflow: auto; }
+.sfx-picker-cat { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border: none; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.sfx-picker-cat span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sfx-picker-cat small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.sfx-picker-cat:hover { background: var(--line); }
+.sfx-picker-cat.on { background: var(--accent); color: #fff; }
+.sfx-picker-cat.on small { color: inherit; }
+.sfx-picker-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 14px; }
+.sfx-picker-main > input { width: 100%; }
+.sfx-picker-list { overflow: auto; min-height: 0; }
+.sfx-picker-list h3 { margin: 10px 0 4px; font-size: 12px; color: var(--accent); }
+.sfx-picker-item { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.sfx-picker-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.sfx-picker-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+@media (max-width: 600px) {
+  .sfx-picker-body { flex-direction: column; }
+  .sfx-picker-cats { flex: 0 0 auto; flex-direction: row; border-right: none; border-bottom: 1px solid var(--line); }
+  .sfx-picker-cat { flex: 0 0 auto; }
+}
 .help-flow {
   margin: 6px 0 0;
   padding-left: 0;

@@ -20,6 +20,7 @@ import {PreviewOptions, Transport} from './Transport';
 import {Timeline, type TimelineHandle, type TrackVisibility} from './Timeline';
 import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
 import {ValidationPanel} from './ValidationPanel';
+import {SfxPicker} from './SfxPicker';
 import {AiMenu} from './AiMenu';
 import {OrderLockToggle} from './OrderLockToggle';
 import {ThumbnailSection, patchThumbnail} from './ThumbnailSection';
@@ -106,6 +107,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [micOpen, setMicOpen] = useState(false);
+  /** 効果音を選ぶ画面を開いているときの追加位置（秒）。null＝閉じている */
+  const [sfxPickAt, setSfxPickAt] = useState<number | null>(null);
   const [telopNarrationOpen, setTelopNarrationOpen] = useState(false);
   const [emotionOpen, setEmotionOpen] = useState(false);
 
@@ -716,6 +719,18 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         </div>
       </div>
 
+      {sfxPickAt !== null && (
+        <SfxPicker
+          lib={lib}
+          atSec={sfxPickAt}
+          onClose={() => setSfxPickAt(null)}
+          onPick={(file) => {
+            const err = m.addSfx(sfxPickAt, file);
+            if (err) s.toast(err, 'error');
+            setSfxPickAt(null);
+          }}
+        />
+      )}
       {micOpen && s.active && <MicRecorder onAdd={addRecording} onClose={() => setMicOpen(false)} />}
       {libraryOpen && s.active && <NarrationLibrary project={s.active} narration={narration} selected={selection?.kind === 'narr' ? narration?.segments[selection.index] ?? null : null} onUse={useSavedNarration} onClose={() => setLibraryOpen(false)} />}
 
@@ -826,10 +841,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             const idx = m.addSeg(at);
             if (idx === null) s.toast('brief が無いのでナレーションの設定が作れません', 'error');
           }}
-          onAddSfx={(at) => {
-            const err = m.addSfx(at);
-            if (err) s.toast(err, 'error');
-          }}
+          onAddSfx={setSfxPickAt}
           external={binDrag.drag ? {x: binDrag.drag.x, y: binDrag.drag.y} : null}
           snap={prefsSafe.snap}
           tracks={prefsSafe.tracks}

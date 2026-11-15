@@ -537,10 +537,10 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
           </div>
         )}
         {tracks.sfx && (
-          <div className="tl-label tl-label-s" title="効果音：ドラッグで配置秒を動かす">
+          <div className="tl-label tl-label-s" title="効果音：空いている所をダブルクリックでその位置に追加、ドラッグで配置秒を動かす">
             <span className="tl-ico s">S</span>
             <span className="tl-name">効果音</span>
-            <button className="tl-add" title="再生ヘッドの位置に効果音を追加" onClick={() => onAddSfx(Math.round(((playbackClock?.getFrame() ?? currentFrame) / data.fps) * 1000) / 1000)} disabled={!cuts || !narration}>
+            <button className="tl-add" title="再生ヘッドの位置に効果音を追加（ライブラリから選ぶ）" onClick={() => onAddSfx(Math.round(((playbackClock?.getFrame() ?? currentFrame) / data.fps) * 1000) / 1000)} disabled={!cuts}>
               ＋
             </button>
           </div>
@@ -764,7 +764,14 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
               onPointerDown={(e) => {
                 if (e.target === e.currentTarget) beginScrub(e);
               }}
+              onDoubleClick={(e) => {
+                // 空いている所をダブルクリック＝その位置に効果音を追加（ライブラリから選ぶ画面を開く）
+                if (e.target !== e.currentTarget || !cuts) return;
+                onAddSfx(Math.round(secAtClientX(e.clientX) * 1000) / 1000);
+              }}
+              title="ダブルクリックでその位置に効果音を追加"
             >
+              {cuts && !sMarkers.length && <div className="tl-row-hint">効果音はまだありません（この段をダブルクリック、または左の ＋ でライブラリから追加）</div>}
               {sMarkers.map((m) => (
                 <div
                   key={m.id + m.index}
@@ -784,7 +791,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                     }
                   }}
                 >
-                  <span className="tl-sfx-text">{m.role ?? m.id}</span>
+                  <span className="tl-sfx-text">{m.role ?? m.label}</span>
                 </div>
               ))}
             </div>

@@ -58,6 +58,33 @@ export type SfxLibrary = z.infer<typeof SfxLibrarySchema>;
 /** その役割に使える音（先頭が既定）。1 役割 1 音に固定すると動画をまたいだ統一感が出る */
 export const soundsForRole = (lib: SfxLibrary, role: SfxRole): SfxSound[] => lib.sounds.filter((s) => s.roles.includes(role));
 
+// ───────────────────────── カテゴリー（フォルダ） ─────────────────────────
+
+/** フォルダに入っていない音のカテゴリー名 */
+export const SFX_UNCATEGORIZED = '未分類';
+
+/** 音のカテゴリー＝sfx/ 直下のフォルダ名（file の先頭の区切りまで）。直下に置いた音は「未分類」 */
+export const sfxCategoryOf = (file: string): string => {
+  const parts = file.split(/[\\/]/).filter(Boolean);
+  return parts.length > 1 ? parts[0] : SFX_UNCATEGORIZED;
+};
+
+export type SfxCategory = {name: string; sounds: SfxSound[]};
+
+/** ライブラリをカテゴリーごとにまとめる。並びはフォルダ名順（未分類は最後）、中は表示名順 */
+export const sfxCategories = (lib: SfxLibrary | null | undefined): SfxCategory[] => {
+  const map = new Map<string, SfxSound[]>();
+  for (const s of lib?.sounds ?? []) {
+    const name = sfxCategoryOf(s.file);
+    const list = map.get(name);
+    if (list) list.push(s);
+    else map.set(name, [s]);
+  }
+  return [...map.entries()]
+    .map(([name, sounds]) => ({name, sounds: [...sounds].sort((a, b) => a.label.localeCompare(b.label, 'ja'))}))
+    .sort((a, b) => (a.name === SFX_UNCATEGORIZED ? 1 : b.name === SFX_UNCATEGORIZED ? -1 : a.name.localeCompare(b.name, 'ja')));
+};
+
 // ───────────────────────── 自動配置 ─────────────────────────
 
 export type SfxPlacementOptions = {
