@@ -236,7 +236,7 @@ export const App: React.FC = () => {
       <main className={`main${tab === 'timeline' ? ' main-editor' : ''}`}>
         {/* key に案件を入れて、案件を切り替えたら各画面の状態（選択カット・Undo 履歴・遅延中のプレビュー等）を捨てる。
             残していると、前の案件のカットを新しい案件の URL で読みにいってしまう */}
-        {tab === 'projects' && <ProjectsPage />}
+        {tab === 'projects' && <ProjectsPage onTab={go} />}
         {tab === 'materials' && <MaterialsPage key={s.active ?? ''} onTab={go} />}
         {tab === 'brief' && <BriefPage key={s.active ?? ''} onGoTimeline={() => go('timeline')} onTab={go} />}
         {tab === 'timeline' && <EditorPage key={s.active ?? ''} onTab={go} />}

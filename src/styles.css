@@ -568,6 +568,27 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   min-width: 0;
 }
 
+/* 案件一覧：素材フォルダから案件を作る */
+.from-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.from-folder-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+}
+.from-folder-confirm .folder-pick {
+  margin-top: 0;
+  background: transparent;
+}
+
 /* Materials */
 .materials {
   display: grid;

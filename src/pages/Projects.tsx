@@ -2,16 +2,30 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import {useStringPref} from '../hooks/usePref';
-import {archivedCount as countArchived, visibleProjects} from '../components/projectList';
+import {archivedCount as countArchived, MATERIALS_PARENT_PREF, visibleProjects} from '../components/projectList';
 import {localDateTime} from '@shared/time';
 import {termHint} from '../components/RenderTerms';
+import {readPref, writePref} from '../hooks/usePref';
+import {parentDirOf, slugBaseFromFolder, slugTaken, suggestSlug, type FolderInspection} from '@shared/project-from-folder';
+
+/** フォルダを選んでから「作成」を押すまでの下書き */
+type FolderDraft = {
+  info: FolderInspection;
+  shop: string;
+  /** 手で直した案件名。null の間は自動の候補を使う（人格を変えたら候補も変わる） */
+  slug: string | null;
+  /** 同じ素材の案件がある場合に、その案件から別バージョンを作るか（空＝新しく読み込む） */
+  from: string;
+};
 
 // engine 列の「STALE → 同期」にマウスを乗せたときの説明（core/project.ts の engineDiff / syncEngine の動き）
 const ENGINE_HINT =
   'STALE は「古くなった」の意味。案件フォルダの中にある描画プログラム（エンジン）が、Reel Studio 本体の最新版と違っています。押すと本体の最新版で上書きします（違っていたファイルは .studio/backups/ に控えを取ります。素材・並び・ナレーションには触れません）。レンダーの前にも自動で同じことが行われるので、押さなくても困りません';
 
-export const ProjectsPage: React.FC = () => {
+export const ProjectsPage: React.FC<{onTab: (t: 'materials' | 'brief') => void}> = ({onTab}) => {
   const s = useStudio();
+  const [picking, setPicking] = useState(false);
+  const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [slug, setSlug] = useState('');
   const [persona, setPersona] = useState('');
   // 人格の一覧はサーバーから来る。届いたら先頭を既定にする
@@ -53,10 +67,133 @@ export const ProjectsPage: React.FC = () => {
     }
   };
 
+  // ── 素材フォルダから案件を作る ─────────────────────────────
+  const existingSlugs = useMemo(() => s.projects.map((p) => p.slug), [s.projects]);
+  const autoSlug = draft ? suggestSlug(slugBaseFromFolder(draft.info.folderName), persona, existingSlugs) : '';
+  const draftSlug = draft ? (draft.slug ?? autoSlug) : '';
+  const draftTaken = !!draft && slugTaken(draftSlug, existingSlugs);
+  const draftBlocked = !draft ? '' : !draftSlug.trim() ? '案件名を入力してください' : draftTaken ? '同じ名前の案件が既にあります' : !draft.from && draft.info.videoCount === 0 ? 'このフォルダの直下に動画がありません' : '';
+
+  const pickFolder = async () => {
+    setPicking(true);
+    try {
+      const picked = await api.post<{path: string | null; cancelled: boolean}>('/api/pick-folder', {initial: readPref(MATERIALS_PARENT_PREF, '', (r) => r) || undefined});
+      if (!picked.data.path) return;
+      const info = (await api.post<FolderInspection>('/api/materials-folders/inspect', {dir: picked.data.path})).data;
+      writePref(MATERIALS_PARENT_PREF, parentDirOf(info.dir));
+      // 同じ素材の案件があれば、既定は「そこから別バージョン」（素材の二重コピーとタグの付け直しを避ける）
+      setDraft({info, shop: info.folderName, slug: null, from: info.sameMaterials[0] ?? ''});
+    } catch (e) {
+      s.toast(`フォルダを選べませんでした: ${(e as Error).message}`, 'error');
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  const createFromFolder = async () => {
+    if (!draft || draftBlocked) return;
+    setBusy(true);
+    try {
+      // npm install はここでは積ませない（下で素材の読み込みを先に積んでから積む。同じ案件のジョブは順番に走るので、
+      // 先に積まれると数分かかる install が終わるまで読み込みが始まらない）
+      const r = await api.post<{slug: string; nodeModules?: boolean; lines?: string[]}>('/api/projects', {slug: draftSlug.trim(), persona, shopName: draft.shop.trim(), from: draft.from || undefined, install: false});
+      for (const l of r.data.lines ?? []) s.toast(l, l.startsWith('  !') ? 'error' : 'info');
+      await s.refreshProjects();
+      await s.setActive(r.data.slug);
+      if (draft.from) {
+        s.toast(`作成: ${r.data.slug}（${draft.from} の素材とタグを引き継ぎました）`, 'ok');
+        onTab('brief');
+      } else {
+        // 素材の読み込みまで続けて始める。進み具合は Materials と画面上部に出る
+        await s.addJob('catalog', {materialsDir: draft.info.dir}, r.data.slug, {quiet: true});
+        s.toast(`作成: ${r.data.slug}（素材 ${draft.info.videoCount} 本を読み込み中）`, 'ok');
+        onTab('materials');
+      }
+      if (!r.data.nodeModules) await s.addJob('npm-install', {}, r.data.slug, {quiet: true});
+      setDraft(null);
+    } catch (e) {
+      s.toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="page">
       <section className="card" data-tour="new-project">
         <h2>新規案件</h2>
+        {/* フォルダ選択ダイアログは PC 上でしか開けない */}
+        {!s.isCloud && (
+          <div className="from-folder">
+            <div className="row">
+              <button className="primary" onClick={pickFolder} disabled={picking || busy}>
+                {picking ? '選択中…' : '📂 素材フォルダから案件を作る'}
+              </button>
+              <span className="hint">撮った動画が入っているフォルダを選ぶと、店名と案件名を入れて案件を作り、素材の読み込みまで始めます。</span>
+            </div>
+            {draft && (
+              <div className="from-folder-confirm">
+                <div className="folder-pick" title={draft.info.dir}>
+                  <span className="dim">選んだフォルダ</span>
+                  <b className="folder-name">{draft.info.folderName}</b>
+                  <span className="folder-parent">（{parentDirOf(draft.info.dir)} の中）</span>
+                  <span>動画 {draft.info.videoCount} 本</span>
+                </div>
+                {draft.info.videoCount === 0 && (
+                  <p className="hint" style={{color: 'var(--warn)'}}>
+                    このフォルダの直下に動画がありません。
+                    {draft.info.subfoldersWithVideos.length > 0 && <>動画は中のフォルダ（{draft.info.subfoldersWithVideos.join(' / ')}）に入っています。そのフォルダを選び直してください。</>}
+                  </p>
+                )}
+                {draft.info.sameMaterials.length > 0 && (
+                  <label title="同じ素材を読み込んだ案件が既にあります。そこから作ると素材をリンクで共有し（ディスクは増えません）、タグ付けも引き継ぎます">
+                    作り方
+                    <select value={draft.from} onChange={(e) => setDraft({...draft, from: e.target.value})}>
+                      {draft.info.sameMaterials.map((slug) => (
+                        <option key={slug} value={slug}>
+                          {slug} と同じ素材で別バージョン（素材・タグを引き継ぐ）
+                        </option>
+                      ))}
+                      <option value="">新しく読み込む（素材をコピーしてタグも付け直す）</option>
+                    </select>
+                  </label>
+                )}
+                <div className="row">
+                  <label>
+                    店名 <input value={draft.shop} onChange={(e) => setDraft({...draft, shop: e.target.value})} />
+                  </label>
+                  <label>
+                    案件名（slug）
+                    <input value={draftSlug} onChange={(e) => setDraft({...draft, slug: e.target.value})} spellCheck={false} />
+                  </label>
+                  <label>
+                    persona
+                    <select value={persona} onChange={(e) => setPersona(e.target.value)}>
+                      {s.personas.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                          {p.narration.voiceId ? '' : '（ボイス未設定）'}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="primary" onClick={createFromFolder} disabled={busy || !!draftBlocked} title={draftBlocked || undefined}>
+                    {busy ? '作成中…' : draft.from ? '作成（素材を引き継ぐ）' : '作成して素材を読み込む'}
+                  </button>
+                  <button onClick={() => setDraft(null)} disabled={busy}>
+                    やめる
+                  </button>
+                </div>
+                <p className="hint">
+                  {/* 動画が無い場合の案内は上に出している（同じ文を 2 回出さない） */}
+                  {draftBlocked && (draft.from || draft.info.videoCount > 0) ? <b style={{color: 'var(--warn)'}}>{draftBlocked}。</b> : null}
+                  店名・案件名はフォルダ名から入れています。違っていればここで直してください（案件名は work/{draftSlug.trim() || '…'}-reel/ というフォルダになります）。元のフォルダは変更しません。
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+        <h3>手で入力して作る</h3>
         <div className="row">
           <label>
             slug <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="例: cafe-abc" />

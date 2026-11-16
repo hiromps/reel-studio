@@ -45,12 +45,12 @@ export const UploadMaterials: React.FC<{folder: string; onFolder: (name: string)
   return (
     <div className="upload-materials">
       <p className="hint">
-        選んだ動画を PC の <code>uploads/{folder || '（案件名）'}/</code> に保存し、「カタログ実行」で読み込みます。
+        フォルダではなく動画ファイルを選んで取り込む場合はこちら。選んだ動画を生素材フォルダの <code>{folder || '（案件名）'}/</code> に保存し、「カタログ実行」で読み込みます。
         {s.isCloud && '取り込みは PC の Reel Studio で行ってください。'}
       </p>
       <div className="row">
         <label className="grow">
-          置き場（uploads の下に作るフォルダ名）
+          保存先（生素材フォルダの中に作るフォルダ名）
           <input value={folder} onChange={(e) => onFolder(e.target.value)} placeholder="店名など" spellCheck={false} disabled={busy} />
         </label>
         <button className="primary" onClick={() => input.current?.click()} disabled={busy || !s.active || s.isCloud}>

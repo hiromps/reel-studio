@@ -16,3 +16,6 @@ export const archivedCount = (projects: Archivable[]): number => projects.filter
 /** 一覧（と上部の案件選択）に出す案件を、出す順に返す */
 export const visibleProjects = <T extends Archivable & Pick<ProjectInfo, 'slug'>>(projects: T[], opt: {active: string | null; showArchived: boolean}): T[] =>
   projects.filter((p) => opt.showArchived || !isArchived(p) || p.slug === opt.active).sort((a, b) => Number(isArchived(a)) - Number(isArchived(b)));
+
+/** 前回選んだ素材フォルダの親。次にエクスプローラーを開くときの初期位置にする（案件一覧と Materials で共通） */
+export const MATERIALS_PARENT_PREF = 'reel-studio.materialsParent';

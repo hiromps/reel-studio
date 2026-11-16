@@ -20,6 +20,9 @@ import type {Catalog, Clip, ClipKind, ClipTags} from '@shared/schema';
 import {KIND_LABEL} from '../editor/labels';
 import {colorFilter, isDefaultColor} from '@shared/color';
 import {CloudRenderCard} from '../components/CloudRender';
+import {readPref, writePref} from '../hooks/usePref';
+import {MATERIALS_PARENT_PREF} from '../components/projectList';
+import {folderNameOf, parentDirOf, type MaterialsFolders} from '@shared/project-from-folder';
 
 const KINDS: ClipKind[] = ['exterior', 'signage', 'interior', 'menu', 'cooking', 'serving', 'eating', 'sizzle', 'person', 'conversation', 'detail', 'other'];
 
@@ -108,8 +111,11 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   const aliasMap = useMemo(() => new Map((cuts?.meta?.aliases ?? []).map((a) => [a.to, a.from])), [cuts]);
   const usage = useMemo(() => usageBySrc(cuts, (src) => aliasMap.get(src) ?? src), [cuts, aliasMap]);
 
-  // 入力が空なら既存 catalog の素材フォルダを使う
-  const effectiveDir = (materialsDir.trim() || catalog?.materialsDir || '').replace(/[\\/]+$/, '');
+  // 読み込み待ち・読み込み中のカタログ実行（案件一覧の「素材フォルダから案件を作る」で積まれたものを含む）
+  const catalogJob = s.jobs.find((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'catalog' && j.slug === s.active);
+  const catalogJobDir = typeof catalogJob?.params?.materialsDir === 'string' ? catalogJob.params.materialsDir : '';
+  // 入力が空なら既存 catalog の素材フォルダ、それも無ければ読み込み中のフォルダを使う
+  const effectiveDir = (materialsDir.trim() || catalog?.materialsDir || catalogJobDir || '').replace(/[\\/]+$/, '');
   const uploadsRoot = (s.config?.uploadsRoot ?? '').replace(/[\\/]+$/, '');
   const sep = (uploadsRoot || effectiveDir).includes('\\') ? '\\' : '/';
   const folderName = effectiveDir ? effectiveDir.split(/[\\/]/).filter(Boolean).pop() ?? '' : '';
@@ -124,14 +130,55 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   const browse = async () => {
     setPicking(true);
     try {
-      const r = await api.post<{path: string | null; cancelled: boolean}>('/api/pick-folder', {initial: effectiveDir || undefined});
-      if (r.data.path) setMaterialsDir(r.data.path);
+      // 初期位置：いまの素材フォルダ → 前回選んだ場所の親 → （サーバー側の既定）生素材フォルダ
+      const r = await api.post<{path: string | null; cancelled: boolean}>('/api/pick-folder', {initial: effectiveDir || readPref(MATERIALS_PARENT_PREF, '', (raw) => raw) || undefined});
+      if (r.data.path) {
+        setMaterialsDir(r.data.path);
+        writePref(MATERIALS_PARENT_PREF, parentDirOf(r.data.path));
+      }
     } catch (e) {
       s.toast(`フォルダを選べませんでした: ${(e as Error).message}`, 'error');
     } finally {
       setPicking(false);
     }
   };
+
+  // 最近使った素材フォルダ（既存の案件が読み込んだ場所）。生素材フォルダの外に置いた素材もここから選べる
+  const [recent, setRecent] = useState<MaterialsFolders['recent']>([]);
+  useEffect(() => {
+    if (s.isCloud) return;
+    let alive = true;
+    api
+      .get<MaterialsFolders>('/api/materials-folders')
+      .then((r) => alive && setRecent(r.data.recent ?? []))
+      .catch(() => {}); // 古いサーバーには無い。一覧が出ないだけで困らない
+    return () => {
+      alive = false;
+    };
+    // 読み込みが終わったら取り直す（いま読み込んだフォルダが「最近使ったフォルダ」に入る）
+  }, [s.isCloud, !!catalog]);
+
+  // まだ素材を読み込んでいない案件を開いたら、エクスプローラーを自動で開く。
+  // 出すのは案件ごとに 1 回だけ（タグ編集で戻ってくるたびに出ると邪魔になる）。
+  // 読み込み済み・読み込み中・クラウド版・初回ツアーの最中は出さない
+  // 案件一覧がまだ届いていない間は undefined（＝判断できないので開かない）
+  const projectHasCatalog = s.projects?.find((p) => p.slug === s.active)?.has.catalog;
+  const catalogJobSeen = s.jobs.some((j) => j.type === 'catalog' && j.slug === s.active);
+  const catalogSettled = !s.files.catalog.loading && !s.files.catalog.error;
+  useEffect(() => {
+    if (s.isCloud || !s.active || projectHasCatalog !== false || catalog || !catalogSettled || catalogJobSeen || materialsDir) return;
+    if (readPref('reel-studio.tourDone', '', (raw) => raw) !== '1') return;
+    const key = `reel-studio.autoPick.${s.active}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      return; // 記憶できない環境では、開くたびに出てしまうので自動では開かない
+    }
+    void browse();
+    // browse は毎回作り直されるので依存に入れない（条件が揃った瞬間に 1 回だけ開く）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.isCloud, s.active, projectHasCatalog, catalog, catalogSettled, catalogJobSeen, materialsDir]);
 
   const applySlug = async () => {
     if (!clip || !s.active) return;
@@ -214,30 +261,44 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
       {s.isCloud && <CloudRenderCard materials />}
       <section className="card" data-tour="materials-folder">
         <h2>素材フォルダ</h2>
-        <p className="hint">撮った動画が入っているフォルダを選びます。中の動画をすべて読み込み、長さ・解像度を調べて案件フォルダにコピーします（元のフォルダは変更しません）。</p>
-        {/* クラウド版：スマホから動画を上げる（PC のフォルダは直接見えないため） */}
-        <UploadMaterials folder={uploadFolder} onFolder={setUploadFolder} />
+        <p className="hint">撮った動画が入っているフォルダを選びます（PC のどこにあっても構いません）。フォルダ直下の動画をすべて読み込み、長さ・解像度を調べて案件フォルダにコピーします（元のフォルダは変更しません）。</p>
         <div className="row">
           {/* フォルダ選択ダイアログは PC 上でしか開けない */}
           {!s.isCloud && (
-            <button onClick={browse} disabled={picking}>
+            <button className="primary" onClick={browse} disabled={picking}>
               {picking ? '選択中…' : '📂 参照…（エクスプローラー）'}
             </button>
           )}
-          <label>
-            uploads 配下から選ぶ
-            <select value={uploadsRoot && effectiveDir.startsWith(uploadsRoot) ? folderName : ''} onChange={(e) => e.target.value && setMaterialsDir(`${uploadsRoot}${sep}${e.target.value}`)}>
-              <option value="">（選択）</option>
-              {s.config?.uploadsFolders.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </label>
+          {(recent.length > 0 || (s.config?.uploadsFolders.length ?? 0) > 0) && (
+            <label title="既存の案件が読み込んだフォルダと、生素材フォルダの直下にあるフォルダです。ここに無い場所は「参照…」で選べます">
+              よく使うフォルダから選ぶ
+              {/* 選ぶための一覧。選んだ結果は下の「選択中」に出すので、ここは常に（選択）へ戻す */}
+              <select value="" onChange={(e) => e.target.value && setMaterialsDir(e.target.value)}>
+                <option value="">（選択）</option>
+                {recent.length > 0 && (
+                  <optgroup label="最近使ったフォルダ">
+                    {recent.map((m) => (
+                      <option key={m.dir} value={m.dir} title={m.dir}>
+                        {folderNameOf(m.dir)}（{m.slug.replace(/-reel$/, '')}）
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {(s.config?.uploadsFolders.length ?? 0) > 0 && (
+                  <optgroup label={`生素材フォルダの直下（${uploadsRoot}）`}>
+                    {s.config?.uploadsFolders.map((f) => (
+                      <option key={f} value={`${uploadsRoot}${sep}${f}`}>
+                        {f}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+          )}
           <label className="grow">
             パスを直接入力
-            <input value={materialsDir} onChange={(e) => setMaterialsDir(e.target.value)} placeholder={catalog?.materialsDir ?? `${uploadsRoot || 'uploads'}${sep}<店名>`} spellCheck={false} />
+            <input value={materialsDir} onChange={(e) => setMaterialsDir(e.target.value)} placeholder={catalog?.materialsDir ?? `例: D:${sep}撮影${sep}<店名>`} spellCheck={false} />
           </label>
         </div>
         <div className="folder-pick" title={effectiveDir || undefined}>
@@ -248,8 +309,19 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
               <span className="folder-parent">{parentDir ? `（${parentDir} の中）` : ''}</span>
             </>
           ) : (
-            <span className="dim">素材フォルダが未選択です。「参照…」で選ぶか、パスを入力してください</span>
+            <span className="dim">素材フォルダが未選択です。「📂 参照…」で動画の入ったフォルダを選んでください（パスを直接入力しても構いません）</span>
           )}
+        </div>
+        {catalogJob && (
+          <p className="hint">
+            <b>{catalogJob.status === 'queued' ? '素材の読み込みを待っています…' : '素材を読み込み中…'}</b>
+            {catalogJob.progress && catalogJob.progress.total > 0 ? `（${catalogJob.progress.done}/${catalogJob.progress.total}）` : ''}
+            終わるとこの下にクリップの一覧が出ます。
+          </p>
+        )}
+        {/* フォルダごとではなく、動画ファイルを選んで取り込む口。「カタログ実行」の前に置く（保存したあと実行が要るため） */}
+        <div style={{marginTop: 8}}>
+          <UploadMaterials folder={uploadFolder} onFolder={setUploadFolder} />
         </div>
         <div className="row" style={{marginTop: 8}}>
           <button className="primary" onClick={runCatalog} disabled={!effectiveDir}>
@@ -314,7 +386,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
       {!catalog && (
         <EmptyState
           title="まだ素材を読み込んでいません"
-          steps={['上の「📂 参照…」でフォルダを選ぶ（または uploads 配下から選択）', '「カタログ実行」を押す（動画の本数によっては数分かかります）', '読み込めたら 1 本ずつタグを付ける（Claude に頼めます）']}
+          steps={['上の「📂 参照…」で動画の入ったフォルダを選ぶ（PC のどこにあっても構いません）','「カタログ実行」を押す（動画の本数によっては数分かかります）', '読み込めたら 1 本ずつタグを付ける（Claude に頼めます）']}
           hint="タグ＝「何が映っているか」の記録です。これを元に Brief でカット構成が自動で組まれ、台本からの組み立てや Timeline の素材ビンでも使われます。"
         />
       )}
@@ -591,7 +663,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
                   <button className="small" onClick={applySlug} disabled={!slugDraft || slugDraft === clip.slug}>
                     リネームして適用
                   </button>
-                  <span className="hint">英数字・ハイフン。public/uploads のファイルも一緒にリネームされる（catalog 保存後に実行）</span>
+                  <span className="hint">英数字・ハイフン。案件フォルダにコピーした動画ファイルも一緒にリネームされる（元の素材フォルダは変わりません。catalog 保存後に実行）</span>
                 </div>
 
                 {/* 狭い画面用。よく押すものだけをシートの下端に固定して、中をスクロールしなくても届くようにする */}

@@ -8,6 +8,7 @@ import {studioConfig} from '../studio.config';
 import {engineDiff, listProjects} from '../core/project';
 import {exec} from '../core/exec';
 import {pickFolder} from '../core/pick-folder';
+import {inspectMaterialsFolder, recentMaterialsFolders} from '../core/materials-folders';
 import {ttsAvailable} from '../core/tts';
 import {instagramMcpAvailable} from '../core/instagram-mcp';
 import {claudeAvailable} from '../core/agent';
@@ -159,6 +160,18 @@ app.post('/api/pick-folder', async (req, res) => {
     res.status(500).json({error: (e as Error).message});
   } finally {
     picking = false;
+  }
+});
+
+// 素材フォルダの下調べ（読むだけ）。案件一覧の「素材フォルダから案件を作る」と Materials の「最近使ったフォルダ」が使う
+app.get('/api/materials-folders', (_req, res) => {
+  res.json(recentMaterialsFolders());
+});
+app.post('/api/materials-folders/inspect', (req, res) => {
+  try {
+    res.json(inspectMaterialsFolder(typeof req.body?.dir === 'string' ? req.body.dir : ''));
+  } catch (e) {
+    res.status(400).json({error: (e as Error).message});
   }
 });
 
