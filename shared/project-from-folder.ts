@@ -56,6 +56,21 @@ export const suggestSlug = (base: string, personaId: string, existing: readonly 
   return withPersona;
 };
 
+/**
+ * 固定素材フォルダから読み込んだクリップの original に付ける印。
+ * 案件の素材と同じファイル名でもぶつからず、固定素材フォルダの場所を変えても同じクリップとして突き合わせられる
+ */
+export const FIXED_ORIGINAL_PREFIX = '固定素材/';
+export const isFixedOriginal = (original: string): boolean => original.startsWith(FIXED_ORIGINAL_PREFIX);
+
+/** 固定素材フォルダの状態（GET /api/fixed-materials の返り値） */
+export type FixedMaterials = {
+  /** 固定素材フォルダの絶対パス（無ければ作ってから返す） */
+  dir: string;
+  /** フォルダ直下の動画（カタログ実行が読む範囲と同じ） */
+  videos: string[];
+};
+
 /** 素材フォルダを調べた結果（POST /api/materials-folders/inspect の返り値） */
 export type FolderInspection = {
   /** 選ばれたフォルダの絶対パス */

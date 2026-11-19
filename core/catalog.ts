@@ -11,6 +11,7 @@ import {detectScenes} from './scene';
 import {detectSpeech} from './silence';
 import {readJsonFile, writeJsonAtomic} from './json-io';
 import {studioConfig} from '../studio.config';
+import {FIXED_ORIGINAL_PREFIX} from '../shared/project-from-folder';
 
 export const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi', '.mts', '.m2ts']);
 
@@ -22,6 +23,15 @@ export const slugify = (name: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'clip';
 
+/** 比較用。区切り・末尾の区切り・大文字小文字（Windows）の違いを吸収する */
+const samePath = (a: string, b: string): boolean => {
+  const k = (p: string) => {
+    const r = path.resolve(p).replace(/[\\/]+$/, '');
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
+  return k(a) === k(b);
+};
+
 const naturalCompare = (a: string, b: string) => a.localeCompare(b, 'en', {numeric: true, sensitivity: 'base'});
 
 export const listMaterials = (dir: string): string[] =>
@@ -30,11 +40,30 @@ export const listMaterials = (dir: string): string[] =>
     .filter((f) => VIDEO_EXT.has(path.extname(f).toLowerCase()) && fs.statSync(path.join(dir, f)).isFile())
     .sort(naturalCompare);
 
+/** 読み込む素材 1 本。key は catalog の original（既存クリップとの突き合わせに使う） */
+type MaterialEntry = {key: string; abs: string; name: string};
+
+/**
+ * カタログ実行が読む素材の一覧。案件の素材フォルダ直下 → 固定素材フォルダ直下 の順。
+ * 固定素材は original に「固定素材/」を付けて、案件の素材と同名でもぶつからないようにする
+ */
+export const collectMaterials = (materialsDir: string, fixedDir?: string | null): MaterialEntry[] => {
+  const own = listMaterials(materialsDir).map((f) => ({key: f, abs: path.join(materialsDir, f), name: f}));
+  if (!fixedDir || !fs.existsSync(fixedDir) || !fs.statSync(fixedDir).isDirectory() || samePath(fixedDir, materialsDir)) return own;
+  const fixed = listMaterials(fixedDir).map((f) => ({key: `${FIXED_ORIGINAL_PREFIX}${f}`, abs: path.join(fixedDir, f), name: f}));
+  return [...own, ...fixed];
+};
+
 export type CatalogOptions = {
   /** 生成素材の追加。既存クリップと元の素材フォルダを保持する。 */
   append?: boolean;
   generated?: Clip['generated'];
   materialsDir: string;
+  /**
+   * 固定素材フォルダ（毎回入れるロゴ・外観など）。指定すると直下の動画も読み込む。
+   * null / 省略＝読み込まない。フォルダが無い・動画が無いときは何もしない（エラーにしない）
+   */
+  fixedDir?: string | null;
   projectDir: string;
   slug: string;
   proxy?: boolean;
@@ -83,8 +112,13 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catalog; changed: string[]; warnings: string[]}> {
   const log = opt.onLine ?? (() => {});
   const warnings: string[] = [];
-  const files = listMaterials(opt.materialsDir);
-  if (!files.length) throw new Error(`動画ファイルが無い: ${opt.materialsDir}`);
+  const ownCount = listMaterials(opt.materialsDir).length;
+  if (!ownCount) throw new Error(`動画ファイルが無い: ${opt.materialsDir}`);
+  // 固定素材（毎回入れるロゴ・外観など）は案件の素材の後ろに足す。追加（append）では足さない
+  const entries = collectMaterials(opt.materialsDir, opt.append ? null : opt.fixedDir);
+  const files = entries.map((e) => e.key);
+  const fixedCount = entries.length - ownCount;
+  if (fixedCount > 0) log(`固定素材 ${fixedCount} 本も読み込みます: ${opt.fixedDir}`);
   // 案件フォルダが無いまま掘り進めると、slug を間違えた・フォルダをリネームした直後などに
   // 空の案件が黙って生まれ、素材の再コピーとタグ付けを丸ごとやり直すことになる
   if (!fs.existsSync(path.join(opt.projectDir, 'brief.json')) && !fs.existsSync(path.join(opt.projectDir, 'src', 'GourmetReel.tsx')))
@@ -102,12 +136,13 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
   const now = new Date().toISOString();
 
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const src = path.join(opt.materialsDir, file);
+    const entry = entries[i];
+    const file = entry.key;
+    const src = entry.abs;
     const prev = byOriginal.get(file);
     const id = prev?.id ?? String(nextId++).padStart(2, '0');
-    const ext = path.extname(file).toLowerCase();
-    const slug = prev?.slug ?? slugify(path.basename(file, path.extname(file)));
+    const ext = path.extname(entry.name).toLowerCase();
+    const slug = prev?.slug ?? slugify(path.basename(entry.name, ext));
     opt.onProgress?.(i, files.length, file);
     log(`[${id}] ${file}`);
 
@@ -230,6 +265,8 @@ export async function buildCatalog(opt: CatalogOptions): Promise<{catalog: Catal
     version: 1,
     slug: opt.slug,
     materialsDir: opt.append && existing ? existing.materialsDir : opt.materialsDir,
+    // 次の再読み込み（素材フォルダを指定しない実行）でも同じ選択を引き継ぐ
+    includeFixed: opt.append ? existing?.includeFixed : !!opt.fixedDir,
     dominantFps: opt.append && existing ? existing.dominantFps : mode(clips.map((c) => nominalFps(c.probe.fps))),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,

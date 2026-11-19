@@ -7,7 +7,7 @@
 //   reel projects
 //   reel new <slug> --persona <人格id> [--shop 店名]
 //   reel new <slug> --from <既存slug> [--shop 別ブランド名] [--persona p] [--no-facts] [--carry-timeline]   （同じ素材で別バージョン。素材はリンク共有。--carry-timeline で cuts・narration もそのまま引き継ぐ＝ボイスやフックの一部だけ変えたい版用）
-//   reel catalog <materialsDir> --project <slug|dir> [--no-proxy] [--no-thumbs] [--scenes] [--speech] [--force]
+//   reel catalog <materialsDir> --project <slug|dir> [--no-proxy] [--no-thumbs] [--scenes] [--speech] [--force] [--no-fixed]   （固定素材フォルダの動画も一緒に読み込む。--no-fixed で入れない）
 //   reel tag --project P --export [out.json] | --import <file>
 //   reel order --project P [--check] | --export [out.json] | --import <file> [--write] [--no-copy] [--force]
 //   reel ai tag --project P [--force] [--batch n] [--concurrency n] [--model opus|sonnet|haiku]   （裏で claude を走らせてタグ付け）
@@ -67,6 +67,7 @@ import {FORMAT_SPECS} from '../shared/format-specs';
 import {PersonaIdSchema} from '../shared/schema/brief';
 import {telopGroupsOf, cutDurationSec, totalSec} from '../shared/timeline';
 import {buildCatalog, catalogToMarkdown, exportForTagging, importTags, loadCatalog} from '../core/catalog';
+import {fixedDirFor} from '../core/materials-folders';
 import {currentOrder, exportOrder, formatOrderCheck, importOrder, loadOrderEnv} from '../core/order';
 import {aiCaption, aiEdit, aiFacts, aiNarration, aiOrder, aiTag, aiTelop} from '../core/ai';
 import {aiScript, applyScriptProposal, scriptProposalView} from '../core/script';
@@ -348,10 +349,13 @@ async function main() {
 
     case 'catalog': {
       const dir = projectFromFlags(flags);
-      const materials = pos[0] ? path.resolve(pos[0]) : loadCatalog(dir)?.materialsDir;
+      const prevCatalog = loadCatalog(dir);
+      const materials = pos[0] ? path.resolve(pos[0]) : prevCatalog?.materialsDir;
       if (!materials) throw new Error('reel catalog <素材フォルダ> --project P');
       const {catalog, changed, warnings} = await buildCatalog({
         materialsDir: materials,
+        // --no-fixed で固定素材フォルダを読み込まない（指定が無ければ案件の前回の選択 → 読み込む）
+        fixedDir: fixedDirFor(flags.fixed === undefined ? undefined : bool(flags, 'fixed', true), prevCatalog?.includeFixed),
         projectDir: dir,
         slug: path.basename(dir),
         proxy: bool(flags, 'proxy', true),

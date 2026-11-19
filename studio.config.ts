@@ -36,6 +36,10 @@ export const studioConfig = {
   get sfxDir(): string {
     return resolvedPaths().sfxDir;
   },
+  /** 毎回の案件に入れる固定素材（ロゴ・店外観・締めのカットなど）。カタログ実行のたびに案件の素材と一緒に読み込む */
+  get fixedMaterialsDir(): string {
+    return resolvedPaths().fixedMaterialsDir;
+  },
   /**
    * 人格の既定ボイス以外に、選べるようにしておきたいボイス（Settings「音声生成」の追加ボイス）。
    * **他人の公開モデルは Fish Audio の `GET /model?self=true` に出てこない**ので、

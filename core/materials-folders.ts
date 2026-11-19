@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {studioConfig} from '../studio.config';
 import {listMaterials} from './catalog';
-import {folderNameOf, type FolderInspection, type MaterialsFolders} from '../shared/project-from-folder';
+import {folderNameOf, type FixedMaterials, type FolderInspection, type MaterialsFolders} from '../shared/project-from-folder';
 
 /** 比較用。区切り・末尾の区切り・大文字小文字（Windows）の違いを吸収する */
 const samePathKey = (p: string): string => {
@@ -77,3 +77,24 @@ export const inspectMaterialsFolder = (dirInput: string, workDir = studioConfig.
       .map((m) => m.slug),
   };
 };
+
+/** 固定素材フォルダ（毎回入れるロゴ・外観など）。無ければ作ってから、直下の動画を返す */
+export const fixedMaterials = (dir = studioConfig.fixedMaterialsDir): FixedMaterials => {
+  fs.mkdirSync(dir, {recursive: true});
+  return {dir, videos: countable(dir)};
+};
+
+const countable = (dir: string): string[] => {
+  try {
+    return listMaterials(dir);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * カタログ実行で読み込む固定素材フォルダ。指定（include）→ 案件の前回の選択 → 既定（読み込む）の順で決める。
+ * 読み込まないなら null
+ */
+export const fixedDirFor = (include: boolean | undefined, previous: boolean | undefined): string | null =>
+  (include ?? previous ?? true) ? studioConfig.fixedMaterialsDir : null;

@@ -22,7 +22,7 @@ import {colorFilter, isDefaultColor} from '@shared/color';
 import {CloudRenderCard} from '../components/CloudRender';
 import {readPref, writePref} from '../hooks/usePref';
 import {MATERIALS_PARENT_PREF} from '../components/projectList';
-import {folderNameOf, parentDirOf, type MaterialsFolders} from '@shared/project-from-folder';
+import {folderNameOf, isFixedOriginal, parentDirOf, type FixedMaterials, type MaterialsFolders} from '@shared/project-from-folder';
 
 const KINDS: ClipKind[] = ['exterior', 'signage', 'interior', 'menu', 'cooking', 'serving', 'eating', 'sizzle', 'person', 'conversation', 'detail', 'other'];
 
@@ -61,6 +61,7 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   const videoRef = useRef<HTMLVideoElement>(null);
   const clip = useMemo(() => catalog?.clips.find((c) => c.id === selected) ?? null, [catalog, selected]);
   const untagged = catalog?.clips.filter((c) => !c.tags && !c.user.ng).length ?? 0;
+  const fixedInCatalog = catalog?.clips.filter((c) => isFixedOriginal(c.original)).length ?? 0;
   const [aiModel, setAiModel] = useAiModel();
   const [mosaicForm, setMosaicForm] = useMosaicForm();
   const aiJob = s.jobs.find((j) => (j.status === 'running' || j.status === 'queued') && j.type === 'ai-tag' && j.slug === s.active);
@@ -122,9 +123,36 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
   // 末尾の区切り文字は落とす（付けたままだと rtl 表示で先頭に回り込む）
   const parentDir = effectiveDir ? effectiveDir.slice(0, effectiveDir.length - folderName.length).replace(/[\\/]+$/, '') : '';
 
+  // 固定素材フォルダ（Settings のフォルダ。毎回の案件に入れるロゴ・外観など）。
+  // チェックの既定は案件の前回の選択 → 入れる。外した案件は次の再読み込みでも外れたまま
+  const [fixed, setFixed] = useState<FixedMaterials | null>(null);
+  const [includeFixedDraft, setIncludeFixed] = useState<boolean | null>(null);
+  const includeFixed = includeFixedDraft ?? catalog?.includeFixed ?? true;
+  const loadFixed = async () => {
+    try {
+      const d = (await api.get<FixedMaterials>('/api/fixed-materials')).data;
+      // 古いサーバー・別の応答（クラウド等）では欄を出さない
+      setFixed(d && typeof d.dir === 'string' && Array.isArray(d.videos) ? d : null);
+    } catch {
+      setFixed(null); // 古いサーバーには無い。欄が出ないだけで困らない
+    }
+  };
+  useEffect(() => {
+    setIncludeFixed(null);
+    if (!s.isCloud) void loadFixed();
+  }, [s.isCloud, s.active]);
+  const openFixed = async () => {
+    try {
+      await api.post('/api/fixed-materials/open', {});
+      s.toast('固定素材フォルダを開きました。動画を入れたら「再確認」を押してください', 'ok');
+    } catch (e) {
+      s.toast(`フォルダを開けませんでした: ${(e as Error).message}`, 'error');
+    }
+  };
+
   const runCatalog = async () => {
     if (!effectiveDir) return s.toast('素材フォルダを指定してください', 'error');
-    await s.addJob('catalog', {materialsDir: effectiveDir});
+    await s.addJob('catalog', {materialsDir: effectiveDir, ...(fixed ? {fixed: includeFixed} : {})});
   };
 
   const browse = async () => {
@@ -312,6 +340,28 @@ export const MaterialsPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'timelin
             <span className="dim">素材フォルダが未選択です。「📂 参照…」で動画の入ったフォルダを選んでください（パスを直接入力しても構いません）</span>
           )}
         </div>
+        {fixed && (
+          <div className="fixed-materials" title={fixed.dir}>
+            <label>
+              <input type="checkbox" checked={includeFixed} onChange={(e) => setIncludeFixed(e.target.checked)} />
+              固定素材も読み込む
+            </label>
+            <span className={fixed.videos.length ? '' : 'dim'}>
+              {fixed.videos.length ? `${fixed.videos.length} 本（${fixed.videos.slice(0, 3).join('、')}${fixed.videos.length > 3 ? ' ほか' : ''}）` : 'まだ動画がありません'}
+            </span>
+            <button className="small" onClick={() => void openFixed()}>
+              📂 固定素材フォルダを開く
+            </button>
+            <button className="small" onClick={() => void loadFixed()} title="フォルダの中身を数え直す">
+              再確認
+            </button>
+            <span className="hint" style={{flexBasis: '100%', margin: 0}}>
+              ロゴ・店の外観・締めのカットなど、毎回使う動画はこのフォルダ（{fixed.dir}）に入れておくと、カタログ実行のたびに自動で読み込みます。場所は Settings のフォルダで変えられます。
+              {catalog && fixedInCatalog > 0 && ` いまの案件に ${fixedInCatalog} 本入っています。`}
+              {catalog && fixedInCatalog === 0 && includeFixed && fixed.videos.length > 0 && ' この案件にはまだ入っていません。「カタログ実行」で追加されます。'}
+            </span>
+          </div>
+        )}
         {catalogJob && (
           <p className="hint">
             <b>{catalogJob.status === 'queued' ? '素材の読み込みを待っています…' : '素材を読み込み中…'}</b>

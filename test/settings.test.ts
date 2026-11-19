@@ -31,7 +31,8 @@ describe('settings: 既定値と置き場', () => {
     expect(p.dataRoot).toBe(path.join(appRoot, 'data'));
     expect(p.workDir).toBe(path.join(appRoot, 'data', 'work'));
     expect(p.sfxDir).toBe(path.join(appRoot, 'data', 'sfx'));
-    expect(pathSources()).toEqual({dataRoot: 'default', workDir: 'default', uploadsRoot: 'default', outputsDir: 'default', sfxDir: 'default'});
+    expect(p.fixedMaterialsDir).toBe(path.join(appRoot, 'data', 'fixed-materials'));
+    expect(pathSources()).toEqual({dataRoot: 'default', workDir: 'default', uploadsRoot: 'default', outputsDir: 'default', sfxDir: 'default', fixedMaterialsDir: 'default'});
     expect(settingsProblem()).toBeNull();
   });
 

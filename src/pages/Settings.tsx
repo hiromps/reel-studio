@@ -25,9 +25,11 @@ type Save = (patch: SettingsPatch, done: string) => Promise<boolean>;
 /** 保存以外の操作（Claude の再接続など）で返ってきた見え方を画面に反映する */
 type ApplyView = (view: SettingsView, done: string) => Promise<void>;
 
-const SUB_KEYS = ['workDir', 'uploadsRoot', 'outputsDir', 'sfxDir'] as const;
+const SUB_KEYS = ['workDir', 'uploadsRoot', 'outputsDir', 'sfxDir', 'fixedMaterialsDir'] as const;
 type SubKey = (typeof SUB_KEYS)[number];
-const PATH_LABEL: Record<PathKey, string> = {dataRoot: 'データフォルダ（親）', workDir: '案件（work）', uploadsRoot: '生素材（uploads）', outputsDir: '納品（outputs）', sfxDir: '効果音（sfx）'};
+/** 未指定のときに使うデータフォルダ内のフォルダ名（core/settings.ts の SUBDIR と同じ） */
+const SUB_DEFAULT: Record<SubKey, string> = {workDir: 'work', uploadsRoot: 'uploads', outputsDir: 'outputs', sfxDir: 'sfx', fixedMaterialsDir: 'fixed-materials'};
+const PATH_LABEL: Record<PathKey, string> = {dataRoot: 'データフォルダ（親）', workDir: '案件（work）', uploadsRoot: '生素材（uploads）', outputsDir: '納品（outputs）', sfxDir: '効果音（sfx）', fixedMaterialsDir: '固定素材（毎回入れる動画）'};
 const SOURCE_LABEL = {env: '環境変数', settings: '設定', default: '既定'} as const;
 const FISH_MODELS = ['s2.1-pro-free', 's2.1-pro', 's2-pro', 's1'];
 const ID_RE = /^[a-z][a-z0-9-]{0,30}$/;
@@ -209,7 +211,7 @@ const FoldersCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) =
               <input
                 value={form.paths[k]}
                 onChange={(e) => setForm({...form, paths: {...form.paths, [k]: e.target.value}})}
-                placeholder={`既定: データフォルダ内の ${k === 'workDir' ? 'work' : k === 'uploadsRoot' ? 'uploads' : k === 'outputsDir' ? 'outputs' : 'sfx'}/`}
+                placeholder={`既定: データフォルダ内の ${SUB_DEFAULT[k]}/`}
                 disabled={envLocked(k)}
                 style={{flex: 1, minWidth: 320}}
               />

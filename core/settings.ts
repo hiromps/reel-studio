@@ -102,7 +102,7 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     else obj[key] = typeof v === 'string' ? v.trim() : v;
   };
   setOrClear(next, 'dataRoot', patch.dataRoot);
-  if (patch.paths) for (const k of ['workDir', 'uploadsRoot', 'outputsDir', 'sfxDir'] as const) setOrClear(next.paths as Record<string, unknown>, k, patch.paths[k]);
+  if (patch.paths) for (const k of ['workDir', 'uploadsRoot', 'outputsDir', 'sfxDir', 'fixedMaterialsDir'] as const) setOrClear(next.paths as Record<string, unknown>, k, patch.paths[k]);
   if (patch.tts) {
     const tts = next.tts as Record<string, unknown>;
     setOrClear(tts, 'apiKey', patch.tts.apiKey);
@@ -149,8 +149,9 @@ const ENV_OF: Record<PathKey, string> = {
   uploadsRoot: 'REEL_STUDIO_UPLOADS_ROOT',
   outputsDir: 'REEL_STUDIO_OUTPUTS_DIR',
   sfxDir: 'REEL_SFX_DIR',
+  fixedMaterialsDir: 'REEL_STUDIO_FIXED_MATERIALS_DIR',
 };
-const SUBDIR: Record<Exclude<PathKey, 'dataRoot'>, string> = {workDir: 'work', uploadsRoot: 'uploads', outputsDir: 'outputs', sfxDir: 'sfx'};
+const SUBDIR: Record<Exclude<PathKey, 'dataRoot'>, string> = {workDir: 'work', uploadsRoot: 'uploads', outputsDir: 'outputs', sfxDir: 'sfx', fixedMaterialsDir: 'fixed-materials'};
 
 const envValue = (key: PathKey): string | null => {
   const v = process.env[ENV_OF[key]]?.trim();

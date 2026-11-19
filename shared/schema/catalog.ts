@@ -119,6 +119,8 @@ export const CatalogSchema = z.object({
   version: z.literal(1),
   slug: z.string(),
   materialsDir: z.string(),
+  /** 固定素材フォルダ（Settings のフォルダ）の動画も読み込むか。無い＝読み込む（既定） */
+  includeFixed: z.boolean().optional(),
   dominantFps: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),

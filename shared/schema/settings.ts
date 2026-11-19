@@ -18,6 +18,8 @@ const PathsSchema = z.object({
   uploadsRoot: z.string().min(1).optional(),
   outputsDir: z.string().min(1).optional(),
   sfxDir: z.string().min(1).optional(),
+  /** 毎回の案件に入れる固定素材（ロゴ・店外観など）。カタログ実行のたびに案件の素材と一緒に読み込む */
+  fixedMaterialsDir: z.string().min(1).optional(),
 });
 
 const TtsSchema = z.object({
@@ -159,7 +161,7 @@ const nullable = () => z.string().nullable().optional();
 export const SettingsPatchSchema = z
   .object({
     dataRoot: nullable(),
-    paths: z.object({workDir: nullable(), uploadsRoot: nullable(), outputsDir: nullable(), sfxDir: nullable()}).strict().optional(),
+    paths: z.object({workDir: nullable(), uploadsRoot: nullable(), outputsDir: nullable(), sfxDir: nullable(), fixedMaterialsDir: nullable()}).strict().optional(),
     tts: z
       .object({
         apiKey: nullable(),
@@ -198,8 +200,8 @@ export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
 /** Smartgram に登録済みの Instagram アカウント（接続テストが返す。MCP ツールの username に渡す候補） */
 export type InstagramAccount = {username: string; active: boolean; fullName?: string; followers?: number};
 
-export type PathKey = 'dataRoot' | 'workDir' | 'uploadsRoot' | 'outputsDir' | 'sfxDir';
-export const PATH_KEYS: PathKey[] = ['dataRoot', 'workDir', 'uploadsRoot', 'outputsDir', 'sfxDir'];
+export type PathKey = 'dataRoot' | 'workDir' | 'uploadsRoot' | 'outputsDir' | 'sfxDir' | 'fixedMaterialsDir';
+export const PATH_KEYS: PathKey[] = ['dataRoot', 'workDir', 'uploadsRoot', 'outputsDir', 'sfxDir', 'fixedMaterialsDir'];
 export type ValueSource = 'env' | 'settings' | 'default';
 
 /** 鍵の見せ方。値そのものは決して返さない */

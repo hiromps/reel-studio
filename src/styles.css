@@ -558,6 +558,22 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   /* フォルダ名は必ず全部見せる */
   word-break: break-all;
 }
+/* 固定素材フォルダ（毎回入れる動画）の欄。素材フォルダの選択欄の下に並べる */
+.fixed-materials {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.fixed-materials > span:not(.hint) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .folder-pick .folder-parent {
   color: var(--muted);
   /* 長いときは末尾を省略。フォルダ名は folder-name 側に出しているのでここは頭が見えれば足りる */

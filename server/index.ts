@@ -1,5 +1,6 @@
 // Reel Studio server（express :4310）。API + SSE + 静的配信。dist/ があれば GUI も配信する。
 import express from 'express';
+import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,7 +9,7 @@ import {studioConfig} from '../studio.config';
 import {engineDiff, listProjects} from '../core/project';
 import {exec} from '../core/exec';
 import {pickFolder} from '../core/pick-folder';
-import {inspectMaterialsFolder, recentMaterialsFolders} from '../core/materials-folders';
+import {fixedMaterials, inspectMaterialsFolder, recentMaterialsFolders} from '../core/materials-folders';
 import {ttsAvailable} from '../core/tts';
 import {instagramMcpAvailable} from '../core/instagram-mcp';
 import {claudeAvailable} from '../core/agent';
@@ -119,6 +120,7 @@ app.get('/api/config', async (_req, res) => {
     uploadsRoot: studioConfig.uploadsRoot,
     outputsDir: studioConfig.outputsDir,
     sfxDir: studioConfig.sfxDir,
+    fixedMaterialsDir: studioConfig.fixedMaterialsDir,
     templateDir: studioConfig.templateDir,
     settingsDir: settingsDir(),
     settingsProblem: settingsProblem(),
@@ -172,6 +174,27 @@ app.post('/api/materials-folders/inspect', (req, res) => {
     res.json(inspectMaterialsFolder(typeof req.body?.dir === 'string' ? req.body.dir : ''));
   } catch (e) {
     res.status(400).json({error: (e as Error).message});
+  }
+});
+
+// 固定素材フォルダ（毎回の案件に入れるロゴ・外観など）。無ければ作ってから中身を返す
+app.get('/api/fixed-materials', (_req, res) => {
+  try {
+    res.json(fixedMaterials());
+  } catch (e) {
+    res.status(500).json({error: (e as Error).message});
+  }
+});
+/** 固定素材フォルダをエクスプローラー（Finder）で開く。動画を入れてもらうため */
+app.post('/api/fixed-materials/open', (_req, res) => {
+  try {
+    const {dir} = fixedMaterials();
+    const cmd = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+    // explorer.exe は成功しても終了コード 1 を返すことがあるので、結果は待たない
+    spawn(cmd, [dir], {detached: true, stdio: 'ignore'}).on('error', () => {}).unref();
+    res.json({dir});
+  } catch (e) {
+    res.status(500).json({error: (e as Error).message});
   }
 });
 

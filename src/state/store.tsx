@@ -42,6 +42,8 @@ type Store = {
     dataRoot?: string;
     outputsDir?: string;
     sfxDir?: string;
+    /** 固定素材フォルダ（毎回の案件に入れる素材） */
+    fixedMaterialsDir?: string;
     settingsDir?: string;
     jobTypes?: string[];
     stale?: boolean;

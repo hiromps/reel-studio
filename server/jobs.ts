@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {buildCatalog, loadCatalog, saveCatalog} from '../core/catalog';
+import {fixedDirFor} from '../core/materials-folders';
 import {makeProxy, makePreviewProxy, needsProxy} from '../core/proxy';
 import {makeThumbnails, makeQcTile} from '../core/thumbnails';
 import {ffprobe} from '../core/ffprobe';
@@ -185,10 +186,13 @@ export async function runJobBody(job: {type: JobType; slug: string; params: Reco
         return importModalResult(p.id, dir, signal, onLine);
       }
       case 'catalog': {
-        const materialsDir = (p.materialsDir as string | undefined) ?? loadCatalog(dir)?.materialsDir;
+        const prevCatalog = loadCatalog(dir);
+        const materialsDir = (p.materialsDir as string | undefined) ?? prevCatalog?.materialsDir;
         if (!materialsDir) throw new Error('materialsDir が未指定');
         const r = await buildCatalog({
           materialsDir: path.resolve(materialsDir),
+          // 固定素材フォルダ（Settings）。fixed の指定 → 案件の前回の選択 → 既定（読み込む）
+          fixedDir: fixedDirFor(typeof p.fixed === 'boolean' ? p.fixed : undefined, prevCatalog?.includeFixed),
           projectDir: dir,
           slug: path.basename(dir),
           proxy: p.proxy !== false,
