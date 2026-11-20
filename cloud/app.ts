@@ -7,7 +7,7 @@
 import express from 'express';
 // @ts-expect-error Express 内部モジュール（型定義が無い）。下の handle_request の差し替えで使う
 import Layer from 'express/lib/router/layer.js';
-import {clearSessionCookie, cookieValue, COOKIE_NAME, issueSession, readSession, requireUser, requireWorker, setSessionCookie, verifyPassword} from './auth';
+import {clearSessionCookie, cookieValue, COOKIE_NAME, issueSession, requireUser, requireWorker, sessionIssuedAt, setSessionCookie, shouldRenewSession, verifyPassword} from './auth';
 import {ensurePersonas} from './personas-sync';
 import {docsRouter} from './routes/docs';
 import {eventsHandler, jobsRouter} from './routes/jobs';
@@ -62,10 +62,13 @@ export const createApp = (): express.Express => {
     res.json({ok: true});
   });
 
-  /** 画面の起動時チェック。ログインしていなければ 200 + authenticated:false（401 を出さない） */
+  /** 画面の起動時チェック。ログインしていなければ 200 + authenticated:false（401 を出さない）
+   *  有効なセッションは開くたびに延長する（ホーム画面の PWA で、一度ログインすれば二度と聞かれないように） */
   app.get('/api/auth/session', async (req, res) => {
     const token = cookieValue(req, COOKIE_NAME);
-    res.json({authenticated: !!token && (await readSession(token))});
+    const issuedAt = token ? await sessionIssuedAt(token) : null;
+    if (issuedAt !== null && shouldRenewSession(issuedAt)) setSessionCookie(res, await issueSession());
+    res.json({authenticated: issuedAt !== null});
   });
 
   // ── ワーカー（Bearer） ────────────────────────────────────

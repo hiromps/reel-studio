@@ -13,7 +13,10 @@ import {SignJWT, jwtVerify} from 'jose';
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
 export const COOKIE_NAME = 'rs_session';
-const SESSION_DAYS = 30;
+// ブラウザが Cookie に許す上限（400 日）。開くたびに延長するので、使っている限り切れない
+const SESSION_DAYS = 400;
+// 発行からこれ以上たったセッションは、起動時チェックで新しいものに差し替える
+const RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /** `scrypt$<saltHex>$<hashHex>` を作る。scripts/hash-password.mjs から使う */
 export const hashPassword = async (password: string): Promise<string> => {
@@ -44,14 +47,20 @@ const jwtSecret = (): Uint8Array => {
 export const issueSession = async (): Promise<string> =>
   new SignJWT({sub: 'owner'}).setProtectedHeader({alg: 'HS256'}).setIssuedAt().setExpirationTime(`${SESSION_DAYS}d`).sign(jwtSecret());
 
-export const readSession = async (token: string): Promise<boolean> => {
+export const readSession = async (token: string): Promise<boolean> => (await sessionIssuedAt(token)) !== null;
+
+/** 有効なら発行時刻（ミリ秒）、無効なら null */
+export const sessionIssuedAt = async (token: string): Promise<number | null> => {
   try {
-    await jwtVerify(token, jwtSecret());
-    return true;
+    const {payload} = await jwtVerify(token, jwtSecret());
+    return (payload.iat ?? 0) * 1000;
   } catch {
-    return false;
+    return null;
   }
 };
+
+/** 発行から 1 日以上たっていれば延長が要る（毎回 Set-Cookie を返さないため） */
+export const shouldRenewSession = (issuedAtMs: number, now = Date.now()): boolean => now - issuedAtMs >= RENEW_AFTER_MS;
 
 /** Cookie ヘッダから 1 つ取り出す（cookie-parser を足さずに済ませる） */
 export const cookieValue = (req: Request, name: string): string | null => {
