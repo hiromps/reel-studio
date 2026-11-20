@@ -8,7 +8,7 @@
 
 ```
 [スマホ / PC のブラウザ]
-        │  HTTPS（Cookie 認証・パスワード 1 つ）
+        │  HTTPS（Google ログイン・許可したメールだけ）
         ▼
 [Vercel]  画面（PWA）＋ API
         │  Supabase の Postgres（案件・契約ファイル・ジョブ）／バイナリは PC のみ
@@ -66,7 +66,6 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 
 - 相手の案件が一覧に出る（お店の素材・完成動画も見える）
 - 相手が押したレンダーを自分の PC が実行してしまう
-- パスワードを変えると全員が締め出される
 
 お店から預かった素材を扱う以上これは事故なので、**人ごとに環境を分けてください**。
 分けるといっても、下の `npm run cloud:setup` を各自の PC で 1 回実行するだけです。
@@ -75,7 +74,7 @@ Vercel の Functions では ffmpeg による 4K 素材の変換も Remotion（Ch
 |---|---|---|
 | 案件・素材 | 完全に別 | 混ざる |
 | ジョブ | 自分の PC が自分のぶんだけ実行 | 取り合う |
-| パスワード | 各自が自分で決める | 全員で同じものを使い回す |
+| ログイン | 各自の Google アカウント | 許可リストに全員を並べる |
 | 費用 | 各自の Vercel / Supabase | 1 人が全員ぶんを負担 |
 | 止まったとき | 自分だけ | 全員 |
 
@@ -86,7 +85,7 @@ npm run cloud:setup
 ```
 
 対話で次を全部やります —— Vercel のプロジェクト作成 → デプロイ保護を外す →
-ローカル保存の確認 → DB のスキーマ適用 → パスワードと鍵の生成 →
+ローカル保存の確認 → DB のスキーマ適用 → Google ログインの設定と鍵の生成 →
 環境変数の設定 → 本番デプロイ → この PC をワーカーとして接続。
 
 用意しておくもの:
@@ -96,20 +95,22 @@ npm run cloud:setup
 | [Vercel](https://vercel.com) のアカウント | 無料（Hobby） | **Hobby は非商用のみ**。仕事で使うなら Pro（$20/月） |
 | [Supabase](https://supabase.com) のアカウント | 無料枠で足りる | Transaction pooler の接続文字列を 1 回貼り付けるだけ |
 | `npx vercel login` を済ませておく | — | 未ログインなら script が案内します |
+| Google Cloud の OAuth クライアント ID | 無料 | 種類は「ウェブ アプリケーション」。ID とシークレットを setup で貼り付ける |
 
 終わったら、その PC で Reel Studio を起動したままにして（ショートカットから立ち上げれば
-ワーカーも一緒に動きます）、スマホで URL を開いてログイン →「ホーム画面に追加」。それで使えます。
+ワーカーも一緒に動きます）、スマホで URL を開いて Google でログイン →「ホーム画面に追加」。それで使えます。
 
-### ログインのパスワードはどう決まるか
+### ログインの仕組み（Google / Auth.js）
 
-- **各自が自分で決めます。** `npm run cloud:setup` の途中で聞かれます（打った文字は画面に出ません）
-- Vercel に入るのは**ハッシュだけ**（`scrypt$…`）で、平文は送りません。環境変数 `AUTH_PASSWORD_HASH`
-- ログインすると署名付きの Cookie（400 日）が配られ、画面を開くたびに延長されます。スマホで一度入れれば、使っている限り聞かれません
-- 変えたいときは `node scripts/hash-password.mjs` で作り直して `AUTH_PASSWORD_HASH` を差し替え、再デプロイ
-- **人に教えないでください。** URL を知られてもパスワードが無ければ入れませんが、逆に
-  パスワードを知られると全部見られます
+- **Google アカウントで入ります。パスワードはありません。** 仕組みは Auth.js（`@auth/express`）
+- 入れるのは環境変数 `AUTH_ALLOWED_EMAILS`（カンマ区切り）に書いたメールアドレスだけ。空なら誰も入れません。
+  人を足すときはここに追記して再デプロイ
+- Google Cloud の OAuth クライアントの「承認済みのリダイレクト URI」に `https://<あなたの URL>/api/auth/callback/google` を入れておく
+  （無いと Google 側で `redirect_uri_mismatch` になります）
+- ログインすると暗号化された Cookie（400 日）が配られ、画面を開くたびに延長されます。スマホで一度入れれば、使っている限り聞かれません
+- iPhone の「ホーム画面に追加」した PWA は Safari と Cookie が別です。PWA の中で一度 Google ログインしてください
 
-ワーカー用のトークン（`WORKER_TOKEN`）はパスワードとは別で、**PC が自分を名乗るための鍵**です。
+ワーカー用のトークン（`WORKER_TOKEN`）はログインとは別で、**PC が自分を名乗るための鍵**です。
 setup が自動で作って、Vercel と `~/.reel-studio/settings.json` の両方に入れます。人に渡す必要はありません。
 
 ### 1 つのデプロイを複数人で使いたい場合
@@ -160,8 +161,9 @@ npx vercel api "/v9/projects/<prj_…>/link?teamId=<team_…>" -X DELETE
 | 変数 | 作り方 |
 |---|---|
 | `DATABASE_URL` | Supabase の接続文字列（**Transaction pooler**、ポート 6543 のもの）。Vercel の Supabase 連携が入れる `POSTGRES_URL` でも可 |
-| `AUTH_PASSWORD_HASH` | `node scripts/hash-password.mjs` の出力（`scrypt$…`） |
-| `AUTH_JWT_SECRET` | 32 文字以上のランダム文字列（`openssl rand -base64 48`） |
+| `AUTH_JWT_SECRET` | 32 文字以上のランダム文字列（`openssl rand -base64 48`）。ログインの Cookie の暗号化にも使う（`AUTH_SECRET` があればそちらを優先） |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google Cloud の OAuth クライアント ID とシークレット |
+| `AUTH_ALLOWED_EMAILS` | 入ってよい Google のメールアドレス（カンマ区切り） |
 | `WORKER_TOKEN` | ランダム文字列。PC のワーカーと同じ値にする |
 | `FISH_API_KEY`（任意） | 音声のボイス一覧と試聴をクラウドから使う場合。生成そのものは PC が行う |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`（任意） | 通知を使う場合。`node -e "console.log(JSON.stringify(require('web-push').generateVAPIDKeys()))"` |
@@ -271,9 +273,8 @@ schtasks /Create /TN "Reel Studio Worker" /SC ONLOGON /RL LIMITED /F /TR "cmd /c
 ## 気をつけること
 
 - メディアはローカルサーバーから配信する。既存の公開Storage URLは削除するまで有効な場合がある
-- ログインは自分専用の 1 アカウント（パスワード 1 つ）。**人に教えないでください**——
-  知られると案件も素材も全部見られます。変えるときは `node scripts/hash-password.mjs` で
-  作り直して `AUTH_PASSWORD_HASH` を差し替え、再デプロイ
+- ログインは Google アカウント。`AUTH_ALLOWED_EMAILS` に書いた人は案件も素材も全部見られるので、
+  入れる人は慎重に選んでください（持ち主の区別はまだ無い）
 - **ワーカーのトークンを他人に渡さないでください。** 渡すと、その人の PC があなたのジョブを
   取りに来ます（台本・メタデータを取得できます）
 - `Vercel Hobby` プランは商用利用不可です。仕事で使うなら Pro のチームに置いてください

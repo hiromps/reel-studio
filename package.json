@@ -52,6 +52,7 @@
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@auth/express": "0.12.3",
     "@openai/codex": "^0.160.1",
     "@remotion/player": "4.0.540",
     "chokidar": "^4.0.3",
@@ -70,6 +71,7 @@
     "qs": "6.16.0"
   },
   "devDependencies": {
+    "@auth/core": "0.41.3",
     "@resvg/resvg-js": "2.6.2",
     "@types/express": "^4.17.21",
     "@types/node": "^20.17.0",

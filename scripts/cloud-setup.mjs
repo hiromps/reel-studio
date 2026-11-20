@@ -10,21 +10,19 @@
 //
 // この script がやること:
 //   Vercel のプロジェクト作成 → 保護を外す → ローカル保存の確認 → DB のスキーマ適用 →
-//   パスワードとトークンの生成 → 環境変数の設定 → 本番デプロイ → PC 側の接続設定
+//   Google ログインの設定・トークンの生成 → 環境変数の設定 → 本番デプロイ → PC 側の接続設定
 //
-// 秘密の扱い: パスワードは打った本人の手元でハッシュにしてから Vercel に入れる（平文は送らない）。
+// 秘密の扱い: ログインは Google アカウント（Auth.js）。入れるのは指定したメールアドレスだけ。
 // トークンの類はこの画面にも出さない（PC の設定ファイルに直接書く）。
 import {spawnSync} from 'node:child_process';
-import {randomBytes, scrypt} from 'node:crypto';
+import {randomBytes} from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
-import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {applyMigrations} from './cloud-migrate.mjs';
 
-const scryptAsync = promisify(scrypt);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const isWin = process.platform === 'win32';
 const C = {dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', cyan: '\x1b[36m', reset: '\x1b[0m'};
@@ -37,7 +35,7 @@ const step = (n, total, m) => console.log(`\n${C.cyan}[${n}/${total}]${C.reset} 
 const rl = readline.createInterface({input: process.stdin, output: process.stdout});
 const ask = (q, def = '') =>
   new Promise((res) => rl.question(def ? `${q}（既定: ${def}）: ` : `${q}: `, (a) => res(a.trim() || def)));
-/** 打った文字を画面に出さずに読む（パスワード用） */
+/** 打った文字を画面に出さずに読む（秘密の値用） */
 const askSecret = (q) =>
   new Promise((res) => {
     const onData = () => rl.output.write(`\x1b[2K\r${q}: `);
@@ -124,7 +122,7 @@ const main = async () => {
   fs.writeFileSync(body, JSON.stringify({ssoProtection: null}));
   const sso = vercel(['api', `/v9/projects/${project.projectId}${teamQ}`, '-X', 'PATCH', '--input', body]);
   fs.rmSync(body, {force: true});
-  if (sso.code === 0) ok('保護を外しました（この URL は自分のパスワードで守ります）');
+  if (sso.code === 0) ok('保護を外しました（この URL は自分の Google ログインで守ります）');
   else warn('保護を外せませんでした。Vercel の Settings → Deployment Protection を手で Off にしてください');
 
   // ── 4. メディアは PC に保持（Storage の作成・鍵の配布は不要）
@@ -145,32 +143,27 @@ const main = async () => {
   log('スキーマを作っています…');
   await applyMigrations(dbUrl, {onApplied: (f) => ok(f)});
 
-  // ── 6. ログインのパスワードと鍵
-  step(6, TOTAL, 'ログインのパスワード');
-  console.log(`  ${C.dim}スマホからこの画面を開くときのパスワードです。あなた以外は使えません。${C.reset}`);
-  console.log(`  ${C.dim}打った文字は画面に出ません。Vercel には**ハッシュだけ**が入ります（平文は送りません）。${C.reset}`);
-  let password = '';
-  for (;;) {
-    password = await askSecret('パスワード（8 文字以上）');
-    if (password.length < 8) {
-      warn('8 文字以上にしてください');
-      continue;
-    }
-    if ((await askSecret('もう一度')) === password) break;
-    warn('一致しません。やり直してください');
-  }
-  const salt = randomBytes(16);
-  const hash = await scryptAsync(password, salt, 32);
-  const passwordHash = `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
+  // ── 6. ログイン（Google）と鍵
+  step(6, TOTAL, 'ログイン（Google アカウント）');
+  console.log(`  ${C.dim}スマホからこの画面を開くときは Google アカウントで入ります。パスワードは使いません。${C.reset}`);
+  console.log(`  ${C.dim}https://console.cloud.google.com/apis/credentials で「OAuth クライアント ID」（種類: ウェブ アプリケーション）を作り、${C.reset}`);
+  console.log(`  ${C.dim}クライアント ID とシークレットを貼り付けてください。承認済みのリダイレクト URI は最後に表示します。${C.reset}`);
+  const googleId = await ask('クライアント ID（…apps.googleusercontent.com）');
+  if (!/\.apps\.googleusercontent\.com$/.test(googleId)) throw new Error('クライアント ID の形が違います（….apps.googleusercontent.com で終わります）');
+  const googleSecret = await askSecret('クライアント シークレット');
+  if (!googleSecret) throw new Error('クライアント シークレットが空です');
+  const allowed = await ask('入ってよい Google のメールアドレス（複数はカンマ区切り）');
+  if (!/@/.test(allowed)) throw new Error('メールアドレスを 1 つ以上入れてください');
   const jwtSecret = randomBytes(48).toString('base64url');
   const workerToken = randomBytes(32).toString('base64url');
-  ok('パスワードをハッシュにしました');
 
   // ── 7. 環境変数
   step(7, TOTAL, '環境変数の設定');
   setEnv('DATABASE_URL', dbUrl);
-  setEnv('AUTH_PASSWORD_HASH', passwordHash);
   setEnv('AUTH_JWT_SECRET', jwtSecret);
+  setEnv('AUTH_GOOGLE_ID', googleId);
+  setEnv('AUTH_GOOGLE_SECRET', googleSecret);
+  setEnv('AUTH_ALLOWED_EMAILS', allowed);
   setEnv('WORKER_TOKEN', workerToken);
 
   if (await yes('音声生成（Fish Audio）の鍵を入れますか', false)) {
@@ -210,10 +203,12 @@ const main = async () => {
 
   console.log(`\n${C.green}できました。${C.reset}\n`);
   console.log(`  画面:      ${C.cyan}${url}${C.reset}`);
-  console.log(`  ログイン:  いま決めたパスワード`);
+  console.log(`  ログイン:  Google（${allowed}）`);
+  console.log(`\n  ${C.yellow}忘れずに:${C.reset} Google Cloud の OAuth クライアントの「承認済みのリダイレクト URI」に次を追加してください:`);
+  console.log(`   ${C.cyan}${url}/api/auth/callback/google${C.reset}`);
   console.log(`\n  次の 2 つで使えるようになります:`);
   console.log(`   1. この PC で ${C.cyan}Reel Studio${C.reset}（デスクトップのショートカット）を起動したままにする`);
-  console.log(`   2. スマホで上の URL を開き、ログインして「ホーム画面に追加」`);
+  console.log(`   2. スマホで上の URL を開き、Google でログインして「ホーム画面に追加」`);
   console.log(`\n  ${C.dim}PC で Reel Studio が動いていないとジョブは待機します（消えません）。${C.reset}`);
   console.log(`  ${C.dim}常駐のさせ方・困ったときは docs/cloud.md を見てください。${C.reset}\n`);
 };

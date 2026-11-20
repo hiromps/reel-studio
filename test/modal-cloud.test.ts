@@ -3,7 +3,8 @@ import type {AddressInfo} from 'node:net';
 import {get} from 'node:http';
 import {afterAll, beforeAll, beforeEach, expect, it, vi} from 'vitest';
 import {cloudModalRouter} from '../cloud/routes/modal';
-import {issueSession, requireUser} from '../cloud/auth';
+import {encode} from '@auth/core/jwt';
+import {requireUser} from '../cloud/auth';
 import {cloudModalConnection, cloudModalView, saveCloudModal} from '../cloud/modal';
 import {ModalConfigSchema} from '../shared/modal';
 
@@ -17,7 +18,9 @@ beforeAll(async () => {
   const app = express(); app.use(express.json({limit: '4mb'})); app.use('/api/modal', requireUser, cloudModalRouter);
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(r => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/modal`;
-  cookie = `rs_session=${await issueSession()}`;
+  // Auth.js のセッション Cookie（http なので __Secure- は付かない）
+  const salt = 'authjs.session-token';
+  cookie = `${salt}=${await encode({token: {email: 'owner@example.com', name: 'owner'}, secret: 'test-auth-secret-for-modal-cloud-only-12345', salt})}`;
   const session = await fetch(`${base}/session`, {headers: {Cookie: cookie, 'X-Reel-Modal-Client': 'reel-studio'}});
   token = (await session.json() as {token: string}).token;
 });

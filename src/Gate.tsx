@@ -1,8 +1,8 @@
 // ログインの門番。クラウド版だけが実際に働く。
 //
 // 起動時に /api/auth/session を叩き、
-//   - 200 で authenticated:true      → そのままアプリを出す
-//   - 200 で authenticated:false     → ログイン画面（クラウド版で未ログイン）
+//   - 200 で {user, …}               → そのままアプリを出す
+//   - 200 で null                    → ログイン画面（クラウド版で未ログイン）
 //   - そもそも経路が無い（404/501）  → ローカル版なのでログインは不要。アプリを出す
 // 以降 401 が返ったとき（セッション切れ）も、ここに戻ってログイン画面を出す。
 import React, {useCallback, useEffect, useState} from 'react';
@@ -19,8 +19,10 @@ export const Gate: React.FC = () => {
 
   const check = useCallback(async () => {
     try {
-      const r = await api.get<{authenticated?: boolean}>('/api/auth/session');
-      setPhase(r.data?.authenticated === false ? 'login' : 'ready');
+      // クラウド版は Auth.js の応答: ログイン中は {user, expires}、未ログインは null
+      const r = await api.get<{user?: unknown} | null>('/api/auth/session');
+      const d = r.data;
+      setPhase(d === null || (typeof d === 'object' && !d.user) ? 'login' : 'ready');
     } catch (e) {
       // ローカル版にはこの経路が無い（404）。認証も要らないのでそのまま通す
       const status = (e as {status?: number}).status;

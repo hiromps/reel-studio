@@ -3,11 +3,12 @@
 // ローカル版（server/index.ts）との違い:
 // - ファイルシステムの代わりに Supabase の Postgres（台本・メタデータ・ジョブ）を使い、メディアは PC に保持する
 // - 重い処理は自分でやらず、ジョブとして積んで PC のワーカーに実行させる
-// - 公開されるので、すべての経路に認証が要る（画面は Cookie、ワーカーは Bearer）
+// - 公開されるので、すべての経路に認証が要る（画面は Auth.js の Cookie、ワーカーは Bearer）
 import express from 'express';
 // @ts-expect-error Express 内部モジュール（型定義が無い）。下の handle_request の差し替えで使う
 import Layer from 'express/lib/router/layer.js';
-import {clearSessionCookie, cookieValue, COOKIE_NAME, issueSession, requireUser, requireWorker, sessionIssuedAt, setSessionCookie, shouldRenewSession, verifyPassword} from './auth';
+import {ExpressAuth} from '@auth/express';
+import {authConfig, requireUser, requireWorker} from './auth';
 import {ensurePersonas} from './personas-sync';
 import {docsRouter} from './routes/docs';
 import {eventsHandler, jobsRouter} from './routes/jobs';
@@ -43,33 +44,10 @@ export const createApp = (): express.Express => {
   // クラウド API は JSON のみ。バイナリ取り込みはローカルサーバーで行う
   app.use(express.json({limit: '4mb'}));
 
-  // ── ログイン ──────────────────────────────────────────────
-  app.post('/api/auth/login', async (req, res) => {
-    const hash = process.env.AUTH_PASSWORD_HASH?.trim();
-    if (!hash) return res.status(503).json({error: 'AUTH_PASSWORD_HASH が未設定です（node scripts/hash-password.mjs で作って Vercel に入れてください）'});
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (!password || !(await verifyPassword(password, hash))) {
-      // 総当たりを少しだけ鈍らせる（1 アカウントなので、これで十分）
-      await new Promise((r) => setTimeout(r, 600));
-      return res.status(401).json({error: 'パスワードが違います'});
-    }
-    setSessionCookie(res, await issueSession());
-    res.json({ok: true});
-  });
-
-  app.post('/api/auth/logout', (_req, res) => {
-    clearSessionCookie(res);
-    res.json({ok: true});
-  });
-
-  /** 画面の起動時チェック。ログインしていなければ 200 + authenticated:false（401 を出さない）
-   *  有効なセッションは開くたびに延長する（ホーム画面の PWA で、一度ログインすれば二度と聞かれないように） */
-  app.get('/api/auth/session', async (req, res) => {
-    const token = cookieValue(req, COOKIE_NAME);
-    const issuedAt = token ? await sessionIssuedAt(token) : null;
-    if (issuedAt !== null && shouldRenewSession(issuedAt)) setSessionCookie(res, await issueSession());
-    res.json({authenticated: issuedAt !== null});
-  });
+  // ── ログイン（Auth.js / Google） ──────────────────────────
+  // /api/auth/signin/google・/api/auth/callback/google・/api/auth/session・/api/auth/csrf・/api/auth/signout など。
+  // 画面は起動時に /api/auth/session を呼ぶ（未ログインなら null）。呼ぶたびにセッションが延長される
+  app.use('/api/auth/*', ExpressAuth(authConfig()));
 
   // ── ワーカー（Bearer） ────────────────────────────────────
   app.use('/api/worker', requireWorker, workerRouter);
