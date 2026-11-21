@@ -4,6 +4,7 @@
 import type {Narration, NarrationSegment, Sfx} from '@shared/schema';
 import {NARRATION_GAIN_DB_DEFAULT} from '@shared/schema';
 import {sfxEndSec, type SfxLibrary} from '@shared/sfx';
+import {narrationRate} from '@shared/narration';
 
 export type MixClip = {
   /** キャッシュのキー（同じ id でも wav を作り直したら変わるよう durSec を含める） */
@@ -20,6 +21,8 @@ export type MixClip = {
   /** 使う範囲の始まり（wav の頭から飛ばす秒）。無ければ 0 */
   startSec?: number;
   fadeOutSec?: number;
+  /** 再生速度（1 以外なら読み込み時に音程を保って伸縮する。trimSec/startSec は伸縮後の秒） */
+  rate?: number;
 };
 
 /** ナレーションの基準音量。mix-narration.js は声を -14 LUFS に揃えるが、プレビューはおおよそでよい */
@@ -43,7 +46,19 @@ export const mixClipsOf = (narration: Narration | null, mediaBase: string | null
   const narrGain = NARR_BASE_GAIN * dbToGain(narration.narrationGainDb ?? NARRATION_GAIN_DB_DEFAULT);
   for (const s of narration.segments) {
     if (!wavReady(s)) continue;
-    out.push({key: `narr:${s.id}:${s.durSec}`, url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`, kind: 'narr', id: s.id, at: s.at, gain: narrGain * dbToGain(s.gainDb ?? 0), trimSec: s.trimSec, startSec: s.startSec});
+    // 速度を変えたブロックは伸縮後のバッファで鳴らすので、使う範囲も伸縮後の秒に直す
+    const rate = narrationRate(s);
+    out.push({
+      key: `narr:${s.id}:${s.durSec}${rate !== 1 ? `:x${rate}` : ''}`,
+      url: `${mediaBase}/narration/${encodeURIComponent(s.id)}.wav`,
+      kind: 'narr',
+      id: s.id,
+      at: s.at,
+      gain: narrGain * dbToGain(s.gainDb ?? 0),
+      trimSec: s.trimSec !== undefined ? s.trimSec / rate : undefined,
+      startSec: s.startSec !== undefined ? s.startSec / rate : undefined,
+      ...(rate !== 1 ? {rate} : {}),
+    });
   }
   const sfxGain = dbToGain(narration.sfxGainDb ?? 0);
   for (const x of narration.sfx ?? []) {

@@ -10,7 +10,7 @@ import type {Clip, Cut, Narration, NarrationSegment, ReelData} from '@shared/sch
 import {cutDurationSec, cutRanges, type TelopGroup} from '@shared/timeline';
 import {colorFilter} from '@shared/color';
 import type {SfxLibrary} from '@shared/sfx';
-import {narrationDisplayName, narrationRange, trimNarrationHead, trimNarrationTail} from '@shared/narration';
+import {narrationDisplayName, narrationRange, narrationRate, trimNarrationHead, trimNarrationTail} from '@shared/narration';
 import {WaveformCanvas} from './WaveformCanvas';
 import {useDragReorder} from '../components/useDragReorder';
 import {caretRectFor, destIndexOf, insertIndexAt, type Caret, type Rect} from '../components/reorder';
@@ -360,7 +360,8 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     if (d.kind === 'narr-trim' && narration) {
       const seg = narration.segments[d.index];
       if (!seg) return;
-      const trimSec = trimNarrationTail(seg, d.baseSec + (e.clientX - d.startX) / pxPerSec);
+      // 画面上の移動は動画上の秒。元音声の秒に直すには速度を掛ける
+      const trimSec = trimNarrationTail(seg, d.baseSec + ((e.clientX - d.startX) / pxPerSec) * narrationRate(seg));
       const next = trimSec ?? d.fullSec;
       if (next === d.last) return;
       if (!d.pushed) { onStart(); d.pushed = true; }
@@ -371,7 +372,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
     if (d.kind === 'narr-head' && narration) {
       const seg = narration.segments[d.index];
       if (!seg) return;
-      const head = trimNarrationHead(seg, d.baseStart + (e.clientX - d.startX) / pxPerSec);
+      const head = trimNarrationHead(seg, d.baseStart + ((e.clientX - d.startX) / pxPerSec) * narrationRate(seg));
       const next = head.startSec ?? 0;
       if (next === d.last) return;
       if (!d.pushed) { onStart(); d.pushed = true; }

@@ -6,6 +6,7 @@ import type {Narration} from '@shared/schema';
 import type {SfxLibrary} from '@shared/sfx';
 import {AMBIENT_DEFAULT, driftExceeded, mixClipsOf, planPlayback, type MixClip} from './mixPreview';
 import type {PlaybackClock} from './playbackClock';
+import {timeStretch} from './timeStretch';
 
 export type MixPreviewStatus = {
   /** 読み込めたナレーション wav の数 / 鳴らす対象の数 */
@@ -62,7 +63,15 @@ export const useMixPreview = ({enabled, narration, mediaBase, lib, fps, playing,
         try {
           const res = await fetch(clip.url, {cache: 'no-store'});
           if (!res.ok) throw new Error(String(res.status));
-          const buf = await c.decodeAudioData(await res.arrayBuffer());
+          let buf = await c.decodeAudioData(await res.arrayBuffer());
+          if (clip.rate && clip.rate !== 1) {
+            // 音程を保ったまま伸縮したバッファに差し替える（本番の atempo と同じ聞こえ方に寄せる）
+            const src = Array.from({length: buf.numberOfChannels}, (_, i) => buf.getChannelData(i));
+            const stretched = timeStretch(src, buf.sampleRate, clip.rate);
+            const next = c.createBuffer(stretched.length, stretched[0].length, buf.sampleRate);
+            stretched.forEach((d, i) => next.copyToChannel(d, i));
+            buf = next;
+          }
           if (buffers.current.get(clip.key) === 'loading') buffers.current.set(clip.key, buf);
         } catch {
           if (buffers.current.get(clip.key) === 'loading') buffers.current.set(clip.key, 'missing');

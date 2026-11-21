@@ -12,10 +12,14 @@ export const NarrationSegmentSchema = z
     startSec: z.number().min(0).optional(), // 使う範囲の始まり（wav の頭から飛ばす秒）。省略＝0
     /** このブロックだけの音量の増減（dB）。0 が既定。声の音量ならし（speechnorm）の後に掛けるので差が残る */
     gainDb: z.number().min(-30).max(12).optional(),
+    /** このブロックの再生速度（倍）。1 が既定。音程は保つ（ffmpeg の atempo）。動画上の長さは「使う範囲 ÷ rate」 */
+    rate: z.number().min(0.5).max(2).optional(),
     text: z.string(),
     emotion_tag: EmotionValueSchema.optional(),
     /** マイクで録音した音声。text はメモ扱いで、TTS で作り直さない（声やモデルを変えても wav はそのまま） */
     recorded: z.boolean().optional(),
+    /** 外部の音声ファイルから読み込んだときの元のファイル名（表示用）。recorded と一緒に付く */
+    sourceFile: z.string().max(200).optional(),
   })
   .passthrough();
 export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;

@@ -3,7 +3,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import type {Cut, ReelData} from '@shared/schema';
 import {cutDurationSec} from '@shared/timeline';
 import {countChars, isPlaceholder} from '@shared/telop-text';
-import {applyReadingHints, narrationDisplayName, narrationRange, trimNarrationHead, trimNarrationTail, ttsReadingHints} from '@shared/narration';
+import {applyReadingHints, NARRATION_RATE_MAX, NARRATION_RATE_MIN, narrationDisplayName, narrationRange, narrationRate, trimNarrationHead, trimNarrationTail, ttsReadingHints} from '@shared/narration';
 import {SFX_ROLES, SFX_ROLE_LABEL, sfxCategories, type SfxLibrary} from '@shared/sfx';
 import {TrimBar} from '../components/TrimBar';
 import {CropBox} from '../components/CropBox';
@@ -713,7 +713,7 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
 
 // ───────────────────────── ナレーション ─────────────────────────
 export const NarrationInspector: React.FC<
-  Common & {index: number; onPlay: (id: string, text: string, needsTts: boolean, trimSec?: number, startSec?: number) => void; playing: string | null; onRegenerate: (id: string) => void; onSaveToLibrary: () => void; ttsBlockedBy: string | null}
+  Common & {index: number; onPlay: (id: string, text: string, needsTts: boolean, trimSec?: number, startSec?: number, rate?: number) => void; playing: string | null; onRegenerate: (id: string) => void; onSaveToLibrary: () => void; ttsBlockedBy: string | null}
 > = ({m, index, onPlay, playing, onRegenerate, onSaveToLibrary, ttsBlockedBy}) => {
   const {narration, patchSeg, removeSeg, pushHistory, setNarr, estimateSec, ranges} = m;
   const [draft, setDraft] = useState<string | null>(null);
@@ -740,6 +740,13 @@ export const NarrationInspector: React.FC<
   const trimmed = headSec > 0 || endSec < fullSec;
   /** スライダーを動かしている間は履歴を積まない（つかんだ時に 1 手だけ積む） */
   const setGainLive = (db: number) => setNarr({...narration, segments: narration.segments.map((x, k) => (k === index ? {...x, gainDb: db || undefined} : x))});
+  const rate = narrationRate(seg);
+  /** 速度。1 倍は書かない（ファイルを汚さない）。スライダー中は履歴を積まない */
+  const clampRate = (v: number) => Math.round(Math.max(NARRATION_RATE_MIN, Math.min(NARRATION_RATE_MAX, v)) * 100) / 100;
+  const setRateLive = (v: number) => {
+    const r = clampRate(v);
+    setNarr({...narration, segments: narration.segments.map((x, k) => (k === index ? {...x, rate: r === 1 ? undefined : r} : x))});
+  };
   const cutAt = ranges.findIndex((r) => seg.at >= r.startSec && seg.at < r.endSec);
   const text = draft ?? seg.text;
   const commitText = () => {
@@ -755,10 +762,10 @@ export const NarrationInspector: React.FC<
           {cutAt >= 0 ? <span className="hint"> ／ カット {cutAt + 1} の上</span> : null}
         </>
       }
-      right={<span className={`pill${needsTts ? ' warn' : ''}`}>{recorded ? 'マイク録音' : needsTts ? '要再生成' : '音声あり'}</span>}
+      right={<span className={`pill${needsTts ? ' warn' : ''}`}>{recorded ? (seg.sourceFile ? '読み込み音声' : 'マイク録音') : needsTts ? '要再生成' : '音声あり'}</span>}
     >
       <label style={{width: '100%'}}>
-        {recorded ? 'メモ（録音した内容。変えても音声はそのまま）' : '本文（1 ブロック 1 文。変えると音声は作り直しになります）'}
+        {recorded ? `メモ（${seg.sourceFile ? `読み込んだ音声「${seg.sourceFile}」の内容` : '録音した内容'}。変えても音声はそのまま）` : '本文（1 ブロック 1 文。変えると音声は作り直しになります）'}
         <textarea value={text} onChange={(e) => setDraft(e.target.value.replace(/[\r\n]+/g, ' '))} onBlur={commitText} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), (e.target as HTMLTextAreaElement).blur())} style={{minHeight: 64}} />
       </label>
       {!recorded && <NarrationEmotion segment={seg} options={emotionOptions} disabled={!!ttsBlockedBy}
@@ -807,7 +814,7 @@ export const NarrationInspector: React.FC<
           終わり（秒）
           <input type="number" min={headSec} max={fullSec} step={0.05} value={fullSec ? endSec : ''} disabled={needsTts} onChange={(e) => setTrim(Number(e.target.value))} style={{width: 82}} aria-label="ナレーションの終わりの位置" />
         </label>
-        <span className="hint">使う {usedSec.toFixed(2)} 秒 ／ 元音声 {fullSec.toFixed(2)} 秒</span>
+        <span className="hint">使う {usedSec.toFixed(2)} 秒{rate !== 1 ? `（×${rate} で ${(usedSec / rate).toFixed(2)} 秒）` : ''} ／ 元音声 {fullSec.toFixed(2)} 秒</span>
         <button className="small" onClick={() => patchSeg(index, {...trimNarrationHead({...seg, trimSec: undefined}, 0), trimSec: undefined})} disabled={needsTts || !trimmed}>全体を使う</button>
       </div>
       {fullSec > 0 && !needsTts && m.s?.mediaBase && <div className="narr-wave" style={{'--head': `${(headSec / fullSec) * 100}%`, '--end': `${(endSec / fullSec) * 100}%`} as React.CSSProperties}>
@@ -832,7 +839,18 @@ export const NarrationInspector: React.FC<
         <button className="small" onClick={() => patchSeg(index, {gainDb: undefined})} disabled={!seg.gainDb}>0 dB に戻す</button>
       </div>
       <div className="row">
-        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec, seg.startSec)} disabled={playing === seg.id || (!recorded && !seg.text.trim()) || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
+        <label title="このナレーションだけの再生速度。声の高さは変わりません。動画の上で鳴る長さは「使う秒 ÷ 速度」になります" style={{flex: 1}}>
+          速度
+          <span className="btns" style={{width: '100%'}}>
+            <input type="range" aria-label="このナレーションの速度" min={NARRATION_RATE_MIN} max={NARRATION_RATE_MAX} step={0.05} value={rate} disabled={needsTts} onPointerDown={pushHistory} onKeyDown={pushHistory} onChange={(e) => setRateLive(Number(e.target.value))} style={{flex: 1}} />
+            <input type="number" aria-label="このナレーションの速度（倍）" min={NARRATION_RATE_MIN} max={NARRATION_RATE_MAX} step={0.05} value={rate} disabled={needsTts} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) { const r = clampRate(v); patchSeg(index, {rate: r === 1 ? undefined : r}); } }} style={{width: 62}} />
+            <span className="hint">倍</span>
+          </span>
+        </label>
+        <button className="small" onClick={() => patchSeg(index, {rate: undefined})} disabled={rate === 1}>1 倍に戻す</button>
+      </div>
+      <div className="row">
+        <button className="small" onClick={() => onPlay(seg.id, seg.text, needsTts, seg.trimSec, seg.startSec, rate)} disabled={playing === seg.id || (!recorded && !seg.text.trim()) || needsTts || !!ttsBlockedBy} title={needsTts ? '選んだ感情で音声を生成してから試聴してください' : '使用する長さだけ試聴します'}>
           {playing === seg.id ? '再生中…' : '▶ 聴く'}
         </button>
         {!recorded && <button className="primary small" onClick={() => onRegenerate(seg.id)} disabled={!!ttsBlockedBy || !seg.text.trim() || !emotionOptions.ready} title={ttsBlockedBy ?? '変更を保存し、選択した感情でこの音声だけを生成します'}>

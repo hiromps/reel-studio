@@ -90,6 +90,15 @@ if (sfxList.length) console.log(`■ 効果音 ${sfxList.length} 個（全体 ${
 
 if (!Array.isArray(segs) || (!segs.length && !sfxList.length)) { console.error('ナレーションと効果音がありません'); process.exit(1); }
 
+// ブロックの再生速度（narration.json の segments[].rate）。shared/narration.ts の narrationRate と同じ範囲（0.5〜2 倍）
+const rateOf = (s) => (typeof s.rate === 'number' && Number.isFinite(s.rate) && s.rate >= 0.5 && s.rate <= 2 ? s.rate : 1);
+// 動画の上で鳴る長さ（使う範囲 ÷ 速度）
+const playedSec = (s, fallback = 0) => {
+  const start = typeof s.startSec === 'number' && s.startSec > 0 ? s.startSec : 0;
+  const end = typeof s.trimSec === 'number' && s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || fallback);
+  return Math.max(0, end - start) / rateOf(s);
+};
+
 const q = (p) => `"${path.resolve(p).replace(/\\/g, '/')}"`;
 // 実行シェルはOSに合わせる（Windows=cmd.exe / mac・Linux=sh）
 const run = (cmd) => execSync(cmd, { shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh', maxBuffer: 1 << 26 }).toString();
@@ -123,7 +132,10 @@ if (segs.length) {
     const start = typeof s.startSec === 'number' && s.startSec > 0 ? s.startSec : 0;
     const end = typeof s.trimSec === 'number' && s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : 0;
     const trim = start > 0 || end > 0 ? `,atrim=start=${start}${end > 0 ? `:end=${end}` : ''},asetpts=N/SR/TB` : '';
-    return `[${i}:a]aformat=sample_fmts=fltp:channel_layouts=stereo${trim},adelay=${ms}|${ms}[d${i}]`;
+    // 速度は切り出した後に掛ける（atempo は音程を保ったまま速さだけ変える）
+    const rate = rateOf(s);
+    const tempo = rate !== 1 ? `,atempo=${rate}` : '';
+    return `[${i}:a]aformat=sample_fmts=fltp:channel_layouts=stereo${trim}${tempo},adelay=${ms}|${ms}[d${i}]`;
   });
   const mixChain = `${segs.map((_, i) => `[d${i}]`).join('')}amix=inputs=${segs.length}:duration=longest:normalize=0[narrRaw]`;
   const rawTimeline = path.join(narrDir, '_narration_raw.wav');
@@ -154,12 +166,9 @@ const sfxChains = sfxList.map((s, i) => {
 // ならした後の帯域に「そのブロックが鳴っている間だけ」掛ける（時刻で切り替わる volume）
 const segGain = segs
   .filter((s) => typeof s.gainDb === 'number' && s.gainDb !== 0)
-  .map((s) => {
-    const start = typeof s.startSec === 'number' && s.startSec > 0 ? s.startSec : 0;
-    const end = typeof s.trimSec === 'number' && s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || 0);
-    return `if(between(t,${s.at.toFixed(3)},${(s.at + Math.max(0, end - start)).toFixed(3)}),${Math.pow(10, s.gainDb / 20).toFixed(4)},1)`;
-  });
+  .map((s) => `if(between(t,${s.at.toFixed(3)},${(s.at + playedSec(s)).toFixed(3)}),${Math.pow(10, s.gainDb / 20).toFixed(4)},1)`);
 const segGainFilter = segGain.length ? `,volume='${segGain.join('*')}':eval=frame` : '';
+if (segs.some((s) => rateOf(s) !== 1)) console.log(`■ ブロックごとの速度: ${segs.filter((s) => rateOf(s) !== 1).map((s) => `${s.id} ×${rateOf(s)}`).join(' / ')}`);
 if (segGain.length) console.log(`■ ブロックごとの音量: ${segs.filter((s) => s.gainDb).map((s) => `${s.id} ${s.gainDb > 0 ? '+' : ''}${s.gainDb}dB`).join(' / ')}`);
 
 const chains = [
@@ -238,7 +247,7 @@ for (const s of segs) {
     const g = capture(`ffmpeg -hide_banner -nostats -ss ${prevEnd.toFixed(2)} -t ${Math.min(gap, 0.5).toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
     console.log(`   谷 ${prevEnd.toFixed(2)}-${s.at.toFixed(2)}s: ${(g.match(/mean_volume: .*/) || ['?'])[0]}`);
   }
-  const usedSec = Math.max(0.01, (s.trimSec > 0 ? Math.min(s.trimSec, s.durSec || s.trimSec) : (s.durSec || 1)) - (s.startSec > 0 ? s.startSec : 0));
+  const usedSec = Math.max(0.01, playedSec(s, 1));
   const v = capture(`ffmpeg -hide_banner -nostats -ss ${s.at.toFixed(2)} -t ${usedSec.toFixed(2)} -i ${q(dstVideo)} -af volumedetect -f null -`);
   const mean = (v.match(/mean_volume: .*/) || ['?'])[0];
   const max = (v.match(/max_volume: .*/) || ['?'])[0];

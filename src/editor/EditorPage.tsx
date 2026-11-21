@@ -1,6 +1,7 @@
 // 編集画面（Timeline タブ）：素材ビン｜プレビュー｜インスペクタ の 3 列と、下の 4 段タイムライン。
 // cuts.json と narration.json をここ 1 か所で編集する（以前は Materials と Timeline と Render に分かれていた）。
 import React, {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {encodeWav, RECORDING_MAX_BYTES} from '@shared/wav';
 import {api} from '../api';
 import {useStudio} from '../state/store';
 import {Preview, type PreviewHandle} from '../components/Preview';
@@ -107,6 +108,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [micOpen, setMicOpen] = useState(false);
+  const [importingAudio, setImportingAudio] = useState(false);
+  const audioFileInput = useRef<HTMLInputElement>(null);
   /** 効果音を選ぶ画面を開いているときの追加位置（秒）。null＝閉じている */
   const [sfxPickAt, setSfxPickAt] = useState<number | null>(null);
   const [telopNarrationOpen, setTelopNarrationOpen] = useState(false);
@@ -345,7 +348,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     await api.post(`/api/narration-library/${encodeURIComponent(entry.id)}/use`, {project: s.active, segmentId: id});
     const base: Narration = narration ?? {voice: entry.voice, voiceTitle: entry.voiceTitle, speed: entry.speed, latency: entry.latency, segments: []};
     const index = base.segments.length;
-    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec, startSec: entry.startSec, gainDb: entry.gainDb}]});
+    m.commitNarr({...base, segments: [...base.segments, {id, label: entry.title, at: round3(getFrame() / m.fps), text: entry.text, durSec: entry.durSec, trimSec: entry.trimSec, startSec: entry.startSec, gainDb: entry.gainDb, rate: entry.rate}]});
     setSelection({kind: 'narr', index});
     setMultiSelection([]);
     s.toast(`「${entry.title}」を再生位置に追加しました`, 'ok');
@@ -363,6 +366,47 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     setSelection({kind: 'narr', index});
     setMultiSelection([]);
     s.toast('録音を再生位置に追加しました。保存（Ctrl+S）してください', 'ok');
+  };
+
+  /**
+   * 外部の音声ファイルをナレーションとして読み込む。ブラウザでデコードして 16bit WAV にし、
+   * マイク録音と同じ置き場（narration/ext_<id>.wav）へ送る。TTS の対象外（recorded）として扱う。
+   * 複数選んだときは再生位置から順に、前のブロックの終わりへ続けて並べる
+   */
+  const importAudioFiles = async (files: File[]) => {
+    if (!s.active || !files.length) return;
+    setImportingAudio(true);
+    const ctx = new AudioContext();
+    let base: Narration = narration ?? {voice: '', segments: []};
+    let at = round3(getFrame() / m.fps);
+    const added: string[] = [];
+    try {
+      for (const file of files) {
+        try {
+          const decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+          const channels = Array.from({length: decoded.numberOfChannels}, (_, i) => decoded.getChannelData(i));
+          const wav = encodeWav(channels, decoded.sampleRate);
+          if (wav.byteLength > RECORDING_MAX_BYTES) throw new Error('長すぎます（約 4 分半まで）');
+          const id = `ext_${crypto.randomUUID().replace(/-/g, '')}`;
+          const r = await api.upload<{durSec: number}>(`/api/projects/${encodeURIComponent(s.active)}/narration-recording/${id}`, new File([wav], `${id}.wav`, {type: 'audio/wav'}));
+          const durSec = r.data.durSec || round3(decoded.duration);
+          const label = [...file.name.replace(/\.[^.]+$/, '')].slice(0, 40).join('');
+          base = {...base, segments: [...base.segments, {id, label, at, text: '', durSec, recorded: true, sourceFile: file.name.slice(0, 200)}]};
+          at = round3(at + durSec);
+          added.push(file.name);
+        } catch (e) {
+          s.toast(`「${file.name}」を読み込めませんでした: ${(e as Error).message}`, 'error');
+        }
+      }
+    } finally {
+      void ctx.close().catch(() => {});
+      setImportingAudio(false);
+    }
+    if (!added.length) return;
+    m.commitNarr(base);
+    setSelection({kind: 'narr', index: base.segments.length - 1});
+    setMultiSelection([]);
+    s.toast(`${added.length} 個の音声を再生位置に追加しました。保存（Ctrl+S）してください`, 'ok');
   };
 
   // ---- ショートカット ----
@@ -422,11 +466,14 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     audio.current = null;
     setPreviewingId(null);
   };
-  const playNarr = async (id: string, text: string, needsTts: boolean, trimSec?: number, startSec?: number) => {
+  const playNarr = async (id: string, text: string, needsTts: boolean, trimSec?: number, startSec?: number, rate = 1) => {
     stopAudio();
     if (!needsTts && s.mediaBase) {
       // #t= で頭を飛ばした位置から鳴らす（使う範囲の始まり）
       const a = new Audio(`${s.mediaBase}/narration/${encodeURIComponent(id)}.wav?t=${Date.now()}${startSec && startSec > 0 ? `#t=${startSec}` : ''}`);
+      // 速度は音程を保って変える（本番の atempo と同じ聞こえ方）
+      a.preservesPitch = true;
+      a.playbackRate = rate;
       audio.current = a;
       setPreviewingId(id);
       a.onended = () => setPreviewingId(null);
@@ -616,6 +663,12 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
         </button>
         <button className="small" onClick={() => setLibraryOpen(true)} title="保存したナレーション音声を聴いて、再生位置へ追加する">音声ライブラリ</button>
         {!s.isCloud && <button className="small" onClick={() => {preview.current?.pause(); setMicOpen(true);}} title="PC につないだマイクで自分の声を録り、再生位置へ追加する">マイク録音</button>}
+        {!s.isCloud && <>
+          <button className="small" disabled={importingAudio} onClick={() => {preview.current?.pause(); audioFileInput.current?.click();}} title="手元の音声ファイル（mp3・m4a・wav など）をナレーションとして再生位置へ追加する。複数選ぶと順に続けて並べます">
+            {importingAudio ? '読み込み中…' : '音声ファイル'}
+          </button>
+          <input ref={audioFileInput} type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac" multiple hidden onChange={(e) => {const files = [...(e.target.files ?? [])]; e.target.value = ''; void importAudioFiles(files);}} />
+        </>}
         <button className="small" disabled={!cuts || ttsBusy} onClick={() => {preview.current?.pause(); setTelopNarrationOpen(true);}} title="テロップの文言をそのまま取り込み、Fish Audio でナレーション音声を作ります">テロップを音声化</button>
         <span className="sep" />
         <label className="sb-inline" title="ナレーション・効果音をドラッグしたときカット境界に吸着する（Alt を押しながらで一時的に無効）">

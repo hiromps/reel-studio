@@ -31,16 +31,27 @@ export const narrationRange = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 
 const MIN_USED_SEC = 0.1;
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 
+/** 再生速度の範囲（ffmpeg の atempo 1 段で扱える 0.5〜2 倍） */
+export const NARRATION_RATE_MIN = 0.5;
+export const NARRATION_RATE_MAX = 2;
+/** ブロックの再生速度。未指定・範囲外は 1 */
+export const narrationRate = (s: Pick<NarrationSegment, 'rate'>): number => {
+  const r = s.rate;
+  return typeof r === 'number' && Number.isFinite(r) && r >= NARRATION_RATE_MIN && r <= NARRATION_RATE_MAX ? r : 1;
+};
+
 /**
  * 頭のカット位置を変える。**鳴る中身の時刻は動かさない**（動画編集ソフトの頭トリムと同じ）ので、
- * 飛ばした分だけ配置秒 at も後ろへずれる。at が 0 未満になる手前、終わりの 0.1 秒手前で止める
+ * 飛ばした分だけ配置秒 at も後ろへずれる（速度を変えていれば動画上の秒に直してずらす）。
+ * at が 0 未満になる手前、終わりの 0.1 秒手前で止める
  */
-export const trimNarrationHead = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec' | 'at'>, nextStart: number): {startSec: number | undefined; at: number} => {
+export const trimNarrationHead = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec' | 'at' | 'rate'>, nextStart: number): {startSec: number | undefined; at: number} => {
   const {start, end} = narrationRange(s);
-  const min = Math.max(0, start - s.at);
+  const rate = narrationRate(s);
+  const min = Math.max(0, start - s.at * rate);
   const max = Math.max(min, end - Math.min(MIN_USED_SEC, end));
   const next = r3(Math.min(max, Math.max(min, Number.isFinite(nextStart) ? nextStart : start)));
-  return {startSec: next > 0 ? next : undefined, at: r3(Math.max(0, s.at + next - start))};
+  return {startSec: next > 0 ? next : undefined, at: r3(Math.max(0, s.at + (next - start) / rate))};
 };
 
 /** 終わりのカット位置（wav の頭からの秒）を変える。全長まで戻したら trimSec は外す */
@@ -51,10 +62,10 @@ export const trimNarrationTail = (s: Pick<NarrationSegment, 'durSec' | 'trimSec'
   return next >= full ? undefined : next;
 };
 
-/** 元音声を残したまま、実際に使う長さ（頭を飛ばした分も引く）。 */
-export const narrationUsedSec = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec'>, fallback = 0): number => {
+/** 元音声を残したまま、動画の上で鳴る長さ（頭を飛ばした分を引き、再生速度で割る）。 */
+export const narrationUsedSec = (s: Pick<NarrationSegment, 'durSec' | 'trimSec' | 'startSec' | 'rate'>, fallback = 0): number => {
   const {start, end} = narrationRange(s, fallback);
-  return end - start;
+  return (end - start) / narrationRate(s);
 };
 
 export const narrationDisplayName = (s: Pick<NarrationSegment, 'id' | 'label'>): string => s.label?.trim() || s.id;

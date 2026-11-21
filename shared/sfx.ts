@@ -8,6 +8,7 @@ import type {ReelData} from './schema/cuts';
 import type {Sfx} from './schema/narration';
 import {cutRanges, telopGroupsOf, totalSec} from './timeline';
 import {isPlaceholder} from './telop-text';
+import {narrationUsedSec} from './narration';
 
 /**
  * 効果音の役割。ここに無い場所には自動で置かない。
@@ -220,7 +221,7 @@ export type SfxIssue = {severity: 'E' | 'W'; code: string; message: string};
 /** 置き方の点検。音源の有無・尺はみ出し・団子・過剰な数・ナレーションとの被り */
 export const checkSfx = (
   sfx: readonly Sfx[],
-  opt: {videoSec?: number; lib?: SfxLibrary; minGapSec?: number; narration?: readonly {id: string; at: number; durSec?: number}[]} = {},
+  opt: {videoSec?: number; lib?: SfxLibrary; minGapSec?: number; narration?: readonly {id: string; at: number; durSec?: number; trimSec?: number; startSec?: number; rate?: number}[]} = {},
 ): SfxIssue[] => {
   const out: SfxIssue[] = [];
   const minGap = opt.minGapSec ?? SFX_DEFAULTS.minGapSec;
@@ -243,7 +244,7 @@ export const checkSfx = (
     const end = sfxEndSec(s, opt.lib);
     for (const n of opt.narration ?? []) {
       if (!n.durSec) continue;
-      const ov = Math.min(end, n.at + n.durSec) - Math.max(s.at, n.at);
+      const ov = Math.min(end, n.at + narrationUsedSec(n)) - Math.max(s.at, n.at);
       if (ov > 0.15) out.push({severity: 'W', code: 'SFX_OVER_NARRATION', message: `${s.id} がナレーション ${n.id} に ${ov.toFixed(2)} 秒かぶります（声が埋もれるなら gainDb を下げるか at をずらす）`});
     }
   }
