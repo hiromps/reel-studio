@@ -2438,6 +2438,53 @@ a.btn-like:hover {
     0 2px 6px rgba(15, 20, 30, 0.08);
   line-height: 0;
 }
+/* プレビューに重ねるガイド（セーフゾーンの枠と 3 分割）。操作は下の Player に通す */
+.ed-stage {
+  position: relative;
+}
+.preview-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  line-height: 1;
+}
+.preview-guides > * {
+  position: absolute;
+}
+.pg-shade {
+  background: rgba(0, 0, 0, 0.32);
+}
+.pg-line {
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.25);
+}
+.pg-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.pg-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.pg-center {
+  background: rgba(255, 90, 90, 0.7);
+}
+.pg-safe {
+  border: 1.5px dashed #35e0c2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.pg-label {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #35e0c2;
+  font-size: 10px;
+}
 /* キャンバス左下の切り替え（合成音・ループ・軽量）。デザインの「22% / Fit」の位置 */
 .canvas-pill {
   position: absolute;

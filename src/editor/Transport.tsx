@@ -28,6 +28,9 @@ type OptionsProps = {
   mix: MixProps;
   onLoop: (v: boolean) => void;
   onLight: (v: boolean) => void;
+  /** セーフゾーンの枠とグリッドをプレビューに重ねる（書き出しには入らない） */
+  guides: boolean;
+  onGuides: (v: boolean) => void;
 };
 
 export const fmtTime = (frame: number, fps: number): string => (frame / fps).toFixed(2);
@@ -105,7 +108,7 @@ export const Transport: React.FC<TransportProps> = ({playing, frame: fallbackFra
   );
 };
 
-export const PreviewOptions: React.FC<OptionsProps> = ({loop, light, mix, onLoop, onLight}) => {
+export const PreviewOptions: React.FC<OptionsProps> = ({loop, light, mix, onLoop, onLight, guides, onGuides}) => {
   const ml = mixLabel(mix);
   return (
     <div className="canvas-pill">
@@ -123,6 +126,11 @@ export const PreviewOptions: React.FC<OptionsProps> = ({loop, light, mix, onLoop
       <label className="sb-inline" title="Materials の「軽量プレビュー生成」で作った 540x960 を使う（レンダーには影響しない）">
         <input type="checkbox" checked={light} onChange={(e) => onLight(e.target.checked)} />
         <span>軽量</span>
+      </label>
+      <span className="canvas-pill-sep" />
+      <label className="sb-inline" title="セーフゾーンの枠（上 15%・下 35% は Instagram の表示に隠れる）と 3 分割のグリッドを重ねる。書き出しには入りません">
+        <input type="checkbox" checked={guides} onChange={(e) => onGuides(e.target.checked)} />
+        <span>ガイド</span>
       </label>
     </div>
   );

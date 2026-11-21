@@ -40,7 +40,7 @@ export const TelopStyleControls: React.FC<Props> = ({cuts, onChange}) => {
           <input type="range" min={40} max={110} step={1} value={look.size} onChange={(e) => set({size: Number(e.target.value)})} />
         </label>
         {horizontalOn && (
-          <label title="横書きで 1 行に入れる最大文字数。超えると読点（、）の後ろで 2 行に割ります。文言に改行を入れればその位置で割ります。0 = 割らない">
+          <label title="横書きで 1 行に入れる最大文字数。0 = 文字数では割らない（既定）。上げると、その文字数を超えた行を読点（、）の後ろで 2 行に割ります。文言に改行を入れればいつでもその位置で割れます">
             1 行の文字数 {look.lineChars || '（割らない）'}
             <input type="range" min={0} max={20} step={1} value={look.lineChars} onChange={(e) => set({lineChars: Number(e.target.value)})} />
           </label>

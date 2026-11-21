@@ -208,13 +208,15 @@ export const TELOP_STYLE_PRESETS: Record<ThemeName, ResolvedTelopStyle> = {
   bold: LEGACY_STYLE,
   human: LEGACY_STYLE,
   stylish: LEGACY_STYLE,
-  // azu の 101 本の画像解析：画面高さの 44%（39〜48%）に 2 行・中央揃え、1 行 8〜12 字。
+  // azu の 101 本の画像解析：画面高さの 44%（39〜48%）に中央揃え（元は 2 行・1 行 8〜12 字）。
   // 元は白文字＋黒フチだが、黒フチは素人っぽく見えるので影は同梱の明朝と同じぼかし（2026-11-08 ユーザー指定）
   azu: {
     layout: 'horizontal',
     y: 0.44,
     size: 64,
-    lineChars: 12,
+    // 文字数での自動改行はしない（2026-11-22 ユーザー指定。大きさをテロップごとに変えられるので、割るかどうかは改行で決める）。
+    // 以前は 12 文字で 2 行に割っていた。割りたい案件は「1 行の文字数」を上げれば従来どおり
+    lineChars: 0,
     family: 'gothic',
     outline: 'soft',
     outlineWidth: 14,

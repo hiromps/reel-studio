@@ -18,6 +18,7 @@ import {calcTotalFrames} from '@shared/timeline';
 import {bgAtTimelineSec, bgTimelineSec, defaultBgOf} from '@shared/thumbnail';
 import {Bin} from './Bin';
 import {PreviewOptions, Transport} from './Transport';
+import {PreviewGuides} from './PreviewGuides';
 import {Timeline, type TimelineHandle, type TrackVisibility} from './Timeline';
 import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
 import {ValidationPanel} from './ValidationPanel';
@@ -50,8 +51,8 @@ import {createPlaybackClock} from './playbackClock';
 const selectionLabel = (sel: NonNullable<Selection>): string =>
   sel.kind === 'thumbnail' ? 'サムネイル' : sel.kind === 'cut' ? `カット ${sel.index + 1}` : sel.kind === 'telop' ? `テロップ ${sel.group + 1}` : sel.kind === 'narr' ? `ナレーション ${sel.index + 1}` : `効果音 ${sel.index + 1}`;
 
-type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean};
-const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true};
+type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean; guides: boolean};
+const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true, guides: false};
 type LayoutPrefs = {bin: number; inspector: number; timeline: number; previewMobile: number; sheet: number};
 const DEFAULT_LAYOUT: LayoutPrefs = {bin: 236, inspector: 380, timeline: 270, previewMobile: 46, sheet: 72};
 
@@ -720,6 +721,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             <>
               <div className="ed-stage">
                 <Preview ref={preview} cuts={debouncedCuts ?? cuts} mediaBase={s.mediaBase} width={previewW} loop={loop} controls={false} onFrame={onPreviewFrame} onPlayState={onPreviewPlayState} />
+                {prefsSafe.guides && <PreviewGuides />}
               </div>
               <PreviewOptions
                 loop={loop}
@@ -727,6 +729,8 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
                 mix={{enabled: prefsSafe.mixPreview, status: mixStatus, pending: pendingNarration(narration), hasNarration: !!narration, onToggle: (v) => setPrefs({...prefsSafe, mixPreview: v})}}
                 onLoop={setLoop}
                 onLight={s.setLight}
+                guides={prefsSafe.guides}
+                onGuides={(v) => setPrefs({...prefsSafe, guides: v})}
               />
             </>
           ) : (
