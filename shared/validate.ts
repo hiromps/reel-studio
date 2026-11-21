@@ -236,7 +236,8 @@ export function validateCuts(input: unknown, ctx: ValidateContext = {}): Validat
         placeholders++;
         E({code: 'TELOP_PLACEHOLDER', cutId: id, cutIndex: i, message: `未記入のプレースホルダ: ${t}`});
       } else if (t.trim().length > 0) {
-        const len = countChars(t);
+        // 改行で分けたテロップは 1 行ずつ数える（行ごとに画面へ収める）
+        const len = Math.max(0, ...t.split(/\r?\n/).map((line) => countChars(line.trim())));
         if (len > telopRule.maxChars + 5) E({code: 'TELOP_TOO_LONG', cutId: id, cutIndex: i, message: `${len} 文字（${telopRule.maxChars} 文字以内。自動縮小の限界も超える）: ${t}`});
         else if (len > telopRule.maxChars) W({code: 'TELOP_OVER_MAX_CHARS', cutId: id, cutIndex: i, message: `${len} 文字（目安 ${telopRule.maxChars} 文字以内。自動縮小される）: ${t}`});
         if (hasTrailingPeriod(t)) E({code: 'TELOP_PERIOD', cutId: id, cutIndex: i, message: `末尾に句点: ${t}`});

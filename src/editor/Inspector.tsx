@@ -11,7 +11,7 @@ import {ZoomControls} from '../components/ZoomControls';
 import {ColorControls} from '../components/ColorControls';
 import {colorFilter, DEFAULT_COLOR, isDefaultColor} from '@shared/color';
 import {applyZoomSettings} from '@shared/zoom';
-import {DEFAULT_CROP, isDefaultCrop} from '@shared/schema/cuts';
+import {DEFAULT_CROP, isDefaultCrop, TELOP_SIZE_MAX, TELOP_SIZE_MIN} from '@shared/schema/cuts';
 import {fallbackDuration, fixedTrimRange, trimZoomView, type TrimRange} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
 import {IssueList} from '../components/IssueList';
@@ -32,6 +32,37 @@ const forcedLayout = (cuts: ReelData | null | undefined): 'vertical' | 'horizont
   return layout === 'auto' ? null : layout;
 };
 const FORCED_TITLE = '動画全体の「テロップの見た目」で全カットの向きを決めています。カットごとに変えるなら、そちらの向きを「カットごと」にしてください';
+
+/**
+ * このテロップだけの大きさ（main.size）。未指定は動画全体の大きさ（telopStyle.size）に従う。
+ * つかんだ時に 1 手だけ履歴を積み、動かしている間は積まない。画面に入りきらない大きさはレンダー側で自動で縮む
+ */
+const TelopSizeControl: React.FC<{cuts: ReelData | null | undefined; value: number | undefined; onStart: () => void; onChange: (size: number | undefined) => void}> = ({cuts, value, onStart, onChange}) => {
+  const base = resolveTelopStyle(cuts?.theme, cuts?.telopStyle).size;
+  const current = value ?? base;
+  const set = (v: number) => {
+    if (!Number.isFinite(v)) return;
+    const r = Math.round(Math.max(TELOP_SIZE_MIN, Math.min(TELOP_SIZE_MAX, v)));
+    onChange(r === base ? undefined : r);
+  };
+  return (
+    <div className="row">
+      <label title={`このテロップだけの文字の大きさ（px）。未指定は動画全体の ${base}px。長い文言は画面に収まるよう自動で縮みます`} style={{flex: 1}}>
+        大きさ
+        <span className="btns" style={{width: '100%'}}>
+          <input type="range" aria-label="このテロップの大きさ" min={TELOP_SIZE_MIN} max={TELOP_SIZE_MAX} step={1} value={current} onPointerDown={onStart} onKeyDown={onStart} onChange={(e) => set(Number(e.target.value))} style={{flex: 1}} />
+          <input type="number" aria-label="このテロップの大きさ（px）" min={TELOP_SIZE_MIN} max={TELOP_SIZE_MAX} step={2} value={current} onFocus={onStart} onChange={(e) => set(Number(e.target.value))} style={{width: 62}} />
+          <span className="hint">px</span>
+        </span>
+      </label>
+      <button className="small" onClick={() => { onStart(); onChange(undefined); }} disabled={value === undefined} title={`動画全体の大きさ（${base}px）に戻す`}>全体に合わせる</button>
+    </div>
+  );
+};
+
+/** 文字数の目安は 1 行ずつ。改行したテロップはいちばん長い行で数える（タグの括弧・空白は数えない） */
+const longestTelopLine = (text: string): string =>
+  text.split(/\r?\n/).map((l) => l.replace(/[【】\s]/g, '')).reduce((a, b) => ([...b].length > [...a].length ? b : a), '');
 
 const telopMaxChars = (cuts: ReelData | null | undefined): number => {
   const look = resolveTelopStyle(cuts?.theme, cuts?.telopStyle);
@@ -171,7 +202,7 @@ export const ReelInspector: React.FC<{m: EditorModel}> = ({m}) => {
 // ───────────────────────── カット ─────────────────────────
 export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolean; onSplit: (i: number) => void}> = ({m, index, onSeekCut, focusTelop, onSplit}) => {
   const {cuts, catalog, s, clipOf, slotOf, groupOfCut, patchCut, patchSlot, moveCut, duplicateCut, removeCut, replaceClip, pushHistory, setCuts, subsFrom} = m;
-  const telopRef = useRef<HTMLInputElement>(null);
+  const telopRef = useRef<HTMLTextAreaElement>(null);
   const quickVideoRef = useRef<HTMLVideoElement>(null);
   const [quickCandidate, setQuickCandidate] = useState<{index: number; src: string; range: TrimRange} | null>(null);
   const [quickPendingSave, setQuickPendingSave] = useState<{index: number; src: string; range: TrimRange} | null>(null);
@@ -476,20 +507,23 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
               <label className="grow">
                 文言{gi !== undefined && m.groups[gi].cutIndices.length > 1 ? <span className="hint">（このカットだけ変えると別グループになります。まとめて直すならテロップ段のブロックをクリック）</span> : null}
                 <span className="btns" style={{width: '100%'}}>
-                  <input
+                  <textarea
                     ref={telopRef}
                     className={`telop${isPlaceholder(text) ? ' placeholder' : ''}`}
                     style={{flex: 1}}
+                    rows={Math.max(2, text.split('\n').length)}
                     value={text}
-                    placeholder="（無し）"
+                    placeholder="（無し）Enter で改行"
+                    aria-label="テロップの文言（Enter で改行）"
                     onChange={(e) => patchCut(index, (x) => ({...x, main: {...(x.main ?? {}), text: e.target.value}}), {history: false})}
                     onFocus={pushHistory}
                   />
-                  <Counter text={text.replace(/[【】\s]/g, '')} max={telopMaxChars(cuts)} />
+                  <Counter text={longestTelopLine(text)} max={telopMaxChars(cuts)} />
                 </span>
               </label>
             </div>
             {c.main && <TelopMarkButtons inputRef={telopRef} text={text} onChange={(next) => patchCut(index, (x) => ({...x, main: {...(x.main ?? {}), text: next}}))} />}
+            {c.main && <TelopSizeControl cuts={cuts} value={c.main.size} onStart={pushHistory} onChange={(size) => patchCut(index, (x) => ({...x, main: {...(x.main ?? {text: ''}), size}}), {history: false})} />}
             {c.main && /〖/.test(text) && <MarkOpacitySlider cuts={cuts!} onChange={(telopStyle) => m.patchReel({telopStyle})} />}
             <div className="row">
               {c.main && (
@@ -618,7 +652,7 @@ export const CutInspector: React.FC<Common & {index: number; focusTelop?: boolea
 // ───────────────────────── テロップグループ ─────────────────────────
 export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, onSeekCut}) => {
   const {cuts, groups, setGroupText, setGroupOrientation, patchCut, pushHistory, setCuts} = m;
-  const groupTelopRef = useRef<HTMLInputElement>(null);
+  const groupTelopRef = useRef<HTMLTextAreaElement>(null);
   const g = groups[group];
   if (!cuts || !g) return null;
   const head = cuts.cuts[g.cutIndices[0]];
@@ -646,11 +680,14 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
       <label style={{width: '100%'}}>
         文言（グループ内の {g.cutIndices.length} カットにまとめて入ります）
         <span className="btns" style={{width: '100%'}}>
-          <input
+          <textarea
             ref={groupTelopRef}
             className={`telop${isPlaceholder(text) ? ' placeholder' : ''}`}
             style={{flex: 1}}
+            rows={Math.max(2, text.split('\n').length)}
             value={text}
+            placeholder="Enter で改行"
+            aria-label="テロップの文言（Enter で改行）"
             onFocus={pushHistory}
             onChange={(e) => {
               const idx = new Set(g.cutIndices);
@@ -658,7 +695,7 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
               setCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) ? {...c, main: {...(c.main ?? {}), text: e.target.value}} : c))});
             }}
           />
-          <Counter text={text.replace(/[【】\s]/g, '')} max={telopMaxChars(cuts)} />
+          <Counter text={longestTelopLine(text)} max={telopMaxChars(cuts)} />
         </span>
       </label>
       <TelopMarkButtons
@@ -671,6 +708,16 @@ export const TelopInspector: React.FC<Common & {group: number}> = ({m, group, on
         }}
       />
       {/〖/.test(text) && <MarkOpacitySlider cuts={cuts} onChange={(telopStyle) => m.patchReel({telopStyle})} />}
+      <TelopSizeControl
+        cuts={cuts}
+        value={g.def.size}
+        onStart={pushHistory}
+        onChange={(size) => {
+          // グループの全カットに同じ大きさを入れる（違う大きさが混ざるとグループが割れる）
+          const idx = new Set(g.cutIndices);
+          setCuts({...cuts, cuts: cuts.cuts.map((c, k) => (idx.has(k) && c.main ? {...c, main: {...c.main, size}} : c))});
+        }}
+      />
       {isPlaceholder(text) && <div className="hint">未記入（{text}）。Claude に頼む →「テロップを書いてもらう」でも埋められます</div>}
       <div className="row">
         <label>

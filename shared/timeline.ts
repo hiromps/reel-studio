@@ -45,7 +45,7 @@ export const cutStartFrame = (data: Timeline, index: number): number => {
 export type TelopGroup = {from: number; dur: number; def: MainTelopDef; cutIndices: number[]};
 
 /**
- * 同一 main.text かつ同一 orientation で連続するカットを 1 グループにまとめる（エンジンの telopGroups と同一判定）。
+ * 同一 main.text かつ同一 orientation・size で連続するカットを 1 グループにまとめる（エンジンの telopGroups と同一判定）。
  * subs を持つカットはグループ対象外。boundaries は編集画面で選択中の範囲を隣と結合しないための境界。
  */
 export const telopGroupsOf = (data: Pick<ReelData, 'fps' | 'cuts'>, boundaries?: ReadonlySet<number>): TelopGroup[] => {
@@ -60,7 +60,8 @@ export const telopGroupsOf = (data: Pick<ReelData, 'fps' | 'cuts'>, boundaries?:
         last.from + last.dur === cursor &&
         !boundaries?.has(i) &&
         last.def.text === cut.main.text &&
-        (last.def.orientation ?? 'vertical') === (cut.main.orientation ?? 'vertical');
+        (last.def.orientation ?? 'vertical') === (cut.main.orientation ?? 'vertical') &&
+        last.def.size === cut.main.size;
       if (continuous) {
         last.dur += dur;
         last.cutIndices.push(i);

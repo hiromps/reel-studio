@@ -12,11 +12,17 @@ export type Orientation = z.infer<typeof OrientationSchema>;
 export const ThemeSchema = z.enum(['pop', 'bold', 'human', 'stylish', 'azu']);
 export type ThemeName = z.infer<typeof ThemeSchema>;
 
+/** テロップごとの大きさの範囲（engine/src/telops.tsx の MainTelop と同じ） */
+export const TELOP_SIZE_MIN = 20;
+export const TELOP_SIZE_MAX = 240;
+
 export const MainTelopSchema = z.object({
   text: z.string(),
   highlight: z.string().optional(), // 描画では無視（2026-08-12 廃止）。既存データ互換のため残す
   highlightColor: z.enum(['yellow', 'red']).optional(),
   orientation: OrientationSchema.optional(), // 既定 vertical。下部配置は存在しない
+  /** このテロップだけの文字の大きさ（px・1080×1920 基準）。省略＝動画全体の telopStyle.size。画面に入りきらないときは自動で縮む */
+  size: z.number().min(TELOP_SIZE_MIN).max(TELOP_SIZE_MAX).optional(),
 });
 export type MainTelopDef = z.infer<typeof MainTelopSchema>;
 

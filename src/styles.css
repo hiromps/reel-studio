@@ -743,7 +743,16 @@ label:where(:has(> input[type='checkbox']), :has(> input[type='radio'])) {
   padding: 12px;
   text-align: center;
 }
-input.telop.placeholder {
+/* テロップの文言は複数行（Enter で改行）。高さは中身に合わせて伸び、手でも広げられる */
+textarea.telop {
+  resize: vertical;
+  min-height: 40px;
+  line-height: 1.45;
+  field-sizing: content;
+  max-height: 40vh;
+}
+input.telop.placeholder,
+textarea.telop.placeholder {
   background: var(--tint-yellow);
   color: var(--tint-yellow-fg);
 }

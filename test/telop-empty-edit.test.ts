@@ -30,9 +30,10 @@ beforeEach(() => {
 });
 afterEach(() => {act(() => root.unmount());host.remove();});
 const render = () => act(() => root.render(React.createElement(Harness)));
-const input = () => host.querySelector<HTMLInputElement>('input.telop')!;
+// テロップの文言は複数行（textarea）
+const input = () => host.querySelector<HTMLTextAreaElement>('textarea.telop')!;
 const type = (text: string) => act(() => {
-  const el = input();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, text);
+  const el = input();Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(el, text);
   el.dispatchEvent(new Event('input', {bubbles: true}));
 });
 it.each([0, 1, 2])('テロップ %s を0文字にしても選択・入力欄・フォーカスを保ち、その場で入力し直せる', group => {

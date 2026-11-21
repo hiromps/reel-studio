@@ -12,6 +12,8 @@ export type MainTelopDef = {
   // vertical(既定)=縦書き・画面中央 / horizontal=横書き・上部（人物・会話シーン用）
   // 下部配置は存在しない（禁止仕様）
   orientation?: 'vertical' | 'horizontal';
+  /** このテロップだけの文字の大きさ（px・1080×1920 基準）。省略＝動画全体の telopStyle.size */
+  size?: number;
 };
 
 export type PriceTelopDef = {
@@ -172,7 +174,8 @@ export const GourmetReel: React.FC<ReelData> = (data) => {
           last &&
           last.from + last.dur === cursor &&
           last.def.text === cut.main.text &&
-          (last.def.orientation ?? 'vertical') === (cut.main.orientation ?? 'vertical');
+          (last.def.orientation ?? 'vertical') === (cut.main.orientation ?? 'vertical') &&
+          last.def.size === cut.main.size;
         if (continuous) {
           last.dur += dur;
           if (cut.badge) {

@@ -497,6 +497,7 @@ const badgeBoxHeight = (lines = 1) => Math.round(LAYOUT.badgeFontSize * 1.05 * M
 export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: ResolvedTelopStyle; hasPrice?: boolean; hasBadge?: boolean; badgeLineCount?: number}> = ({
   text,
   orientation = 'vertical',
+  size,
   theme,
   look: lookProp,
   hasPrice = false,
@@ -510,12 +511,18 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
   // （2026-09-12にユーザー指定。以前は 0.13 秒の spring フェード＋12px スライドだった）
 
   const vertical = look.layout === 'auto' ? orientation !== 'horizontal' : look.layout === 'vertical';
-  const lines = vertical ? [text] : wrapTelop(text, look.lineChars, look.tags);
+  // 改行（\n）で区切る。縦書きは 1 行 = 1 列（右から左へ並ぶ）、横書きは wrapTelop が行に分ける
+  const verticalCols = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = vertical ? (verticalCols.length ? verticalCols : [text]) : wrapTelop(text, look.lineChars, look.tags);
   const longest = Math.max(1, ...lines.map((l) => visibleLength(l, look.tags) + (look.bigNumbers ? (l.match(/[0-9０-９]/g)?.length ?? 0) * 0.45 : 0)));
+  // 大きさはこのテロップの指定（main.size）が優先。無ければ動画全体の telopStyle.size
+  const wanted = typeof size === 'number' && Number.isFinite(size) ? Math.max(20, Math.min(240, size)) : look.size;
   // 長文の安全弁：縦は高さ1300px・横は幅900pxに収まるよう自動縮小
   // （2026-08-12にセーフゾーン余白を広げるため1400/980から縮小。
-  // 原則は台本側で13文字以内に収める）
-  const fontSize = Math.min(look.size, Math.floor((vertical ? 1300 : 900) / Math.max(1, vertical ? verticalTextCells(stripTelopMarks(text)) : longest)));
+  // 原則は台本側で13文字以内に収める）。行・列が増えたぶん、もう一方の向き（縦書きの横幅・横書きの高さ）にも収める
+  const alongLimit = Math.floor((vertical ? 1300 : 900) / Math.max(1, vertical ? Math.max(...lines.map((l) => verticalTextCells(stripTelopMarks(l)))) : longest));
+  const acrossLimit = Math.floor((vertical ? 980 : 1300) / (lines.length * (vertical ? 1.15 : 1.32)));
+  const fontSize = Math.min(wanted, alongLimit, acrossLimit);
 
   // 2026-08-12：キーワード色分けを廃止（ユーザー指示「色を使わずに」）。
   // highlight/highlightColorはcuts.jsonの互換のため型としては残るが、描画では使わない。
@@ -574,10 +581,17 @@ export const MainTelop: React.FC<MainTelopDef & {theme: ThemeName; look?: Resolv
             // 英字は正立。半角数字の連続部分は下の VerticalText で縦中横にする。
             textOrientation: 'upright',
             letterSpacing: '0.06em',
+            // 列の間隔は 2 列以上のときだけ詰める（1 列は従来の見た目のまま）
+            ...(lines.length > 1 ? {lineHeight: 1.15} : {}),
             marginTop: priceNudge,
           }}
         >
-          <VerticalMarked text={text} opacity={look.markOpacity} />
+          {lines.map((line, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <br />}
+              <VerticalMarked text={line} opacity={look.markOpacity} />
+            </React.Fragment>
+          ))}
         </div>
       </AbsoluteFill>
     );
