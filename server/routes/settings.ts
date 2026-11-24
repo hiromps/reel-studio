@@ -10,6 +10,7 @@ import {codexAvailable, codexBinInfo, codexLoggedIn, codexVersion} from '../../c
 import {listAgentModels} from '../../core/agent-models';
 import {claudeAuthStatus, claudeLoginCommand, openClaudeLogin} from '../../core/claude-auth';
 import {fishEnv, probeFishKey, resetFishEnv} from '../../core/tts';
+import {closeFishWeb, fishWebStatus, openFishWebLogin} from '../../core/fish-web';
 import {instagramMcpEnv, probeInstagramMcp, resetInstagramMcpEnv} from '../../core/instagram-mcp';
 import {probeDeepseekKey} from '../../shared/deepseek';
 import {mosaicStatus, resetMosaicStatus} from '../../core/mosaic';
@@ -65,6 +66,8 @@ settingsRouter.put('/', async (req, res) => {
     return res.status(400).json({error: (e as Error).message});
   }
   resetFishEnv();
+  // API に戻したら、Web 画面用に裏で開いているブラウザは閉じる
+  if (patch.tts?.mode === 'api') void closeFishWeb();
   resetInstagramMcpEnv();
   resetClaudeBin();
   resetMosaicStatus();
@@ -84,6 +87,20 @@ settingsRouter.post('/test/tts', async (req, res) => {
   if (!key) return res.json({ok: false, message: 'API キーが未設定です'});
   const r = await probeFishKey(key, {signal: AbortSignal.timeout(15_000)});
   res.json({...r, source: typed ? 'input' : fishKeyView().source});
+});
+
+/** Fish Audio の Web 画面（サブスク枠）用：窓を出して fish.audio を開く。ログインは人がする */
+settingsRouter.post('/tts-web/login', async (_req, res) => {
+  try {
+    res.json(await openFishWebLogin());
+  } catch (e) {
+    res.json({ok: false, loggedIn: null, browser: null, loginWindowOpen: false, message: (e as Error).message});
+  }
+});
+
+/** Web 画面にログインできているか（ブラウザを起動して確かめるので数秒かかる） */
+settingsRouter.get('/tts-web/status', async (_req, res) => {
+  res.json(await fishWebStatus());
 });
 
 /**

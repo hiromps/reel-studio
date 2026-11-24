@@ -25,13 +25,18 @@ import {loadEmotionTags} from './emotion-tags';
 import type {EmotionTags} from '../shared/emotion-tags';
 import {fishEmotionTag} from '../shared/emotion-tags';
 import {fishModelSupportsTags} from '../shared/fish-models';
+import {synthViaWeb} from './fish-web';
 
 const ENDPOINT = 'https://api.fish.audio/v1/tts';
 /** fish-audio-sdk が既定で送っている値（session.js のコンストラクタ引数） */
 const DEVELOPER_ID = '6322d9df15d044e7b928de27c863480f';
 const DEFAULT_MODEL = 's2.1-pro-free';
 
-type FishEnv = {apiKey: string; modelId: string; /** 鍵の在り処の表示名（値は含まない） */ source: string};
+/**
+ * mode: api＝API を直接呼ぶ（従量課金）／web＝fish.audio の Web 画面を裏で操作する（月額プランのクレジット）。
+ * web では apiKey が空のことがある（鍵はボイス一覧と生存確認にだけ使う）
+ */
+type FishEnv = {apiKey: string; modelId: string; /** 鍵の在り処の表示名（値は含まない） */ source: string; mode: 'api' | 'web'};
 
 /** `${FOO}` のような参照はそのままでは使えない（展開元はここには無い） */
 const literal = (v: unknown): string | null => (typeof v === 'string' && v.trim() && !v.startsWith('${') ? v.trim() : null);
@@ -51,7 +56,8 @@ export const fishEnv = (): FishEnv | null => {
   const envKey = literal(process.env.FISH_API_KEY);
   const apiKey = envKey ?? literal(s.tts.apiKey);
   const modelId = literal(process.env.FISH_MODEL_ID) ?? literal(s.tts.modelId) ?? DEFAULT_MODEL;
-  cached = apiKey ? {apiKey, modelId, source: envKey ? '環境変数 FISH_API_KEY' : 'settings.json'} : null;
+  if (s.tts.mode === 'web') cached = {apiKey: apiKey ?? '', modelId, source: 'Web 画面の自動操作（サブスク枠）', mode: 'web'};
+  else cached = apiKey ? {apiKey, modelId, source: envKey ? '環境変数 FISH_API_KEY' : 'settings.json', mode: 'api'} : null;
   return cached;
 };
 
@@ -71,7 +77,7 @@ const voiceAlive = new Map<string, boolean>();
 
 export const voiceExists = async (id: string, opt: {signal?: AbortSignal} = {}): Promise<boolean | null> => {
   const env = fishEnv();
-  if (!env || !id) return null; // 鍵が無いときは判断しない（消えていると決めつけない）
+  if (!env?.apiKey || !id) return null; // 鍵が無いときは判断しない（消えていると決めつけない）
   const cached = voiceAlive.get(id);
   if (cached !== undefined) return cached;
   try {
@@ -148,7 +154,7 @@ export const listVoices = async (opt: {signal?: AbortSignal} = {}): Promise<{voi
 
   const env = fishEnv();
   let apiError: string | undefined;
-  if (env) {
+  if (env?.apiKey) {
     try {
       const res = await fetch('https://api.fish.audio/model?self=true&page_size=100', {
         headers: {Authorization: `Bearer ${env.apiKey}`, 'developer-id': DEVELOPER_ID},
@@ -296,6 +302,8 @@ const RETRY_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 /** 1 ブロック生成。失敗は数回まで待って再試行する */
 const synth = async (env: FishEnv, body: TtsBody, signal?: AbortSignal): Promise<Buffer> => {
+  // Web 画面の経路。latency・chunk_length・normalize にあたる項目は画面に無いので渡さない
+  if (env.mode === 'web') return synthViaWeb({text: body.text, voiceId: body.reference_id, speed: body.prosody.speed, volume: body.prosody.volume, modelId: env.modelId}, {signal});
   let lastErr = '';
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = await fetch(ENDPOINT, {
@@ -437,7 +445,7 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   if (multiline) throw new Error(`${multiline.id} の本文に改行があります。1 ブロック 1 文にしてください`);
 
   const totalChars = targets.reduce((n, s) => n + [...s.text].length, 0);
-  log(`ボイス ${narration.voiceTitle ?? voice} / speed ${speed} / latency ${latency} / model ${env.modelId}（キー: ${env.source}）`);
+  log(`ボイス ${narration.voiceTitle ?? voice} / speed ${speed} / latency ${latency} / model ${env.modelId}（${env.mode === 'web' ? '経路' : 'キー'}: ${env.source}）`);
   log(`${targets.length} ブロック・${totalChars} 文字を生成します`);
 
   const made: string[] = [];

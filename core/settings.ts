@@ -107,6 +107,8 @@ export const mergeSettings = (cur: Settings, patch: SettingsPatch): Settings => 
     const tts = next.tts as Record<string, unknown>;
     setOrClear(tts, 'apiKey', patch.tts.apiKey);
     setOrClear(tts, 'modelId', patch.tts.modelId);
+    if (patch.tts.mode) tts.mode = patch.tts.mode;
+    if (patch.tts.webHeadless !== undefined) tts.webHeadless = patch.tts.webHeadless;
     if (patch.tts.voices) tts.voices = patch.tts.voices;
   }
   if (patch.agent) {

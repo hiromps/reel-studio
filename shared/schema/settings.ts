@@ -22,11 +22,21 @@ const PathsSchema = z.object({
   fixedMaterialsDir: z.string().min(1).optional(),
 });
 
+export const TTS_MODES = ['api', 'web'] as const;
+export type TtsMode = (typeof TTS_MODES)[number];
+
 const TtsSchema = z.object({
   provider: z.literal('fish-audio').default('fish-audio'),
   /** 平文で保存する（ユーザープロファイル配下。画面やログには出さない） */
   apiKey: z.string().optional(),
   modelId: z.string().min(1).default('s2.1-pro-free'),
+  /**
+   * 音声の作り方。api＝API を直接呼ぶ（従量課金・既定）／web＝fish.audio の Web 画面を裏で操作する（月額プランのクレジット）。
+   * web は Fish Audio の利用規約が禁じる自動操作にあたる。使う人が承知のうえで切り替える
+   */
+  mode: z.enum(TTS_MODES).default('api'),
+  /** web のとき、ブラウザの窓を出さずに動かす。確認画面で止まるときは false にして人が通す */
+  webHeadless: z.boolean().default(true),
   /** 人格の既定ボイス以外に選べるようにしたいボイス（他人の公開モデルは self 一覧に出ないため） */
   voices: z.array(VoiceEntrySchema).default([]),
 });
@@ -166,6 +176,8 @@ export const SettingsPatchSchema = z
       .object({
         apiKey: nullable(),
         modelId: nullable(),
+        mode: z.enum(TTS_MODES).optional(),
+        webHeadless: z.boolean().optional(),
         voices: z.array(VoiceEntrySchema).optional(),
       })
       .strict()

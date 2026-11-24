@@ -7,7 +7,7 @@ import {useStudio} from '../state/store';
 import {NotificationsCard} from '../components/NotificationsCard';
 import {UpdateCard} from '../components/UpdateCard';
 import {ScriptSkillCard} from '../components/ScriptSkillCard';
-import {AGENT_PROVIDER_LABEL, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentModelsView, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type VoiceEntry} from '@shared/schema/settings';
+import {AGENT_PROVIDER_LABEL, DEFAULT_DEEPSEEK_MODEL, DEFAULT_INSTAGRAM_MCP_URL, PATH_KEYS, type AgentModelsView, type AgentProvider, type InstagramAccount, type MosaicStatus, type PathKey, type SettingsPatch, type SettingsView, type TtsMode, type VoiceEntry} from '@shared/schema/settings';
 import {PersonaSchema, type Persona} from '@shared/personas';
 import {FORMAT_IDS, FORMAT_SPECS} from '@shared/format-specs';
 import {ThemeSchema} from '@shared/schema/cuts';
@@ -262,8 +262,15 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
   const [typed, setTyped] = useState('');
   const [modelId, setModelId] = useState(view.settings.tts.modelId);
   const [voices, setVoices] = useState<VoiceEntry[]>(view.settings.tts.voices);
+  const s = useStudio();
+  const [mode, setMode] = useState<TtsMode>(view.settings.tts.mode);
+  const [webHeadless, setWebHeadless] = useState(view.settings.tts.webHeadless);
+  const [web, setWeb] = useState<{ok: boolean; message: string} | null>(null);
+  const [webBusy, setWebBusy] = useState(false);
   useEffect(() => {
     setTyped('');
+    setMode(view.settings.tts.mode);
+    setWebHeadless(view.settings.tts.webHeadless);
     setModelId(view.settings.tts.modelId);
     setVoices(view.settings.tts.voices);
   }, [view]);
@@ -272,7 +279,7 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
   const [list, setList] = useState<Voice[] | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
 
-  const dirty = typed.trim() !== '' || modelId !== view.settings.tts.modelId || JSON.stringify(voices) !== JSON.stringify(view.settings.tts.voices);
+  const dirty = typed.trim() !== '' || mode !== view.settings.tts.mode || webHeadless !== view.settings.tts.webHeadless || modelId !== view.settings.tts.modelId || JSON.stringify(voices) !== JSON.stringify(view.settings.tts.voices);
   const voicesValid = voices.every((v) => /^[0-9a-f]{32}$/.test(v.id.trim()) && v.title.trim());
 
   const submit = async () => {
@@ -281,6 +288,8 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
         tts: {
           apiKey: typed.trim() || undefined,
           modelId: modelId.trim(),
+          mode,
+          webHeadless,
           voices: voices.map((v) => ({id: v.id.trim(), title: v.title.trim(), ...(v.note?.trim() ? {note: v.note.trim()} : {})})),
         },
       },
@@ -299,6 +308,18 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
       setTest({ok: false, message: msg(e)});
     } finally {
       setTesting(false);
+    }
+  };
+  const webCall = async (kind: 'login' | 'status') => {
+    setWebBusy(true);
+    setWeb(null);
+    try {
+      const r = kind === 'login' ? await api.post<{ok: boolean; message: string}>('/api/settings/tts-web/login', {}) : await api.get<{ok: boolean; message: string}>('/api/settings/tts-web/status');
+      setWeb(r.data);
+    } catch (e) {
+      setWeb({ok: false, message: msg(e)});
+    } finally {
+      setWebBusy(false);
     }
   };
   const loadList = async () => {
@@ -363,6 +384,38 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
           <span>
             <span className={`pill${test.ok ? '' : ' err'}`}>{test.message}</span>
           </span>
+        )}
+        {!s.isCloud && (
+          <label className="full">
+            作り方
+            <select value={mode} onChange={(e) => setMode(e.target.value as TtsMode)} aria-label="音声の作り方">
+              <option value="api">API を呼ぶ（従量課金・既定）</option>
+              <option value="web">Web 画面を裏で操作する（月額プランのクレジットを使う）</option>
+            </select>
+          </label>
+        )}
+        {!s.isCloud && mode === 'web' && (
+          <div className="full">
+            <p className="warn-text">
+              Fish Audio の利用規約は自動化された手段でのアクセスを禁じています。アカウントの停止や、登録したボイスが消えるおそれを承知のうえで使ってください。画面が変わると動かなくなります。
+            </p>
+            <p className="hint">
+              この PC の Chrome か Edge を専用のプロファイルで動かします。最初に「Web 画面にログイン」で窓を開き、fish.audio に自分でログインしてください（パスワードは Reel Studio を通りません）。速度は Web 画面の範囲（0.7〜1.3 倍）で入れ、足りない分は作った後に変換します。API キーがあればボイス一覧と生存確認にだけ使います。
+            </p>
+            <label className="inline">
+              <input type="checkbox" checked={webHeadless} onChange={(e) => setWebHeadless(e.target.checked)} /> 窓を出さずに裏で動かす（確認画面で止まるときは外す）
+            </label>
+            <div className="row">
+              <button className="small" onClick={() => void webCall('login')} disabled={webBusy}>
+                Web 画面にログイン
+              </button>
+              <button className="small" onClick={() => void webCall('status')} disabled={webBusy}>
+                {webBusy ? '確認中…' : 'ログイン状態を確認'}
+              </button>
+              {web && <span className={`pill${web.ok ? '' : ' err'}`}>{web.message}</span>}
+            </div>
+            {dirty && <span className="hint">切り替えは下の「音声生成の設定を保存」を押すと有効になります</span>}
+          </div>
         )}
       </div>
       <h3>追加ボイス</h3>
