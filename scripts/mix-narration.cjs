@@ -88,7 +88,38 @@ for (const s of sfxList) {
 }
 if (sfxList.length) console.log(`■ 効果音 ${sfxList.length} 個（全体 ${SFX_GAIN_DB >= 0 ? '+' : ''}${SFX_GAIN_DB}dB）`);
 
-if (!Array.isArray(segs) || (!segs.length && !sfxList.length)) { console.error('ナレーションと効果音がありません'); process.exit(1); }
+// BGM（narration.json の bgm）。動画全体に敷く 1 曲。音源は効果音と同じ置き場（sfx/、既定は sfx/BGM/）。
+// 既定値は shared/bgm.ts の BGM_DEFAULTS と同じ（TS を読めないので直書き。変えるときは両方直す）
+const num = (v, lo, hi, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : fallback);
+const bgm = spec.bgm && typeof spec.bgm.file === 'string' && spec.bgm.file ? {
+  file: spec.bgm.file,
+  gainDb: num(spec.bgm.gainDb, -40, 6, -18),
+  startSec: num(spec.bgm.startSec, 0, 3600, 0),
+  fadeInSec: num(spec.bgm.fadeInSec, 0, 10, 0.5),
+  fadeOutSec: num(spec.bgm.fadeOutSec, 0, 10, 1.5),
+  loop: spec.bgm.loop !== false,
+  duck: spec.bgm.duck !== false,
+} : null;
+// 声が鳴っている間に BGM を沈ませる強さ。声の最中に約 -12dB（2026-11-24 にテスト音で実測）。
+// 効果音と同じ 0.03 / 6 だと -22dB まで沈んで声の下で BGM がほぼ消えるので、緩めにしてある
+const BGM_DUCK_THRESHOLD = typeof spec.bgmDuckThreshold === 'number' ? spec.bgmDuckThreshold : 0.08;
+const BGM_DUCK_RATIO = typeof spec.bgmDuckRatio === 'number' ? spec.bgmDuckRatio : 4;
+if (bgm) {
+  if (!SFX_ROOT) {
+    console.error('BGM の置き場が指定されていません（narration.json の sfxDir か環境変数 REEL_SFX_DIR）');
+    process.exit(1);
+  }
+  bgm._abs = path.resolve(SFX_ROOT, bgm.file);
+  if (!fs.existsSync(bgm._abs)) {
+    console.error(`BGM が見つかりません: ${bgm.file}
+  探した場所: ${bgm._abs}
+  sfx/BGM/ に置くか、Render の「BGM」で選び直してください`);
+    process.exit(1);
+  }
+  console.log(`■ BGM ${bgm.file}（${bgm.gainDb}dB / 頭 ${bgm.startSec}s 飛ばし / フェード ${bgm.fadeInSec}s・${bgm.fadeOutSec}s / ${bgm.loop ? '繰り返し' : '1回'}${bgm.duck ? ' / 声で自動で下げる' : ''}）`);
+}
+
+if (!Array.isArray(segs) || (!segs.length && !sfxList.length && !bgm)) { console.error('ナレーション・効果音・BGM がありません'); process.exit(1); }
 
 // ブロックの再生速度（narration.json の segments[].rate）。shared/narration.ts の narrationRate と同じ範囲（0.5〜2 倍）
 const rateOf = (s) => (typeof s.rate === 'number' && Number.isFinite(s.rate) && s.rate >= 0.5 && s.rate <= 2 ? s.rate : 1);
@@ -185,20 +216,51 @@ else if (sfxList.length > 1) {
   sfxLabel = '[sfxAll]';
 }
 
-// 効果音がナレーションに被ったときは**効果音側を自動で沈ませる**（声を下げない）。
-// sidechaincompress は「サイドチェイン入力が鳴っている間だけ本線を圧縮する」フィルタで、
-// 放送でいうダッキングそのもの。これがあると、置く位置を声に気を使わず決められる。
-if (sfxLabel && narrLabel && SFX_DUCK) {
-  chains.push(`${narrLabel}asplit=2[narrMix][narrSc]`);
-  chains.push(`${sfxLabel}[narrSc]sidechaincompress=threshold=${SFX_DUCK_THRESHOLD}:ratio=${SFX_DUCK_RATIO}:attack=20:release=250:level_sc=1[sfxDucked]`);
-  narrLabel = '[narrMix]';
-  sfxLabel = '[sfxDucked]';
+// BGM：曲の頭を startSec 飛ばし、動画の尺で切って頭と終わりをフェードする。
+// 繰り返しは入力側の -stream_loop -1（曲が尽きたら頭から）。尺は atrim で動画に合わせるので無限には続かない
+let bgmLabel = null;
+let bgmInput = '';
+if (bgm) {
+  const videoSec = parseFloat(run(`ffprobe -v error -show_entries format=duration -of default=nw=1:nokey=1 ${q(srcVideo)}`).trim());
+  if (!Number.isFinite(videoSec) || videoSec <= 0) { console.error('入力動画の長さが読めません'); process.exit(1); }
+  const idx = (segs.length ? 2 : 1) + sfxList.length;
+  bgmInput = `${bgm.loop ? '-stream_loop -1 ' : ''}-i ${q(bgm._abs)}`;
+  const parts = ['aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000'];
+  if (bgm.startSec > 0) parts.push(`atrim=start=${bgm.startSec.toFixed(3)}`, 'asetpts=N/SR/TB');
+  parts.push(`atrim=0:${videoSec.toFixed(3)}`, 'asetpts=N/SR/TB');
+  const fadeIn = Math.min(bgm.fadeInSec, videoSec / 2);
+  const fadeOut = Math.min(bgm.fadeOutSec, videoSec / 2);
+  if (fadeIn > 0) parts.push(`afade=t=in:st=0:d=${fadeIn.toFixed(3)}`);
+  if (fadeOut > 0) parts.push(`afade=t=out:st=${(videoSec - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`);
+  parts.push(`volume=${bgm.gainDb.toFixed(2)}dB`);
+  chains.push(`[${idx}:a]${parts.join(',')}[bgm]`);
+  bgmLabel = '[bgm]';
 }
 
-const mixLabels = ['[amb]', ...(narrLabel ? [narrLabel] : []), ...(sfxLabel ? [sfxLabel] : [])].join('');
-const mixInputs = 1 + (narrLabel ? 1 : 0) + (sfxLabel ? 1 : 0);
-chains.push(`${mixLabels}amix=inputs=${mixInputs}:duration=first:normalize=0[mix]`);
-run(`ffmpeg -hide_banner -loglevel error -y -i ${q(srcVideo)} ${segs.length ? `-i ${q(leveledTimeline)}` : ''} ${sfxInputs} ` +
+// 効果音・BGM がナレーションに被ったときは**そちら側を自動で沈ませる**（声を下げない）。
+// sidechaincompress は「サイドチェイン入力が鳴っている間だけ本線を圧縮する」フィルタで、
+// 放送でいうダッキングそのもの。これがあると、置く位置を声に気を使わず決められる。
+// 声は 1 本しか無いので、沈ませる相手の数だけ asplit で分けてサイドチェインに回す
+const duckTargets = [
+  ...(sfxLabel && narrLabel && SFX_DUCK ? [{label: sfxLabel, out: '[sfxDucked]', threshold: SFX_DUCK_THRESHOLD, ratio: SFX_DUCK_RATIO, release: 250, set: (l) => { sfxLabel = l; }}] : []),
+  ...(bgmLabel && narrLabel && bgm.duck ? [{label: bgmLabel, out: '[bgmDucked]', threshold: BGM_DUCK_THRESHOLD, ratio: BGM_DUCK_RATIO, release: 400, set: (l) => { bgmLabel = l; }}] : []),
+];
+if (duckTargets.length) {
+  chains.push(`${narrLabel}asplit=${duckTargets.length + 1}[narrMix]${duckTargets.map((_, i) => `[narrSc${i}]`).join('')}`);
+  duckTargets.forEach((d, i) => {
+    // ⚠ sidechaincompress はサイドチェイン（声）が尽きた時点で出力も終わる。声の帯域は最後のブロックで
+    //   終わるので、そのままだと最後の声より後ろの効果音・BGM が切れる（2026-11-24 に BGM で発覚）。
+    //   声の側を無音で延ばして（apad）本線の長さまで続ける
+    chains.push(`[narrSc${i}]apad[narrScPad${i}]`);
+    chains.push(`${d.label}[narrScPad${i}]sidechaincompress=threshold=${d.threshold}:ratio=${d.ratio}:attack=20:release=${d.release}:level_sc=1${d.out}`);
+    d.set(d.out);
+  });
+  narrLabel = '[narrMix]';
+}
+
+const layers = ['[amb]', narrLabel, sfxLabel, bgmLabel].filter(Boolean);
+chains.push(`${layers.join('')}amix=inputs=${layers.length}:duration=first:normalize=0[mix]`);
+run(`ffmpeg -hide_banner -loglevel error -y -i ${q(srcVideo)} ${segs.length ? `-i ${q(leveledTimeline)}` : ''} ${sfxInputs} ${bgmInput} ` +
   `-filter_complex "${chains.join(';')}" -map "[mix]" ${q(intermediateWav)}`);
 
 // ---- Step 4: 中間ミックスの統合ラウドネスを計測 ----

@@ -52,6 +52,33 @@ export const SfxSchema = z
 export type Sfx = z.infer<typeof SfxSchema>;
 
 /**
+ * BGM（動画全体に敷く音楽）。案件に 1 本。効果音と同じく音源は効果音ライブラリ（<dataRoot>/sfx/）に置き、
+ * file はそこからの相対パス（既定の置き場は sfx/BGM/）。尺は動画に合わせて自動で切る（短ければループ）。
+ * 合成の実体は scripts/mix-narration.cjs。既定値は shared/bgm.ts の BGM_DEFAULTS と同じ値をスクリプトにも直書きしている
+ */
+export const BgmSchema = z
+  .object({
+    /** sfx/ からの相対パス（例 BGM/cafe.mp3） */
+    file: z.string().min(1),
+    /** 表示名 */
+    label: z.string().optional(),
+    /** 音量（dB）。0 が素材そのまま。BGM は声の下に敷くので既定は大きく下げる（-18） */
+    gainDb: z.number().min(-40).max(6).optional(),
+    /** 曲の頭から飛ばす秒（イントロを飛ばしてサビから使う等）。省略＝0 */
+    startSec: z.number().min(0).max(3600).optional(),
+    /** 動画の頭のフェードイン秒 */
+    fadeInSec: z.number().min(0).max(10).optional(),
+    /** 動画の終わりのフェードアウト秒 */
+    fadeOutSec: z.number().min(0).max(10).optional(),
+    /** 曲が動画より短いときに繰り返すか。既定 true（false なら曲が終わったら無音） */
+    loop: z.boolean().optional(),
+    /** ナレーションが鳴っている間だけ BGM を自動で下げる（ダッキング）。既定 true */
+    duck: z.boolean().optional(),
+  })
+  .passthrough();
+export type Bgm = z.infer<typeof BgmSchema>;
+
+/**
  * 声の大きさ（narrationGainDb）の既定。narration.json に指定が無い案件はこれで混ぜる。
  * scripts/mix-narration.cjs は TS を読めないので同じ値を直書きしている。変えるときは両方直す
  */
@@ -75,6 +102,8 @@ export const NarrationSchema = z
     segments: z.array(NarrationSegmentSchema),
     /** 効果音。順番は問わない（at が位置） */
     sfx: z.array(SfxSchema).optional(),
+    /** BGM。省略＝BGM なし */
+    bgm: BgmSchema.optional(),
   })
   .passthrough();
 export type Narration = z.infer<typeof NarrationSchema>;

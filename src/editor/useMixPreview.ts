@@ -4,7 +4,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Narration} from '@shared/schema';
 import type {SfxLibrary} from '@shared/sfx';
-import {AMBIENT_DEFAULT, driftExceeded, mixClipsOf, planPlayback, type MixClip} from './mixPreview';
+import {AMBIENT_DEFAULT, BGM_PREVIEW_DUCK, driftExceeded, loopPlayback, mixClipsOf, planPlayback, type MixClip} from './mixPreview';
 import type {PlaybackClock} from './playbackClock';
 import {timeStretch} from './timeStretch';
 
@@ -111,9 +111,18 @@ export const useMixPreview = ({enabled, narration, mediaBase, lib, fps, playing,
       const plan = planPlayback(clips, bufferSec, mediaSec);
       const now = c.currentTime;
       const byKey = new Map(clips.map((x) => [x.key, x]));
+      // BGM を声の下で沈ませる区間（いまからの秒）。本番の sidechaincompress のおおよその再現
+      const narrWindows = plan.filter((p) => byKey.get(p.key)?.kind === 'narr').map((p) => [p.delaySec, p.delaySec + p.durationSec] as const);
+      const duck = (g: GainNode, base: number) => {
+        for (const [from, to] of narrWindows) {
+          g.gain.setTargetAtTime(base * BGM_PREVIEW_DUCK, now + from, 0.03);
+          g.gain.setTargetAtTime(base, now + to, 0.15);
+        }
+      };
       for (const p of plan) {
         const buf = buffers.current.get(p.key);
-        if (!buf || typeof buf === 'string' || !byKey.get(p.key)) continue;
+        const clip = byKey.get(p.key);
+        if (!buf || typeof buf === 'string' || !clip) continue;
         const src = c.createBufferSource();
         src.buffer = buf;
         const g = c.createGain();
@@ -123,8 +132,33 @@ export const useMixPreview = ({enabled, narration, mediaBase, lib, fps, playing,
           g.gain.setValueAtTime(p.gain, startAt + p.durationSec - p.fadeOutSec);
           g.gain.linearRampToValueAtTime(0, startAt + p.durationSec);
         }
+        if (clip.kind === 'bgm' && (clip.fadeInSec ?? 0) > mediaSec) {
+          g.gain.setValueAtTime(0, now);
+          g.gain.linearRampToValueAtTime(p.gain, now + (clip.fadeInSec ?? 0) - mediaSec);
+        }
+        if (clip.kind === 'bgm' && clip.duck) duck(g, p.gain);
         src.connect(g).connect(c.destination);
         src.start(startAt, p.offsetSec, p.durationSec);
+        active.current.nodes.push(src);
+      }
+      // 繰り返す BGM（長さが決まらないので停止まで鳴らしっぱなし）
+      for (const clip of clips) {
+        if (!clip.loop) continue;
+        const buf = buffers.current.get(clip.key);
+        if (!buf || typeof buf === 'string') continue;
+        const lp = loopPlayback(clip, buf.duration, mediaSec);
+        if (!lp) continue;
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        const g = c.createGain();
+        if (lp.fadeInLeftSec > 0) {
+          g.gain.setValueAtTime(0, now);
+          g.gain.linearRampToValueAtTime(lp.gain, now + lp.fadeInLeftSec);
+        } else g.gain.setValueAtTime(lp.gain, now);
+        if (clip.duck) duck(g, lp.gain);
+        src.connect(g).connect(c.destination);
+        src.start(now, lp.offsetSec);
         active.current.nodes.push(src);
       }
       active.current.anchor = {ctxSec: now, mediaSec};

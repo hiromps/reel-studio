@@ -28,6 +28,7 @@ export const ModalRenderNarrationSchema = z.object({
   sfxGainDb: z.number().min(-30).max(12).default(0),
   segments: z.array(z.object({id: z.string().regex(/^[\w-]{1,80}$/), at: finiteTime, durSec: z.number().positive().max(3600), trimSec: z.number().positive().max(3600).optional(), startSec: z.number().min(0).max(3600).optional(), gainDb: z.number().min(-30).max(12).optional(), rate: z.number().min(0.5).max(2).optional(), text: z.string().max(10000).default(''), emotion_tag: z.string().nullable().optional(), needsTts: z.literal(false).optional()})).max(100),
   sfx: z.array(z.object({id: z.string().max(80), at: finiteTime, file: z.string().max(200).refine(f => safeModalAsset('sfx/' + f)), trimSec: z.number().positive().max(180).optional(), fadeOutSec: z.number().min(0).max(10).optional(), gainDb: z.number().min(-30).max(12).optional()})).max(100).default([]),
+  bgm: z.object({file: z.string().max(200).refine(f => safeModalAsset('sfx/' + f)), gainDb: z.number().min(-40).max(6).optional(), startSec: z.number().min(0).max(3600).optional(), fadeInSec: z.number().min(0).max(10).optional(), fadeOutSec: z.number().min(0).max(10).optional(), loop: z.boolean().optional(), duck: z.boolean().optional()}).optional(),
 });
 export const ModalRenderInputSchema = z.object({
   kind: z.enum(MODAL_RENDER_KINDS), sessionId: z.string().uuid(),
@@ -51,6 +52,6 @@ export type ModalSessionFile = {id: string; path: string; size: number; complete
 export type ModalSession = {id: string; files: ModalSessionFile[]; prepared: boolean; expiresAt: string; totalBytes: number};
 export type ModalRenderProject = {sessionId: string; uploadedAt: string; lastJobId?: string; audioFingerprint?: string};
 /** Timing, trimming and gain changes reuse the same audio; generation changes need a fresh upload. */
-export const modalAudioFingerprint = (n: ModalRenderNarration | null | undefined) => stableHash({voice: n?.voice, speed: n?.speed, segments: n?.segments.map(s => ({id: s.id, text: s.text, durSec: s.durSec, emotion_tag: s.emotion_tag})), sfx: n?.sfx.map(s => s.file).sort()});
+export const modalAudioFingerprint = (n: ModalRenderNarration | null | undefined) => stableHash({voice: n?.voice, speed: n?.speed, segments: n?.segments.map(s => ({id: s.id, text: s.text, durSec: s.durSec, emotion_tag: s.emotion_tag})), sfx: n?.sfx.map(s => s.file).sort(), bgm: n?.bgm?.file});
 export type ModalRenderDashboard = {project: ModalRenderProject | null; session: ModalSession | null; expired: boolean; usage: import('./modal').ModalUsage; jobs: import('./modal').ModalJob[]; maxJobSeconds: number};
 export type ModalRenderEstimate = {estimatedCostUsd: number; [key: string]: unknown};

@@ -1,4 +1,4 @@
-// ナレーション合成（mix）：out/final.mp4 に narration/*.wav と効果音を混ぜて out/final_narration.mp4 を作る。
+// ナレーション合成（mix）：out/final.mp4 に narration/*.wav と効果音・BGM を混ぜて out/final_narration.mp4 を作る。
 // 実体は同梱の scripts/mix-narration.cjs（speechnorm＋リミッターで -14 LUFS。映像は -c:v copy）。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import type {Narration} from '../shared/schema/narration';
 import {hasReelCuts} from './reel-cuts';
 import {writeJsonAtomic} from './json-io';
 import {reelAudioNeedsIds} from './tts';
+import {hasMixAudio} from '../shared/bgm';
 
 export type MixOptions = {
   /** 案件相対。既定 out/final.mp4 */
@@ -42,13 +43,18 @@ export const missingMixAssets = (dir: string, narration: Narration, opt: {ignore
     const noSfx = [...new Set(sfx.filter((s) => !fs.existsSync(path.resolve(root, s.file))).map((s) => s.file))];
     if (noSfx.length) problems.push(`効果音が見つかりません: ${noSfx.join(', ')} → ${root} に置くか、Render の「効果音」で選び直してください`);
   }
+  const bgm = narration.bgm;
+  if (bgm?.file) {
+    if (!root) problems.push('BGM の置き場が分かりません（Settings の「フォルダ」で効果音フォルダを設定してください）');
+    else if (!fs.existsSync(path.resolve(root, bgm.file))) problems.push(`BGM が見つかりません: ${bgm.file} → ${root} に置くか、Render の「BGM」で選び直してください`);
+  }
   return problems;
 };
 
 /** 足りないものは ffmpeg の生エラーではなく日本語で止める */
 export const mixPreconditions = (dir: string, inputRel = 'out/final.mp4'): string | null => {
   const n = readNarration(dir);
-  if (!n || (!n.segments.length && !n.sfx?.length)) return 'ナレーションと効果音がありません。先に音声または効果音を配置してください';
+  if (!hasMixAudio(n)) return 'ナレーション・効果音・BGM がありません。先に音声・効果音・BGM のどれかを配置してください';
   if (!fs.existsSync(path.join(dir, inputRel))) return `${inputRel} が無いので合成できません。先に「本番レンダー」を実行してください`;
   const problems = missingMixAssets(dir, n);
   if (hasReelCuts(dir) && reelAudioNeedsIds(dir, n).length) problems.push('共通JSONのナレーションまたは音声設定が変更されています。先に「音声を生成」を実行してください');

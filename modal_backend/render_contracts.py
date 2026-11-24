@@ -66,6 +66,10 @@ def validate_render(payload):
         for s in n.get("sfx", []):
             if not isinstance(s, dict) or not safe_asset("sfx/" + str(s.get("file", ""))) or not finite(s.get("at")):
                 raise ValueError("invalid sound")
+        b = n.get("bgm")
+        if b is not None:
+            if not isinstance(b, dict) or not safe_asset("sfx/" + str(b.get("file", ""))) or not finite(b.get("gainDb", -18), -40, 6) or not finite(b.get("startSec", 0)) or not finite(b.get("fadeInSec", 0), 0, 10) or not finite(b.get("fadeOutSec", 0), 0, 10):
+                raise ValueError("invalid bgm")
     import json
     if len(json.dumps({"cuts": cuts, "narration": n})) > 512 * 1024:
         raise ValueError("editing data too large")
@@ -80,4 +84,6 @@ def required_assets(payload):
     if payload.narration:
         result.update("narration/" + s["id"] + ".wav" for s in payload.narration.get("segments", []))
         result.update("sfx/" + s["file"] for s in payload.narration.get("sfx", []))
+        if payload.narration.get("bgm"):
+            result.add("sfx/" + payload.narration["bgm"]["file"])
     return result

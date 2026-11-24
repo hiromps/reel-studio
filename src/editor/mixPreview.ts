@@ -5,12 +5,13 @@ import type {Narration, NarrationSegment, Sfx} from '@shared/schema';
 import {NARRATION_GAIN_DB_DEFAULT} from '@shared/schema';
 import {sfxEndSec, type SfxLibrary} from '@shared/sfx';
 import {narrationRate} from '@shared/narration';
+import {bgmResolved} from '@shared/bgm';
 
 export type MixClip = {
   /** キャッシュのキー（同じ id でも wav を作り直したら変わるよう durSec を含める） */
   key: string;
   url: string;
-  kind: 'narr' | 'sfx';
+  kind: 'narr' | 'sfx' | 'bgm';
   id: string;
   /** 動画の先頭からの配置秒 */
   at: number;
@@ -23,7 +24,15 @@ export type MixClip = {
   fadeOutSec?: number;
   /** 再生速度（1 以外なら読み込み時に音程を保って伸縮する。trimSec/startSec は伸縮後の秒） */
   rate?: number;
+  /** BGM：曲が尽きたら頭から繰り返す（本番の -stream_loop と同じく、2 周目以降は曲の頭から） */
+  loop?: boolean;
+  fadeInSec?: number;
+  /** BGM：ナレーションが鳴っている間だけ下げる */
+  duck?: boolean;
 };
+
+/** プレビューで BGM を声の下で沈ませる量（本番の sidechaincompress のおおよその効き） */
+export const BGM_PREVIEW_DUCK = 0.26; // 約 -12dB
 
 /** ナレーションの基準音量。mix-narration.js は声を -14 LUFS に揃えるが、プレビューはおおよそでよい */
 export const NARR_BASE_GAIN = 0.9;
@@ -74,6 +83,22 @@ export const mixClipsOf = (narration: Narration | null, mediaBase: string | null
       fadeOutSec: x.fadeOutSec,
     });
   }
+  const bgm = narration.bgm;
+  if (bgm?.file && (!lib || lib.sounds.some((y) => y.file === bgm.file))) {
+    const r = bgmResolved(bgm);
+    out.push({
+      key: `bgm:${bgm.file}`,
+      url: `/api/sfx/file/${bgm.file.split('/').map(encodeURIComponent).join('/')}`,
+      kind: 'bgm',
+      id: 'BGM',
+      at: 0,
+      gain: dbToGain(r.gainDb),
+      startSec: r.startSec,
+      loop: r.loop,
+      fadeInSec: r.fadeInSec,
+      duck: r.duck,
+    });
+  }
   return out.sort((a, b) => a.at - b.at);
 };
 
@@ -99,6 +124,7 @@ export type PlaybackItem = {
 export const planPlayback = (clips: readonly MixClip[], bufferSec: (key: string) => number | undefined, mediaSec: number): PlaybackItem[] => {
   const out: PlaybackItem[] = [];
   for (const c of clips) {
+    if (c.loop) continue; // 繰り返す BGM は loopPlayback で
     const full = bufferSec(c.key);
     if (full === undefined || full <= 0) continue;
     const stop = Math.min(full, c.trimSec && c.trimSec > 0 ? c.trimSec : full);
@@ -117,6 +143,20 @@ export const planPlayback = (clips: readonly MixClip[], bufferSec: (key: string)
     });
   }
   return out;
+};
+
+/**
+ * 繰り返す BGM を再生ヘッド mediaSec からどう鳴らすか。曲の位置は「頭を飛ばした秒＋経過秒」で、
+ * 曲の終わりを越えたら頭から数え直す（本番の -stream_loop と同じ並び）
+ */
+export const loopPlayback = (c: MixClip, fullSec: number | undefined, mediaSec: number): {offsetSec: number; gain: number; fadeInLeftSec: number} | null => {
+  if (!c.loop || !fullSec || fullSec <= 0) return null;
+  const head = Math.min(Math.max(0, c.startSec ?? 0), fullSec);
+  const pos = head + Math.max(0, mediaSec - c.at);
+  const offsetSec = pos < fullSec ? pos : (pos - fullSec) % fullSec;
+  const fadeIn = c.fadeInSec ?? 0;
+  const fadeInLeftSec = Math.max(0, fadeIn - mediaSec);
+  return {offsetSec, gain: c.gain, fadeInLeftSec};
 };
 
 /** 前回の同期点からの予測位置と、Player の実際の位置がずれているか */

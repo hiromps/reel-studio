@@ -5,6 +5,8 @@ import {useStudio} from '../state/store';
 import {EmptyState} from '../components/EmptyState';
 import {CaptionCard} from '../components/CaptionCard';
 import {SfxCard} from '../components/SfxCard';
+import {BgmCard} from '../components/BgmCard';
+import {hasMixAudio} from '@shared/bgm';
 import {TrialCard} from '../components/TrialCard';
 import {BuildCard} from '../components/BuildCard';
 import {FinishedVideo} from '../components/FinishedVideo';
@@ -165,7 +167,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
   });
 
   const outFiles = s.projects.find((p) => p.slug === s.active)?.out;
-  const mixBlockedBy = !narration || (!narration.segments.length && !narration.sfx?.length) ? 'ナレーションまたは効果音を配置してください' : needsTts > 0 ? `${needsTts} ブロックの音声がまだありません` : s.files.narration.dirty ? 'narration.json を保存してください' : outFiles && !outFiles.final ? 'out/final.mp4 がありません。先に「本番レンダー」を実行してください' : null;
+  const mixBlockedBy = !hasMixAudio(narration) ? 'ナレーション・効果音・BGM のどれかを配置してください' : needsTts > 0 ? `${needsTts} ブロックの音声がまだありません` : s.files.narration.dirty ? 'narration.json を保存してください' : outFiles && !outFiles.final ? 'out/final.mp4 がありません。先に「本番レンダー」を実行してください' : null;
   const deliverBlockedBy = !s.supportsJob('deliver') ? 'サーバーが古いプロセスです。再起動してください' : outFiles && !outFiles.narration ? 'out/final_narration.mp4 がありません。本番レンダー →「音声・効果音を反映（mix）」の順で作ってください' : null;
   const lastPreflightFail = s.jobs.find((j) => (j.type === 'render' || j.type === 'draft' || j.type === 'build') && j.slug === s.active && j.status === 'failed' && /preflight に失敗/.test(j.error ?? ''));
   const preflightErrors = (lastPreflightFail?.error ?? '')
@@ -537,6 +539,7 @@ export const RenderPage: React.FC<{onTab: (t: 'projects' | 'timeline' | 'setting
         )}
       </section>
       <SfxCard onTab={onTab} />
+      <BgmCard />
       <CaptionCard aiModel={aiModel} />
       <TrialCard />
 

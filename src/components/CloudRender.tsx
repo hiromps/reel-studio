@@ -7,6 +7,7 @@ import {planCloudUpload, uploadCloudFiles, type CloudUpload} from '../cloud-uplo
 import type {Job} from '../api';
 import {api} from '../api';
 import '../modal.css';
+import {hasMixAudio} from '@shared/bgm';
 
 const active = (j: ModalJob) => !['completed', 'failed', 'cancelled'].includes(j.status);
 const money = (n: number) => `$${n.toFixed(3)}`;
@@ -68,7 +69,7 @@ function CloudProject({slug, materials}: {slug: string; materials: boolean}) {
   const cuts = s.files.cuts.data;
   const narration = s.files.narration.data;
   // Project schema fields used only for voice selection are omitted from the render contract.
-  const audio = narration && (narration.segments.length || narration.sfx?.length) ? ModalRenderNarrationSchema.safeParse(narration) : null;
+  const audio = narration && hasMixAudio(narration) ? ModalRenderNarrationSchema.safeParse(narration) : null;
   const inputKey = JSON.stringify({sessionId: session?.id, cuts: prepare ? null : cuts, narration: prepare ? null : audio?.success ? audio.data : narration, draft, prepare});
   const estimateCurrent = estimate?.key === inputKey;
   const usableEstimate = estimateCurrent ? estimate : null;

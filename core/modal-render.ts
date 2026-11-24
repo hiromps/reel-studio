@@ -9,6 +9,7 @@ import {loadCatalog} from './catalog';
 import {studioConfig} from '../studio.config';
 import {ModalRenderInputSchema, ModalRenderNarrationSchema, ModalSessionInputSchema, MODAL_UPLOAD_CHUNK, safeModalAsset, modalAudioFingerprint, type ModalRenderProject, type ModalSession} from '../shared/modal-render';
 import {cloudConfig, CloudClient} from '../worker/client';
+import {hasMixAudio} from '../shared/bgm';
 
 const mappingFile = () => path.join(settingsDir(), 'modal-render-projects.json');
 export const localModalRenderProjects = (): Record<string, ModalRenderProject> => {
@@ -38,7 +39,7 @@ export const localRenderSnapshot = (dir: string) => {
   let narration: unknown = null;
   if (fs.existsSync(path.join(dir, 'narration.json'))) {
     const n = readNarration(dir);
-    if (n && (n.segments.length || n.sfx?.length)) narration = ModalRenderNarrationSchema.parse(n);
+    if (n && hasMixAudio(n)) narration = ModalRenderNarrationSchema.parse(n);
   }
   const parsed = ModalRenderInputSchema.safeParse({kind: 'remotion-render', sessionId: randomUUID(), requestId: randomUUID(), allowGpu: true, cuts, narration});
   if (!parsed.success) throw new ModalError('編集内容を確認してください。書き出しは180秒以内です。ナレーションは先に音声を生成し、変更を保存してください', 400);
@@ -57,6 +58,7 @@ export const localRenderSnapshot = (dir: string) => {
   const n = parsed.data.narration;
   for (const s of n?.segments ?? []) add('narration/' + s.id + '.wav', path.join(dir, 'narration'), s.id + '.wav');
   for (const s of n?.sfx ?? []) add('sfx/' + s.file, studioConfig.sfxDir, s.file);
+  if (n?.bgm) add('sfx/' + n.bgm.file, studioConfig.sfxDir, n.bgm.file);
   return {cuts: parsed.data.cuts!, narration: n ?? null, files};
 };
 export async function uploadModalProject(dir: string, sessionId: string, signal: AbortSignal, onProgress: (p: {phase: string; done: number; total: number}) => void) {

@@ -11,6 +11,7 @@ import {DELIVER_LABEL, deliverFileName, deliverSource, type DeliverKind} from '.
 import {getPersona} from '../shared/personas';
 import {hasReelCuts, reelCutsPath} from './reel-cuts';
 import {reelAudioNeedsIds} from './tts';
+import {hasMixAudio} from '../shared/bgm';
 
 export type DeliverItem = {kind: DeliverKind; from: string; to: string; bytes: number; skipped?: 'same'};
 
@@ -48,7 +49,7 @@ export const narrationReady = (projectDir: string): {ok: boolean; reason?: strin
   const mixed = path.join(projectDir, 'out', 'final_narration.mp4');
   if (!fs.existsSync(mixed)) return {ok: false, reason: 'out/final_narration.mp4 が無い（「ナレーション合成（mix）」がまだ）'};
   const narration = readNarration(projectDir);
-  if (!narration || (!narration.segments.length && !narration.sfx?.length)) return {ok: false, reason: 'narration.json にナレーションも効果音も無い'};
+  if (!narration || !hasMixAudio(narration)) return {ok: false, reason: 'narration.json にナレーションも効果音も BGM も無い'};
   const pending = narration.segments.filter((s) => (s as {needsTts?: boolean}).needsTts).map((s) => s.id);
   if (pending.length) return {ok: false, reason: `音声が未生成のブロックがある: ${pending.join(', ')}`};
   const mixedAt = fs.statSync(mixed).mtimeMs;

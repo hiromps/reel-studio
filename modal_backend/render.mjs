@@ -47,8 +47,8 @@ try {
     onProgress: ({progress}) => {const percent = Math.floor(10 + progress * 75); if (percent > previous) {previous = percent; update('running', percent, '映像・字幕をレンダリング中');}},
   });
   const narration = p.narration;
-  if (narration && (narration.segments.length || narration.sfx.length)) {
-    update('running', 88, 'ナレーション・効果音を合成中');
+  if (narration && (narration.segments.length || narration.sfx.length || narration.bgm)) {
+    update('running', 88, 'ナレーション・効果音・BGM を合成中');
     // Strip every passthrough field before invoking the existing audio mixer.
     // Its shell receives only generated paths, IDs and validated numeric values.
     const audio = path.join(work, 'audio'); const sfxDir = path.join(work, 'sfx');
@@ -66,7 +66,15 @@ try {
         const file = `s${i}${path.extname(s.file).toLowerCase()}`;
         fs.copyFileSync(source, path.join(sfxDir, file));
         return {id: `s${i}`, file, at: finite(s.at, 0, 3600, 0), gainDb: finite(s.gainDb, -30, 12, 0), ...(s.trimSec ? {trimSec: finite(s.trimSec, 0.001, 180, 1)} : {}), fadeOutSec: finite(s.fadeOutSec, 0, 10, 0)};
-      })};
+      }),
+      ...(narration.bgm ? {bgm: (() => {
+        const b = narration.bgm;
+        const source = path.resolve(publicDir, 'sfx', b.file);
+        if (!source.startsWith(path.join(publicDir, 'sfx') + path.sep)) throw new Error('Invalid sound path');
+        const file = `bgm${path.extname(b.file).toLowerCase()}`;
+        fs.copyFileSync(source, path.join(sfxDir, file));
+        return {file, gainDb: finite(b.gainDb, -40, 6, -18), startSec: finite(b.startSec, 0, 3600, 0), fadeInSec: finite(b.fadeInSec, 0, 10, 0.5), fadeOutSec: finite(b.fadeOutSec, 0, 10, 1.5), loop: b.loop !== false, duck: b.duck !== false};
+      })()} : {})};
     const specPath = path.join(work, 'narration.json'); fs.writeFileSync(specPath, JSON.stringify(spec));
     run(process.execPath, [path.join(root, 'scripts/mix-narration.cjs'), specPath, audio, raw, output], {env: {...process.env, REEL_SFX_DIR: sfxDir}, timeout: 180000});
   } else fs.copyFileSync(raw, output);

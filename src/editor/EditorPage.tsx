@@ -831,6 +831,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
             {cuts ? `${cuts.cuts.length} カット / ${m.total.toFixed(2)}s` : 'まだカットがありません'}
             {narration ? ` / ナレーション ${narration.segments.length}` : ''}
             {narration?.sfx?.length ? ` / 効果音 ${narration.sfx.length}` : ''}
+            {narration?.bgm?.file ? ' / BGM あり' : ''}
           </span>
           <span className="hint tl-touch-hint">2 本指でつまむ＝拡大・縮小（広げると寄り、狭めると全体）</span>
           </div>
