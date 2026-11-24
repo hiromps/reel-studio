@@ -236,11 +236,17 @@ const typeText = async (page: Page, text: string) => {
   if (!typed) throw new Error('Web 画面の入力欄に本文が入りませんでした');
 };
 
-type Seen = {status: number; type: string; url: string; bytes?: number};
+type Seen = {status: number; type: string; url: string; bytes?: number; head?: string};
 const AUDIO_URL = /\.(mp3|wav|opus|ogg|m4a|aac|flac)(\?|$)/i;
+const TASK_URL = /api\.fish\.audio\/task(\?|$)/i;
+/**
+ * 生成した音声の応答か。Web 画面は「生成」で api.fish.audio/task に送り、音声を application/octet-stream で
+ * 受け取る（2026-11-24 に失敗の記録から確認。1 回の生成で 2 テイク＝2 本届く）
+ */
 const isAudio = (r: Response): boolean => {
   const type = (r.headers()['content-type'] ?? '').toLowerCase();
-  return type.startsWith('audio/') || (AUDIO_URL.test(r.url()) && !type.startsWith('text/'));
+  if (type.startsWith('audio/') || (AUDIO_URL.test(r.url()) && !type.startsWith('text/'))) return true;
+  return type.startsWith('application/octet-stream') && TASK_URL.test(r.url());
 };
 const bare = (url: string) => url.split('?')[0].slice(0, 160);
 
@@ -280,47 +286,77 @@ const audioFromDom = async (page: Page, before: string[]): Promise<Buffer | null
   return b64 ? Buffer.from(b64, 'base64') : null;
 };
 
-const generate = async (page: Page, signal?: AbortSignal): Promise<Buffer> => {
+/** 「生成」を押して、届いた音声を届き始めた順（テイク 1 が先）に返す。中身が本当に音声かは呼び出し側が変換して確かめる */
+const generate = async (page: Page, signal?: AbortSignal): Promise<{takes: Buffer[]; seen: Seen[]}> => {
   const seen: Seen[] = [];
-  const bodies: Promise<void>[] = [];
-  const got: {best: Buffer | null; at: number} = {best: null, at: 0};
+  const got: {takes: {order: number; buf: Buffer}[]; pending: number; started: number; at: number} = {takes: [], pending: 0, started: 0, at: 0};
+  const sorted = () => got.takes.sort((a, b) => a.order - b.order).map((t) => t.buf);
   let lastDomCheck = 0;
+  let clickedAt = Date.now();
+  // 生成が終わると、タスクの JSON（GET /task/<id> など）に完成ファイルの場所が入る:
+  //   {state: 'finished', result: 'https://platform.r2.fish.audio/tasks/<日付>/<id>.mp3', created_at, ...}
+  // 履歴の一覧にも同じ形で過去の分が並ぶので、押した後に作られたものだけ拾う
+  const results: string[] = [];
+  const collect = (json: unknown) => {
+    const list = Array.isArray((json as {items?: unknown[]})?.items) ? (json as {items: unknown[]}).items : [json];
+    for (const it of list as {state?: string; result?: unknown; created_at?: unknown}[]) {
+      if (!it || it.state !== 'finished' || typeof it.result !== 'string' || !AUDIO_URL.test(it.result) || results.includes(it.result)) continue;
+      const raw = typeof it.created_at === 'string' ? it.created_at : '';
+      const created = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : `${raw}Z`);
+      if (Number.isFinite(created) && created > clickedAt - 120_000) results.push(it.result);
+    }
+  };
   const onResponse = (r: Response) => {
     const url = r.url();
     if (!/fish\.audio/i.test(url) || /\.(js|css|woff2?|png|jpe?g|webp|svg|ico)(\?|$)/i.test(url)) return;
     const entry: Seen = {status: r.status(), type: r.headers()['content-type'] ?? '', url: bare(url)};
     seen.push(entry);
+    if (entry.type.includes('json') && /api\.fish\.audio\/task/i.test(url) && r.status() < 400) void r.json().then(collect, () => {});
     if (!isAudio(r) || r.status() >= 400) return;
-    bodies.push(
-      r.body().then(
+    const order = got.started++;
+    got.pending++;
+    void r
+      .body()
+      .then(
         (buf) => {
           entry.bytes = buf.length;
-          got.at = Date.now();
-          if (buf.length > 1000 && (!got.best || buf.length > got.best.length)) got.best = buf;
+          entry.head = buf.subarray(0, 12).toString('hex');
+          if (buf.length > 1000) got.takes.push({order, buf});
         },
         () => {},
-      ),
-    );
+      )
+      .finally(() => {
+        got.pending--;
+        got.at = Date.now();
+      });
   };
   const domBefore = await page.evaluate(() => [...document.querySelectorAll('audio')].map((a) => a.currentSrc || a.src).concat([...document.querySelectorAll('a[download]')].map((a) => (a as HTMLAnchorElement).href))).catch(() => [] as string[]);
   page.on('response', onResponse);
   try {
+    clickedAt = Date.now();
     await generateButton(page).click({timeout: 10_000});
     const started = Date.now();
+    const tried = new Set<string>();
     for (;;) {
       aborted(signal);
       await page.waitForTimeout(700);
       if (await authDialogOpen(page)) throw new Error(FISH_WEB_LOGIN_NEEDED);
-      // 音声が届いてから少し待つ（分割して届く場合に、最後まで受け取る）
-      if (got.best && Date.now() - got.at > 1800) {
-        await Promise.allSettled(bodies);
-        return got.best;
+      // 完成ファイルの場所が分かったら、それを取りにいく（いちばん確実）
+      const url = results.find((u) => !tried.has(u));
+      if (url) {
+        tried.add(url);
+        const res = await page.context().request.get(url, {timeout: 60_000}).catch(() => null);
+        const buf = res?.ok() ? await res.body().catch(() => null) : null;
+        seen.push({status: res?.status() ?? 0, type: 'result-file', url: bare(url), bytes: buf?.length});
+        if (buf && buf.length > 1000) return {takes: [buf, ...sorted()], seen};
       }
+      // 完成ファイルの知らせが来ないときは、生成中に流れてきた音声を使う（受け取り終わってから少し待つ）
+      if (got.takes.length && !got.pending && Date.now() - got.at > 8000) return {takes: sorted(), seen};
       const waited = Date.now() - started;
-      if (!got.best && waited > 6000 && Date.now() - lastDomCheck > 2000) {
+      if (!got.started && waited > 15_000 && Date.now() - lastDomCheck > 3000) {
         lastDomCheck = Date.now();
         const fromDom = await audioFromDom(page, domBefore);
-        if (fromDom) return fromDom;
+        if (fromDom) return {takes: [fromDom], seen};
       }
       if (waited > GENERATE_TIMEOUT_MS) break;
     }
@@ -377,8 +413,17 @@ export const synthViaWeb = (req: FishWebRequest, opt: {signal?: AbortSignal} = {
       aborted(opt.signal);
       const {webSpeed} = await prepareFishWebPage(s.page, req);
       aborted(opt.signal);
-      const audio = await generate(s.page, opt.signal);
-      return await toWav(audio, webSpeed > 0 ? req.speed / webSpeed : 1);
+      const {takes, seen} = await generate(s.page, opt.signal);
+      let decodeErr = '';
+      for (const take of takes) {
+        try {
+          return await toWav(take, webSpeed > 0 ? req.speed / webSpeed : 1);
+        } catch (e) {
+          decodeErr = (e as Error).message.split('\n')[0].slice(0, 200);
+        }
+      }
+      const file = await dumpDebug(s.page, `decode: ${decodeErr}`, seen);
+      throw new Error(`Web 画面から届いた音声を wav に変換できませんでした（${decodeErr}）。記録: ${file}`);
     } catch (e) {
       // 画面が半端な状態で残らないよう、次は開き直す
       if (session) session.voiceId = null;
