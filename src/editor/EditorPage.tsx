@@ -20,7 +20,7 @@ import {Bin} from './Bin';
 import {PreviewOptions, Transport} from './Transport';
 import {PreviewGuides} from './PreviewGuides';
 import {Timeline, type TimelineHandle, type TrackVisibility} from './Timeline';
-import {CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
+import {BgmInspector, CutInspector, NarrationInspector, ReelInspector, SfxInspector, TelopInspector} from './Inspector';
 import {ValidationPanel} from './ValidationPanel';
 import {SfxPicker} from './SfxPicker';
 import {AiMenu} from './AiMenu';
@@ -47,12 +47,13 @@ import {useNarrationRegeneration} from '../hooks/useNarrationRegeneration';
 import type {NarrationLibraryEntry} from '@shared/narration-library';
 import {createPlaybackClock} from './playbackClock';
 
+
 /** 狭い画面のシートの見出し（いま何を触っているか） */
 const selectionLabel = (sel: NonNullable<Selection>): string =>
-  sel.kind === 'thumbnail' ? 'サムネイル' : sel.kind === 'cut' ? `カット ${sel.index + 1}` : sel.kind === 'telop' ? `テロップ ${sel.group + 1}` : sel.kind === 'narr' ? `ナレーション ${sel.index + 1}` : `効果音 ${sel.index + 1}`;
+  sel.kind === 'thumbnail' ? 'サムネイル' : sel.kind === 'bgm' ? 'BGM' : sel.kind === 'cut' ? `カット ${sel.index + 1}` : sel.kind === 'telop' ? `テロップ ${sel.group + 1}` : sel.kind === 'narr' ? `ナレーション ${sel.index + 1}` : `効果音 ${sel.index + 1}`;
 
 type Prefs = {zoom: number; snap: boolean; tracks: TrackVisibility; storyboard: boolean; groupMove: boolean; mixPreview: boolean; guides: boolean};
-const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true}, storyboard: false, groupMove: true, mixPreview: true, guides: false};
+const DEFAULT_PREFS: Prefs = {zoom: PX_PER_SEC_DEFAULT, snap: true, tracks: {telop: true, narr: true, sfx: true, bgm: true}, storyboard: false, groupMove: true, mixPreview: true, guides: false};
 type LayoutPrefs = {bin: number; inspector: number; timeline: number; previewMobile: number; sheet: number};
 const DEFAULT_LAYOUT: LayoutPrefs = {bin: 236, inspector: 380, timeline: 270, previewMobile: 46, sheet: 72};
 
@@ -417,6 +418,10 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
     else if (selection.kind === 'narr') m.removeSeg(selection.index);
     else if (selection.kind === 'sfx') m.removeSfx(selection.index);
     else if (selection.kind === 'telop') m.setGroupText(selection.group, '');
+    else if (selection.kind === 'bgm' && narration?.bgm) {
+      const {bgm: _drop, ...rest} = narration;
+      m.commitNarr(rest as Narration);
+    }
   };
   useHotkeys([
     {key: 's', ctrl: true, inInputs: true, handler: () => void saveAll()},
@@ -543,7 +548,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
   const thumbnailSec = cuts ? bgTimelineSec(cuts, cuts.thumbnail?.bg ?? defaultBgOf(cuts)) : null;
   const selectFromTimeline = (sel: typeof selection, opt: {seek?: boolean; toggle?: boolean; range?: boolean} = {}) => {
     if (opt.seek !== false) setSuppressMobileDetails(false);
-    if (sel && sel.kind !== 'thumbnail' && (opt.toggle || opt.range)) {
+    if (sel && sel.kind !== 'thumbnail' && sel.kind !== 'bgm' && (opt.toggle || opt.range)) {
       const previous = (multiSelection.length ? multiSelection : selection ? [selection] : []).filter((item) => item?.kind === sel.kind);
       if (opt.range) {
         const anchor = previous[previous.length - 1];
@@ -687,9 +692,10 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
               ['telop', 'T'],
               ['narr', 'N'],
               ['sfx', 'S'],
+              ['bgm', 'B'],
             ] as const
           ).map(([k, l]) => (
-            <button key={k} className={`small chip${prefsSafe.tracks[k] ? ' on' : ''}`} onClick={() => setPrefs({...prefsSafe, tracks: {...prefsSafe.tracks, [k]: !prefsSafe.tracks[k]}})} title={k === 'telop' ? 'テロップ段' : k === 'narr' ? 'ナレーション段' : '効果音段'}>
+            <button key={k} className={`small chip${prefsSafe.tracks[k] ? ' on' : ''}`} onClick={() => setPrefs({...prefsSafe, tracks: {...prefsSafe.tracks, [k]: !prefsSafe.tracks[k]}})} title={k === 'telop' ? 'テロップ段' : k === 'narr' ? 'ナレーション段' : k === 'sfx' ? '効果音段' : 'BGM 段'}>
               {l}
             </button>
           ))}
@@ -771,6 +777,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           {sel?.kind === 'narr' && <NarrationInspector m={m} index={sel.index} onSeekCut={seekCut} onPlay={playNarr} playing={previewingId} onRegenerate={(id) => {stopAudio(); void narrationRegeneration.regenerate(id);}} onSaveToLibrary={() => setLibraryOpen(true)} ttsBlockedBy={narrationRegeneration.blocked} />}
           {sel?.kind === 'sfx' && <SfxInspector m={m} index={sel.index} onSeekCut={seekCut} lib={lib} onPlay={playSfx} />}
           {sel?.kind === 'thumbnail' && <ThumbnailSection m={m} large />}
+          {sel?.kind === 'bgm' && <BgmInspector m={m} lib={lib} onLib={setLib} />}
           {!sel && <ReelInspector m={m} />}
           <ValidationPanel m={m} onSeekCut={seekCut} onSeekSec={seekSec} />
         </div>
@@ -876,6 +883,7 @@ export const EditorPage: React.FC<{onTab: (t: 'projects' | 'brief' | 'materials'
           telopGroups={m.groups}
           narration={narration}
           sfxLib={lib}
+          onOpenBgm={() => selectFromTimeline({kind: 'bgm'}, {seek: false})}
           estimateSec={m.estimateSec}
           clipOf={m.clipOf}
           slotRole={(c) => m.slotOf(c)?.role}

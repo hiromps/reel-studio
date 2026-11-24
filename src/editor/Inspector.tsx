@@ -70,6 +70,9 @@ const telopMaxChars = (cuts: ReelData | null | undefined): number => {
 };
 import {useEmotionTags} from '../hooks/useEmotionTags';
 import {NarrationEmotion} from '../components/NarrationEmotion';
+import {BgmControls} from '../components/BgmCard';
+
+const EMPTY_SFX_LIB: SfxLibrary = {version: 1, sounds: []};
 
 type Common = {m: EditorModel; onSeekCut: (i: number) => void};
 
@@ -998,3 +1001,16 @@ export const SfxInspector: React.FC<Common & {index: number; lib: SfxLibrary | n
 };
 
 export const cutOf = (m: EditorModel, i: number): Cut | undefined => m.cuts?.cuts[i];
+
+/**
+ * BGM（タイムラインの B 段を選んだとき）。曲選び・取り込み・音量・フェードは Render のカードと同じ部品。
+ * スライダーを動かすたびに履歴が積もらないよう、操作の始まり（押した・フォーカスした）で 1 回だけ履歴を取る
+ */
+export const BgmInspector: React.FC<{m: EditorModel; lib: SfxLibrary | null; onLib: (lib: SfxLibrary) => void}> = ({m, lib, onLib}) => (
+  <Section title="BGM">
+    <div onPointerDownCapture={m.pushHistory} onKeyDownCapture={m.pushHistory}>
+      <p className="hint">動画全体に 1 曲敷きます。尺は動画に合わせて自動で切り、ナレーションの間は自動で下げます。保存（Ctrl+S）すると書き出しの mix で反映されます</p>
+      <BgmControls narration={m.narration} onChange={(next) => m.setNarr(next)} lib={lib ?? EMPTY_SFX_LIB} onLib={onLib} videoSec={m.total || undefined} />
+    </div>
+  </Section>
+);

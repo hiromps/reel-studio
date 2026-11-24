@@ -12,7 +12,7 @@
     "emphasis": []
   },
   "fish": {
-    "supported_models": ["s2-pro", "s2.1-pro", "s2.1-pro-free"],
+    "supported_models": ["s2-pro", "s2.1-pro", "s2.1-pro-free", "drama-3"],
     "intensity_tags": {"1": "[soft tone]", "2": "[calm]", "3": "", "4": "[excited]", "5": "[very excited]"},
     "emphasis_tag": "[emphasis]",
     "chunk_length": 200,

@@ -17,7 +17,7 @@ import {caretRectFor, destIndexOf, insertIndexAt, type Caret, type Rect} from '.
 import {applyTrim, fallbackDuration, type TrimHandle, type TrimRange} from '../components/trim';
 import {CutThumb} from '../components/CutThumb';
 import {clampZoom, filmCells, fitPxPerSec, fmtSec, frameAtX, layoutBlocks, moveCuts, rulerTicks, setCutRange, trackWidth, trimDeltaSec} from '../components/track';
-import {cutBoundaries, draggedAt, narrationBlocks, setNarrationAt, setSfxAt, sfxMarkers, telopBlocks} from './tracks';
+import {bgmBar, cutBoundaries, draggedAt, narrationBlocks, setNarrationAt, setSfxAt, sfxMarkers, telopBlocks} from './tracks';
 import type {Selection} from './selection';
 import {sameSelection} from './selection';
 import {ROLE_LABEL} from './labels';
@@ -34,7 +34,7 @@ export type TimelineHandle = {
   focusCut: (i: number) => void;
 };
 
-export type TrackVisibility = {telop: boolean; narr: boolean; sfx: boolean};
+export type TrackVisibility = {telop: boolean; narr: boolean; sfx: boolean; bgm: boolean};
 
 type Props = {
   slug: string | null;
@@ -70,6 +70,8 @@ type Props = {
   onSplitCut: (i: number) => void;
   onAddNarration: (atSec: number) => void;
   onAddSfx: (atSec: number) => void;
+  /** B 段の ＋・ダブルクリック：BGM の設定（曲選び）を開く */
+  onOpenBgm: () => void;
   /** IN/OUT をドラッグ中、その素材のその秒を見せたいとき */
   onScrub?: (src: string, sec: number) => void;
   /** 素材ビンからドラッグ中のポインタ（挿入位置のキャレットを出す） */
@@ -105,7 +107,7 @@ const descOf = (clip: Clip | undefined, c: Cut): string => clip?.tags?.descripti
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
-  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, multiSelection = [], onSelect, onSelectQuiet, currentFrame, playbackClock, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
+  const {slug, mediaBase, cuts, fps, narration, sfxLib, estimateSec, clipOf, slotRole, selection, multiSelection = [], onSelect, onSelectQuiet, currentFrame, playbackClock, onSeek, pxPerSec, onPxPerSec, issueOf, groupColors, onStart, onCutsChange, onNarrationChange, onRemoveCut, onSplitCut, onAddNarration, onAddSfx, onOpenBgm, onScrub, external, snap, tracks, thumbnailSec, onThumbnailSec} = props;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
   const videoRowRef = useRef<HTMLDivElement | null>(null);
@@ -127,6 +129,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
   const tBlocks = useMemo(() => (tracks.telop ? telopBlocks(data, pxPerSec, props.telopGroups) : []), [data, pxPerSec, tracks.telop, props.telopGroups]);
   const nBlocks = useMemo(() => (tracks.narr ? narrationBlocks(narration, estimateSec, pxPerSec, totalSec) : []), [narration, estimateSec, pxPerSec, totalSec, tracks.narr]);
   const sMarkers = useMemo(() => (tracks.sfx ? sfxMarkers(narration?.sfx, pxPerSec, sfxLib ?? undefined) : []), [narration, pxPerSec, sfxLib, tracks.sfx]);
+  const bBar = useMemo(() => (tracks.bgm && cuts ? bgmBar(narration, totalSec, pxPerSec, sfxLib) : null), [narration, cuts, totalSec, pxPerSec, sfxLib, tracks.bgm]);
   const boundaries = useMemo(() => cutBoundaries(data), [data]);
   const playheadSec = currentFrame / data.fps;
 
@@ -512,7 +515,7 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
   const shownPinSec = pinSec ?? thumbnailSec ?? null;
   const isSel = (s: Selection) => sameSelection(selection, s) || multiSelection.some((x) => sameSelection(x, s));
   const selectClick = (s: Selection, e: React.MouseEvent) => onSelect(s, {toggle: e.ctrlKey || e.metaKey, range: e.shiftKey});
-  const rowsShown = 1 + (tracks.telop ? 1 : 0) + (tracks.narr ? 1 : 0) + (tracks.sfx ? 1 : 0);
+  const rowsShown = 1 + (tracks.telop ? 1 : 0) + (tracks.narr ? 1 : 0) + (tracks.sfx ? 1 : 0) + (tracks.bgm ? 1 : 0);
 
   return (
     <div className={`tl${activeTrim ? ' trimming' : ''}`} data-rows={rowsShown}>
@@ -542,6 +545,15 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
             <span className="tl-ico s">S</span>
             <span className="tl-name">効果音</span>
             <button className="tl-add" title="再生ヘッドの位置に効果音を追加（ライブラリから選ぶ）" onClick={() => onAddSfx(Math.round(((playbackClock?.getFrame() ?? currentFrame) / data.fps) * 1000) / 1000)} disabled={!cuts}>
+              ＋
+            </button>
+          </div>
+        )}
+        {tracks.bgm && (
+          <div className="tl-label tl-label-b" title="BGM：動画全体に敷く 1 曲。クリックで曲・音量・フェードを直す">
+            <span className="tl-ico b">B</span>
+            <span className="tl-name">BGM</span>
+            <button className="tl-add" title="BGM を選ぶ・新しい曲を追加する" onClick={onOpenBgm} disabled={!cuts}>
               ＋
             </button>
           </div>
@@ -795,6 +807,50 @@ export const Timeline = forwardRef<TimelineHandle, Props>((props, ref) => {
                   <span className="tl-sfx-text">{m.role ?? m.label}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── B: BGM ── */}
+          {tracks.bgm && (
+            <div
+              className="tl-row tl-row-b"
+              onPointerDown={(e) => {
+                if (e.target === e.currentTarget) beginScrub(e);
+              }}
+              onDoubleClick={(e) => {
+                if (e.target !== e.currentTarget || !cuts) return;
+                onOpenBgm();
+              }}
+              title="ダブルクリックで BGM を選ぶ"
+            >
+              {cuts && !bBar && <div className="tl-row-hint">BGM はまだありません（この段をダブルクリック、または左の ＋ で曲を選ぶ・追加する）</div>}
+              {bBar && (
+                <div
+                  className={`tl-bgm${isSel({kind: 'bgm'}) ? ' selected' : ''}${bBar.missing ? ' missing' : ''}`}
+                  style={{left: bBar.left, width: bBar.width}}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={isSel({kind: 'bgm'})}
+                  title={`BGM: ${bBar.label}
+0.00s〜${bBar.endSec.toFixed(2)}s / ${bBar.gainDb} dB${bBar.loopX.length ? ` / ${bBar.loopX.length} 回繰り返し` : ''}${bBar.duck ? ' / 声の間は自動で下げる' : ''}${bBar.missing ? '\n音源がライブラリにありません' : ''}
+クリックで曲・音量・フェードを直す`}
+                  onClick={() => onSelect({kind: 'bgm'})}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSelect({kind: 'bgm'});
+                    }
+                  }}
+                >
+                  {bBar.fadeInW > 1 && <span className="tl-bgm-fade in" style={{width: bBar.fadeInW}} aria-hidden />}
+                  {bBar.fadeOutW > 1 && <span className="tl-bgm-fade out" style={{width: bBar.fadeOutW}} aria-hidden />}
+                  {bBar.loopX.map((x) => (
+                    <span key={x} className="tl-bgm-loop" style={{left: x}} aria-hidden />
+                  ))}
+                  <span className="tl-bgm-text">♪ {bBar.label}</span>
+                </div>
+              )}
             </div>
           )}
 

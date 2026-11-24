@@ -18,6 +18,7 @@ import {REFINABLE_LABEL, type PersonaRefineResult} from '@shared/persona-refine'
 import {useMosaicStatus} from '../components/MosaicPanel';
 import {ModalCloudSettings} from '../components/ModalCloud';
 import {ClaudeReconnect} from '../components/ClaudeReconnect';
+import {FISH_MODELS} from '@shared/fish-models';
 
 type Voice = {id: string; title: string; source: 'own' | 'persona' | 'extra'; personas: string[]; state?: string};
 type TestResult = {ok: boolean; message: string; version?: string | null; bin?: string};
@@ -31,7 +32,6 @@ type SubKey = (typeof SUB_KEYS)[number];
 const SUB_DEFAULT: Record<SubKey, string> = {workDir: 'work', uploadsRoot: 'uploads', outputsDir: 'outputs', sfxDir: 'sfx', fixedMaterialsDir: 'fixed-materials'};
 const PATH_LABEL: Record<PathKey, string> = {dataRoot: 'データフォルダ（親）', workDir: '案件（work）', uploadsRoot: '生素材（uploads）', outputsDir: '納品（outputs）', sfxDir: '効果音（sfx）', fixedMaterialsDir: '固定素材（毎回入れる動画）'};
 const SOURCE_LABEL = {env: '環境変数', settings: '設定', default: '既定'} as const;
-const FISH_MODELS = ['s2.1-pro-free', 's2.1-pro', 's2-pro', 's1'];
 const ID_RE = /^[a-z][a-z0-9-]{0,30}$/;
 
 const msg = (e: unknown): string => (e as ApiError)?.message ?? String(e);
@@ -348,12 +348,16 @@ const TtsCard: React.FC<{view: SettingsView; save: Save}> = ({view, save}) => {
         </label>
         <label>
           モデル
-          <input list="fish-models" value={modelId} onChange={(e) => setModelId(e.target.value)} disabled={view.env.fishModelId} />
-          <datalist id="fish-models">
+          <select value={modelId} onChange={(e) => setModelId(e.target.value)} disabled={view.env.fishModelId} aria-label="Fish Audio のモデル">
+            {!FISH_MODELS.some((m) => m.id === modelId) && <option value={modelId}>{modelId}（一覧に無いモデル）</option>}
             {FISH_MODELS.map((m) => (
-              <option key={m} value={m} />
+              <option key={m.id} value={m.id}>
+                {m.label} — {m.note}
+              </option>
             ))}
-          </datalist>
+          </select>
+          {view.env.fishModelId && <span className="hint">環境変数 FISH_MODEL_ID で固定されています</span>}
+          {modelId === 'drama-3' && <span className="hint">Drama 3 は有料プランの API で使えます。感情タグ（[感情の指示]・&lt;emphasis&gt;）はそのまま使えます。作った後の音声は自動では作り直しません（感情タグ付きのブロックだけ、次の「音声を生成」で作り直します）。ほかは Timeline の「この 1 本だけ生成」などで作り直してください</span>}
         </label>
         {test && (
           <span>

@@ -24,6 +24,7 @@ import {writeJsonAtomic} from './json-io';
 import {loadEmotionTags} from './emotion-tags';
 import type {EmotionTags} from '../shared/emotion-tags';
 import {fishEmotionTag} from '../shared/emotion-tags';
+import {fishModelSupportsTags} from '../shared/fish-models';
 
 const ENDPOINT = 'https://api.fish.audio/v1/tts';
 /** fish-audio-sdk が既定で送っている値（session.js のコンストラクタ引数） */
@@ -403,8 +404,8 @@ export const generateTts = async (projectDir: string, opt: TtsOptions = {}): Pro
   const reelConfig = hasReelCuts(projectDir) ? loadReelCutsConfig() : null;
   const hasEmotions = narration.segments.some(seg => seg.emotion_tag !== undefined);
   const emotionConfig = reelConfig || hasEmotions ? loadEmotionTags() : undefined;
-  if (narration.segments.some(seg => !!seg.emotion_tag) && !['s2-pro', 's2.1-pro', 's2.1-pro-free'].includes(env.modelId)) throw new Error('感情タグ付きの音声生成には Fish Audio の S2 系モデルを選んでください');
-  if (reelConfig && !reelConfig.fish.supported_models.some((model) => model === env.modelId)) throw new Error(`共通カットの音声生成には設定の supported_models にある S2 モデルを選んでください: ${env.modelId}`);
+  if (narration.segments.some(seg => !!seg.emotion_tag) && !fishModelSupportsTags(env.modelId)) throw new Error('感情タグ付きの音声生成には Fish Audio の S2 系か Drama 3 のモデルを選んでください');
+  if (reelConfig && !reelConfig.fish.supported_models.some((model) => model === env.modelId)) throw new Error(`共通カットの音声生成には設定の supported_models にあるモデル（S2 系・Drama 3）を選んでください: ${env.modelId}`);
   const bodyFor = (seg: NarrationSegment) => reelConfig ? reelTtsBody(seg, voice, latency, reelConfig, emotionConfig) : seg.emotion_tag !== undefined ? narrationTtsBody(seg, voice, speed, latency, emotionConfig) : ttsBody(seg.text.trim(), voice, speed, latency);
   const cacheFile = reelAudioCacheFile(projectDir);
   const audioCache = readReelAudioCache(projectDir);

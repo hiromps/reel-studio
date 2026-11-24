@@ -1,10 +1,11 @@
-// 編集画面の多段トラック（映像 / テロップ / ナレーション / 効果音）の配置計算。純粋（DOM に触らない）。
+// 編集画面の多段トラック（映像 / テロップ / ナレーション / 効果音 / BGM）の配置計算。純粋（DOM に触らない）。
 // 映像トラックの配置は components/track.ts（layoutBlocks）。ここはそれ以外の段と、段をまたぐ吸着。
 import type {ReelData} from '@shared/schema';
 import type {Narration, NarrationSegment, Sfx} from '@shared/schema';
 import {cutRanges, round3, telopGroupsOf, type TelopGroup} from '@shared/timeline';
 import {isPlaceholder} from '@shared/telop-text';
 import {sfxEndSec, type SfxLibrary} from '@shared/sfx';
+import {bgmDisplayName, bgmResolved} from '@shared/bgm';
 import {OVERLAP_TOLERANCE_SEC, narrationUsedSec} from '@shared/narration';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -100,6 +101,39 @@ export const narrationBlocks = (narration: Narration | null, estimate: (s: Narra
     prevEnd = Math.max(prevEnd, endSec);
   }
   return out;
+};
+
+// ───────────────────────── BGM 段 ─────────────────────────
+
+/**
+ * BGM 段の 1 本の帯。本番の mix と同じ決め方で「どこまで鳴るか」を出す：
+ * 繰り返すなら動画の最後まで、繰り返さないなら（曲の長さ − 頭を飛ばした秒）か動画尺の短い方。
+ * loopX は曲が頭に戻る位置（px）。fadeInW / fadeOutW はフェードの幅（px）
+ */
+export type BgmBar = {left: number; width: number; endSec: number; label: string; missing: boolean; loopX: number[]; fadeInW: number; fadeOutW: number; gainDb: number; duck: boolean};
+
+export const bgmBar = (narration: Narration | null | undefined, videoSec: number, pxPerSec: number, lib?: SfxLibrary | null): BgmBar | null => {
+  const b = narration?.bgm;
+  if (!b?.file || !(videoSec > 0)) return null;
+  const r = bgmResolved(b);
+  const durSec = lib?.sounds.find((x) => x.file === b.file)?.durSec;
+  const first = durSec ? Math.max(0, durSec - r.startSec) : videoSec;
+  const endSec = r.loop || !durSec ? videoSec : Math.min(videoSec, first);
+  const loopX: number[] = [];
+  if (r.loop && durSec && durSec > 0.5) for (let t = first; t < videoSec - 0.05 && loopX.length < 200; t += durSec) loopX.push(round3(t * pxPerSec));
+  return {
+    left: 0,
+    width: Math.max(10, endSec * pxPerSec),
+    endSec: round3(endSec),
+    label: bgmDisplayName(b, lib),
+    missing: !!lib && lib.sounds.length > 0 && !durSec,
+    loopX,
+    fadeInW: Math.min(r.fadeInSec, endSec / 2) * pxPerSec,
+    // フェードアウトは動画の終わりに掛かる（曲が先に尽きるときは掛からない）
+    fadeOutW: endSec >= videoSec - 0.001 ? Math.min(r.fadeOutSec, endSec / 2) * pxPerSec : 0,
+    gainDb: r.gainDb,
+    duck: r.duck,
+  };
 };
 
 // ───────────────────────── 効果音段 ─────────────────────────

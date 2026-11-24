@@ -5,6 +5,7 @@ import {CutSchema, ThemeSchema, type ReelData} from './schema/cuts';
 import {NarrationSchema, type Narration} from './schema/narration';
 import {stableHash} from './hash';
 import {defaultEmotionTags, fishEmotionTag, type EmotionTags} from './emotion-tags';
+import {FISH_TAG_MODEL_IDS} from './fish-models';
 
 const tag = z.string().refine((v) => v === '' || /^\[[^\[\]\r\n]+\]$/.test(v));
 export const ReelCutsConfigSchema = z.object({
@@ -12,7 +13,7 @@ export const ReelCutsConfigSchema = z.object({
   render: z.object({fps: z.number().finite().positive(), theme: ThemeSchema}).strict(),
   defaults: ReelSpeechSchema.extend({slot: ReelSlotSchema, duration: z.number().finite().positive()}).strict(),
   fish: z.object({
-    supported_models: z.array(z.enum(['s2-pro', 's2.1-pro', 's2.1-pro-free'])).min(1),
+    supported_models: z.array(z.enum(FISH_TAG_MODEL_IDS)).min(1),
     intensity_tags: z.object({'1': tag, '2': tag, '3': tag, '4': tag, '5': tag}).strict(),
     emphasis_tag: tag.refine(Boolean),
     chunk_length: z.number().int().min(100).max(300), normalize: z.boolean(), volume: z.number().finite(),

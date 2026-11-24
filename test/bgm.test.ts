@@ -2,6 +2,11 @@ import {describe, expect, it} from 'vitest';
 import {BGM_DEFAULTS, bgmCandidates, bgmResolved, checkBgm, hasMixAudio, safeBgmFileName} from '../shared/bgm';
 import {NarrationSchema} from '../shared/schema/narration';
 import {loopPlayback, mixClipsOf, planPlayback} from '../src/editor/mixPreview';
+import {bgmBar} from '../src/editor/tracks';
+import {sameSelection} from '../src/editor/selection';
+import {FISH_MODELS, fishModelSupportsTags} from '../shared/fish-models';
+import {ReelCutsConfigSchema} from '../shared/reel-cuts';
+import ocEat from '../shared/config/oc-eat.json';
 import type {SfxLibrary} from '../shared/sfx';
 
 const lib: SfxLibrary = {
@@ -68,5 +73,36 @@ describe('プレビューの BGM', () => {
     const plan = planPlayback(mixClipsOf(n, '/media', lib), () => 30, 4);
     expect(plan[0].offsetSec).toBeCloseTo(14);
     expect(plan[0].durationSec).toBeCloseTo(16);
+  });
+});
+
+describe('タイムラインの B 段', () => {
+  const n = (bgm: object) => NarrationSchema.parse({voice: '', segments: [], bgm});
+  it('繰り返すなら動画の最後まで帯を引き、継ぎ目の位置を出す', () => {
+    // 曲 30 秒・頭 10 秒飛ばし・動画 45 秒 → 20 秒目と 50 秒目（動画外）で頭に戻る
+    const b = bgmBar(n({file: 'BGM/cafe.mp3', startSec: 10}), 45, 10, lib)!;
+    expect(b.width).toBe(450);
+    expect(b.loopX).toEqual([200]);
+    expect(b.fadeInW).toBeCloseTo(5);
+    expect(b.fadeOutW).toBeCloseTo(15);
+  });
+  it('繰り返さないなら曲が尽きた所で帯が終わり、フェードアウトは付かない', () => {
+    const b = bgmBar(n({file: 'BGM/cafe.mp3', startSec: 10, loop: false}), 45, 10, lib)!;
+    expect(b.endSec).toBe(20);
+    expect(b.fadeOutW).toBe(0);
+  });
+  it('BGM が無ければ帯を出さない・音源が無ければ missing', () => {
+    expect(bgmBar(NarrationSchema.parse({voice: '', segments: []}), 45, 10, lib)).toBeNull();
+    expect(bgmBar(n({file: 'BGM/none.mp3'}), 45, 10, lib)?.missing).toBe(true);
+    expect(sameSelection({kind: 'bgm'}, {kind: 'bgm'})).toBe(true);
+  });
+});
+
+describe('Fish Audio のモデル', () => {
+  it('Drama 3 を選べて、感情タグ付きの音声と共通カットの設定に使える', () => {
+    expect(FISH_MODELS.map((m) => m.id)).toContain('drama-3');
+    expect(fishModelSupportsTags('drama-3')).toBe(true);
+    expect(fishModelSupportsTags('s1')).toBe(false);
+    expect(ReelCutsConfigSchema.parse(ocEat).fish.supported_models).toContain('drama-3');
   });
 });

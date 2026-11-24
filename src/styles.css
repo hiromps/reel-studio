@@ -50,6 +50,7 @@
   --trk-telop: #8b5cf6;
   --trk-narr: #22b573;
   --trk-sfx: #f59331;
+  --trk-bgm: #14a3b8;
   --radius: 16px;
   --radius-sm: 10px;
   font-family: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', system-ui, sans-serif;
@@ -3117,6 +3118,7 @@ a.btn-like:hover {
   --tl-t: 34px;
   --tl-n: 38px;
   --tl-s: 30px;
+  --tl-b: 30px;
   display: flex;
   gap: 0;
   user-select: none;
@@ -3167,6 +3169,9 @@ a.btn-like:hover {
 .tl-ico.s {
   background: var(--trk-sfx);
 }
+.tl-ico.b {
+  background: var(--trk-bgm);
+}
 .tl-label-ruler {
   height: var(--tl-ruler);
 }
@@ -3182,6 +3187,15 @@ a.btn-like:hover {
 .tl-label-s {
   height: var(--tl-s);
   border-bottom: none;
+}
+.tl-label-b {
+  height: var(--tl-b);
+  border-bottom: none;
+}
+/* B 段が下にあるときだけ S 段に区切り線を戻す（B 段を隠したら S 段が最後の段） */
+.tl-label-s:has(+ .tl-label-b),
+.tl-row-s:has(+ .tl-row-b) {
+  border-bottom: 1px solid var(--line);
 }
 .tl-add {
   flex: 0 0 auto;
@@ -3487,6 +3501,64 @@ a.btn-like:hover {
 .tl-sfx.selected {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+.tl-row-b {
+  height: var(--tl-b);
+  border-bottom: none;
+}
+/* BGM の帯。動画の頭から鳴り終わりまで 1 本。フェードは端の斜めの影、繰り返しの継ぎ目は縦線 */
+.tl-bgm {
+  position: absolute;
+  top: 4px;
+  height: calc(var(--tl-b) - 8px);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #3cc3d6, var(--trk-bgm));
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tl-bgm.missing {
+  background: var(--tint-red);
+  color: var(--tint-red-fg);
+  box-shadow: inset 0 0 0 1px var(--err);
+}
+.tl-bgm.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tl-bgm-text {
+  position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-bgm-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.tl-bgm-fade.in {
+  left: 0;
+  background: linear-gradient(to top right, rgba(0, 0, 0, 0.28) 50%, transparent 50%);
+}
+.tl-bgm-fade.out {
+  right: 0;
+  background: linear-gradient(to top left, rgba(0, 0, 0, 0.28) 50%, transparent 50%);
+}
+.tl-bgm-loop {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 0;
+  border-left: 1px dashed rgba(255, 255, 255, 0.85);
+  pointer-events: none;
 }
 .tl-sfx-text {
   overflow: hidden;
@@ -4258,6 +4330,7 @@ a.btn-like:hover {
     --tl-t: 36px;
     --tl-n: 42px;
     --tl-s: 32px;
+    --tl-b: 32px;
   }
   .tl-labels {
     flex: 0 0 40px;

@@ -5,6 +5,7 @@ import {loadEmotionTags} from './emotion-tags';
 import {fishEmotionTag} from '../shared/emotion-tags';
 import {fishEnv, synthOne} from './tts';
 import {writeJsonAtomic} from './json-io';
+import {fishModelSupportsTags} from '../shared/fish-models';
 
 export type EmotionSample = {id: string; label: string; color: string; file: string; duration: number; cached: boolean};
 export const generateEmotionAudition = async (dir: string, opt: {voice: string; text?: string; speed?: number; signal?: AbortSignal; onProgress?: (done: number, total: number, phase: string) => void}) => {
@@ -14,7 +15,7 @@ export const generateEmotionAudition = async (dir: string, opt: {voice: string; 
   if (!text || /[\[\]\r\n]/.test(text) || [...text].length > config.audition.max_chars) throw new Error(`試聴文はタグ・改行を含めず ${config.audition.max_chars} 文字以内で入力してください`);
   if (!opt.voice || speed < 0.5 || speed > 2 || !Number.isFinite(speed)) throw new Error('試聴のボイス・話速を確認してください');
   const env = fishEnv();
-  if (!env || !['s2-pro', 's2.1-pro', 's2.1-pro-free'].includes(env.modelId)) throw new Error('Fish Audio の S2 系モデルと API キーを設定してください');
+  if (!env || !fishModelSupportsTags(env.modelId)) throw new Error('Fish Audio の S2 系か Drama 3 のモデルと API キーを設定してください');
   const folder = path.join(dir, 'narration', 'emotion-tests');
   fs.mkdirSync(folder, {recursive: true});
   const samples: EmotionSample[] = [];
